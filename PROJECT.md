@@ -27,9 +27,9 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 - [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Local Application Password authentication is proven; external GPT connection is not yet tested.
 - [ ] List editable Elementor pages. Implemented; real-site endpoint test pending.
 - [x] Read an Elementor page's structured content / editable text inventory. Confirmed on a real Elementor test page.
-- [ ] Update selected text values without rebuilding or flattening the Elementor layout. Implemented; real-site write test pending.
-- [ ] Save through Elementor's document model rather than direct SQL. Implemented; real-site write test pending.
-- [ ] Return a clear result that can be checked in Elementor. Implemented; real-site write test pending.
+- [x] Update selected text values without rebuilding or flattening the Elementor JSON in the API path. Real write returned `saved: true`; visual editor integrity check still pending.
+- [x] Save through Elementor's document model rather than direct SQL. Real write returned `saved: true` through the implemented document-save path.
+- [x] Return a clear result that can be checked in Elementor. Real response reported exactly one changed field with old/new values.
 - [ ] Reject unauthorized access and invalid/non-Elementor targets. Unauthenticated request returned 401; remaining invalid-target checks are not yet tested in the real site.
 
 ### Explicitly out of scope for V0.1
@@ -62,11 +62,12 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Current objective
 
-- Perform one controlled copy write on the disposable Elementor test page, then reopen it in Elementor and verify the heading changed while the paragraph/layout remain intact.
+- Reopen the disposable Elementor test page and verify visually that only the heading changed to `Changed by Elementize`, while the paragraph and layout remain intact.
 
-## Known blockers
+## Known blockers / issues
 
 - `mijn-ibp.local` is not remotely reachable by a Custom GPT Action. Local API behavior can be built/tested first; GPT integration requires a public HTTPS test/staging endpoint or secure tunnel.
+- The successful real write response returned `revision_id: null`. The page write succeeded, but explicit pre-change revision creation is therefore not yet proven and must be investigated before claiming rollback safety.
 
 ## Backlog
 
@@ -81,15 +82,18 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: Elementize 0.1.1 is installed and active on the real local WordPress site.
-- Plugin checkpoint: `elementize.php` commit `3e196b7abd61303360bd1ddc9a73076ad19fc8ee`.
-- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, and read-only extraction of the two test copy fields from a real Elementor page.
+- Status: Elementize 0.1.1 is installed and active on the real local WordPress site; authenticated read and one targeted write have succeeded.
+- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, read-only extraction of two test copy fields, and one targeted heading update returning `saved: true`.
+- Real write result: exactly one field changed from `Original heading` to `Changed by Elementize`; returned `updated_count: 1`.
+- Visual Elementor integrity verification is still pending.
+- Explicit revision creation is not yet proven because the write response returned `revision_id: null`.
 - Earlier fixture checks passed: recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior.
-- Last known-good real environment checkpoint: test page successfully read through `/wp-json/elementize/v1/pages/{id}/text` before any API write.
-- V0.1 usable: Not yet proven; one real write-and-verify test remains.
+- Last known-good real environment checkpoint: successful authenticated write response on the disposable test page.
+- V0.1 usable: Not yet proven; visual integrity verification and the revision question remain.
 
 ## Notes from real use
 
 - A sanitized analysis of an Elementor/Pixfort HAR capture validated that Pixfort exposes machine-usable catalogue and template-fetch operations; details are recorded in `DISCOVERY.md`.
 - Elementor source confirms its revision manager copies Elementor meta into WordPress revisions and restores that meta on revision restore.
 - Real read test returned the normal Elementor Heading copy (`Original heading`) and Text Editor HTML (`<p>Original paragraph</p>`) as separate editable text items without exposing arbitrary page JSON for mutation.
+- First real write used the page content hash plus an expected old value and changed only the targeted Heading title; the API rejected an earlier malformed-JSON attempt before any mutation occurred.
