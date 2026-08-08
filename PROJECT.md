@@ -22,7 +22,8 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ### Must work
 
-- [ ] Install and activate Elementize as a normal WordPress plugin. Implemented; real-site activation not yet tested.
+- [ ] Install and activate Elementize as a normal WordPress plugin. Implemented; real-site activation of the latest build still needs validation.
+- [ ] Show Elementize directly in the WordPress admin sidebar with a basic environment/status screen. Implemented in 0.1.1; real-site test pending.
 - [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Implemented locally; external GPT connection not yet tested.
 - [ ] List editable Elementor pages. Implemented; real-site test pending.
 - [ ] Read an Elementor page's structured content / editable text inventory. Implemented; real-site test pending.
@@ -61,7 +62,7 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Current objective
 
-- Validate the V0.1 candidate in the real local WordPress/Elementor environment: activate -> authenticate -> list/read page -> make one small copy update -> open Elementor and verify layout/data integrity.
+- Validate the 0.1.1 candidate in the real local WordPress/Elementor environment: install/update -> confirm Elementize sidebar/status page -> authenticate -> list/read page -> make one small copy update -> open Elementor and verify layout/data integrity.
 
 ## Known blockers
 
@@ -80,10 +81,11 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: V0.1 implementation candidate committed on `fastbuild/elementize-v0.1`; awaiting real WordPress/Elementor validation.
-- Candidate checkpoint: `elementize.php` commit `5223fdef6a3feaf640be54cfe147f3bc0cfbbc31`.
-- Local validation performed: PHP syntax check passed; recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior passed fixture tests.
-- Last known-good real environment checkpoint: Existing WordPress/Elementor installation before Elementize is installed.
+- Status: V0.1.1 implementation candidate committed on `fastbuild/elementize-v0.1`; awaiting real WordPress/Elementor validation.
+- Latest candidate checkpoint: `elementize.php` commit `3e196b7abd61303360bd1ddc9a73076ad19fc8ee`.
+- Earlier local validation: PHP syntax check passed for 0.1.0; recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior passed fixture tests.
+- 0.1.1 adds the WordPress admin sidebar/status page and Pixfort detection; runtime validation is pending.
+- Last known-good real environment checkpoint: Existing WordPress/Elementor installation before updating to Elementize 0.1.1.
 - V0.1 usable: Not yet proven.
 
 ## Notes from real use
