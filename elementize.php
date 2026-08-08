@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: A controlled REST API for conversational WordPress and Elementor editing.
- * Version: 0.1.1
+ * Version: 0.1.2
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Elementize_V01 {
-	private const VERSION = '0.1.1';
+	private const VERSION = '0.1.2';
 	private const REST_NAMESPACE = 'elementize/v1';
 	private const MAX_TEXT_LENGTH = 20000;
 	private const MAX_UPDATES = 100;
@@ -463,11 +463,26 @@ final class Elementize_V01 {
 		}
 
 		$revision_id = null;
-		if ( post_type_supports( 'page', 'revisions' ) ) {
-			$saved_revision = wp_save_post_revision( $post_id );
-			if ( is_int( $saved_revision ) ) {
-				$revision_id = $saved_revision;
+		$post = get_post( $post_id );
+		$revisions_enabled = $post && post_type_supports( $post->post_type, 'revisions' ) && wp_revisions_enabled( $post );
+
+		if ( $revisions_enabled ) {
+			add_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
+			try {
+				$saved_revision = wp_save_post_revision( $post_id );
+			} finally {
+				remove_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
 			}
+
+			if ( is_wp_error( $saved_revision ) || ! is_int( $saved_revision ) || $saved_revision <= 0 ) {
+				return new WP_Error(
+					'elementize_revision_failed',
+					'Elementize could not create a pre-change revision, so the page was not modified.',
+					[ 'status' => 500 ]
+				);
+			}
+
+			$revision_id = $saved_revision;
 		}
 
 		try {
