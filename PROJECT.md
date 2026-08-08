@@ -68,7 +68,15 @@ Eventually the GPT should be able to:
 - [x] Search Pixfort `features` returned 158 candidates with stable template IDs and thumbnail URLs.
 - [x] First manual visual-selection test compared four real AI Agency feature thumbnails and selected `ai-agency-home-features-bento-boxes` based on visible composition rather than metadata/title alone.
 - [x] Insert visually selected `ai-agency-home-features-bento-boxes` at the end of page 951743: `saved: true`, inserted top-level ID `258e274f`, revision `951747`, new hash `7225f9b40f9ff100bd77d236c23eb173b4e95ca47e71f2ff57be07f3adfb8794`.
-- [ ] Reopen page 951743 in Elementor and visually confirm the bento section renders directly below the hero.
+- [x] Visual confirmation passed: the bento section renders directly below the hero with its cards, charts, UI mockups, metrics, buttons, and expected spacing.
+- [x] Implement Elementize 0.2.7 read-only Pixfort visual probe at `POST /pixfort/visual-probe`.
+- [x] 0.2.7 visual probe accepts 1–4 catalogue-backed section IDs, fetches only allowlisted Pixfort thumbnail hosts, limits thumbnail bytes, returns A/B/C/D slots plus stable `identity_hash` values, and packages thumbnail bytes into `elementize-pixfort-visual-proof.json` through `openaiFileResponse` for Code Interpreter reconstruction.
+- [x] PHP lint passed for the exact committed 0.2.7 blob (`16c2aa081642c454b7d765638f988a5f2347c2e3`).
+- [x] Install 0.2.7 on the local site.
+- [x] First runtime visual-probe request passed with two candidates: A=`ai-agency-home-features-bento-boxes` identity `ea3a1325b3bff383f9fb76e4a85f366bd2464c8ef9102ed755a075df7c9239dd`; B=`ai-agency-home-features-grid` identity `188778a289daef3c7772b56f160762298a9883ffa7e6ed4f01ce5859fb996e92`.
+- [x] Runtime response returned `probe_count: 2`; `openaiFileResponse` decoded successfully into `elementize-pixfort-visual-proof.json` (20,652 bytes).
+- [ ] Decode A/B thumbnail bytes from the proof file and verify they reproduce the exact source Pixfort thumbnails.
+- [ ] Test the same visual-probe handoff inside the Custom GPT with Code Interpreter enabled.
 
 ## Current environment
 
@@ -76,8 +84,8 @@ Eventually the GPT should be able to:
 - Elementor 4.2.1 / Elementor Pro 4.2.1.
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
-- Installed runtime build: 0.2.6.
-- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.6.
+- Installed runtime build: 0.2.7.
+- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.7.
 
 ## Safety constraints
 
@@ -88,6 +96,7 @@ Eventually the GPT should be able to:
 - `before`/`after` Pixfort insertion targets must be current top-level Elementor element IDs.
 - Top-level removal accepts only current top-level Elementor `container` or legacy `section` IDs and verifies the ID is absent after save.
 - New page creation defaults to draft and cannot silently publish; failed Elementor initialization is rolled back.
+- Visual probe is read-only, accepts at most four current catalogue section IDs, fetches only allowlisted Pixfort HTTPS thumbnail hosts, and caps each thumbnail response size.
 - Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
 - Normal operation must not depend on browser automation.
 
@@ -103,16 +112,16 @@ Eventually the GPT should be able to:
 - Guarded top-level removal is proven end-to-end; the page structure hash returned exactly to its pre-duplicate value and Elementor visually shows only the original hero.
 - Safe blank draft page creation is runtime-proven in 0.2.6; new page 951743 was created as an empty Elementor draft through REST.
 - Create → compose is proven end-to-end on page 951743: Elementize created the blank draft, inserted a real Pixfort hero, and Elementor rendered it correctly.
-- The first search → visual compare → choose → insert loop is proven at the API layer; the remaining check is visual rendering/order of the chosen bento section in Elementor.
+- Search → visual compare → choose → insert is proven end-to-end manually on page 951743.
+- 0.2.7 visual-probe transport is runtime-proven through WordPress REST: candidate mappings and proof JSON file are returned and reconstruct successfully on disk; actual A/B image-byte reconstruction is the remaining local check.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Visually confirm the chosen bento feature section renders below the hero on page 951743. Then replace the manual thumbnail-download step with a reliable read-only visual probe that a Custom GPT can consume directly, while continuing to reuse the already-proven create + insert primitives for multi-section composition.
+Finish the local 0.2.7 visual-probe verification by reconstructing A/B images from the returned proof JSON and matching them to the source Pixfort thumbnails. Then test the identical Action response inside the Custom GPT with Code Interpreter, so visual selection no longer requires manual thumbnail downloads.
 
 ## Later
 
-- Reliable visual thumbnail/probe delivery for Custom GPT.
 - Multi-section page creation from a visually selected section plan.
 - Media/color/icon operations.
 - Draft/delete/restore and explicit publish workflows.
