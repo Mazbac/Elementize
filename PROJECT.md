@@ -38,6 +38,11 @@ Eventually the GPT should be able to:
 - [x] Runtime insert returned `saved: true`, revision `951731`, one top-level inserted element, ID `4889ee30`, and a new content hash.
 - [x] Reopen Elementor and visually verify the imported section renders with styling/images and preserves existing content.
 - [x] Fresh read after insertion proves top-level ID `4889ee30` contains the new AI hero widgets/copy and matches the post-insert content hash.
+- [x] Implement Elementize 0.2.4 candidate: block layout/style keys such as `flex_justify_content` from the copy surface.
+- [x] Implement guarded Pixfort insertion positions: `start`, `end`, `before`, `after`; before/after target only top-level Elementor IDs.
+- [x] PHP lint passed for the exact committed 0.2.4 blob (`a6aa7124b74f9d0da65800b9286212c39e14aefe`).
+- [ ] Install 0.2.4 and verify layout settings disappear from `/pages/{id}/text` while real Pixfort copy remains.
+- [ ] Runtime-test one controlled before/after insertion on the disposable page.
 
 ## Current environment
 
@@ -46,7 +51,7 @@ Eventually the GPT should be able to:
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
 - Installed runtime build: 0.2.3.
-- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.3.
+- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.4.
 
 ## Safety constraints
 
@@ -54,6 +59,7 @@ Eventually the GPT should be able to:
 - Use WordPress/Elementor/Pixfort APIs rather than direct SQL.
 - Mutating Pixfort operations require administrator permission and page edit permission.
 - Mutations use a fresh page content hash and a pre-change revision.
+- `before`/`after` Pixfort insertion targets must be current top-level Elementor element IDs.
 - Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
 - Normal operation must not depend on browser automation.
 
@@ -63,17 +69,17 @@ Eventually the GPT should be able to:
 - `Source_Pixfort::get_data()` replaces Elementor IDs, runs Elementor import processing, imports media/nested templates, and normalizes content against the target document.
 - Essentials adds `pix_domain` + `purchase_key` request headers through `pixfort_el_remote_get_args`; Elementize reproduces this only internally during template download.
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
-- Current copy-field detection incorrectly exposes layout settings such as `flex_justify_content` because the key contains `content`; this should be tightened before broader GPT-driven copy editing.
+- The first Pixfort runtime insert is proven visually and structurally; top-level inserted ID was `4889ee30` and pre-change revision was `951731`.
+- 0.2.4 hardens copy detection by blocking structural tokens including `flex`, `justify`, `grid`, `layout`, `display`, `gap`, `wrap`, `order`, and `overflow` before applying the copy-key allowlist.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Harden the copy-read surface after the proven Pixfort insertion, then expand insertion from append-only to controlled positioning/composition.
+Install/test 0.2.4: first prove the cleaned copy-read surface, then prove one positioned Pixfort insertion using a top-level target ID.
 
 ## Later
 
 - Visual thumbnail delivery/matching for Custom GPT.
-- Arbitrary insertion position and section ordering.
 - New Elementor page creation from a section plan.
 - Media/color/icon operations.
 - Draft/delete/restore workflows.
