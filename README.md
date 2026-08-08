@@ -1,76 +1,55 @@
-# Elementize
+# Elementize V0.1.1
 
-Elementize is a WordPress plugin that exposes a controlled API for working with Elementor from an external AI client such as a Custom GPT.
+Elementize is a WordPress plugin candidate for controlled conversational access to WordPress and Elementor.
 
-This repository also contains the Fast Build OS project/discovery files used to keep implementation evidence-driven and scoped.
+This branch is intentionally narrow. It proves the first useful path before broader page building and Pixfort automation are added.
 
-## Current V0.1
+## Current V0.1.1 capabilities
 
-The first vertical slice is deliberately limited to safe copy editing of existing Elementor pages.
+- Adds **Elementize** directly to the WordPress admin sidebar.
+- Shows a status page for Elementize, Elementor, Pixfort Core, the active theme, and the REST endpoint.
+- Lists editable WordPress pages and identifies which are Elementor documents.
+- Reads a controlled inventory of recognized copy fields from an Elementor page.
+- Updates selected copy fields without exposing arbitrary raw Elementor JSON writes.
+- Rejects stale writes with a page `content_hash`.
+- Requests a pre-change WordPress/Elementor revision before saving.
+- Saves through Elementor's document model.
 
-Implemented endpoints:
+## REST endpoints
 
 - `GET /wp-json/elementize/v1/status`
 - `GET /wp-json/elementize/v1/pages`
 - `GET /wp-json/elementize/v1/pages/{id}/text`
-- `POST|PUT|PATCH /wp-json/elementize/v1/pages/{id}/text`
+- `POST /wp-json/elementize/v1/pages/{id}/text`
 
-V0.1 does **not** expose arbitrary Elementor JSON writes, styling/media changes, page deletion, or Pixfort insertion yet.
+All endpoints require an authenticated WordPress user with the relevant editing capability.
 
-## Safety model
+## Install / update on the local test site
 
-- Every endpoint requires an authenticated WordPress user with page-editing capability.
-- Per-page operations also require `edit_post` permission for that page.
-- Text updates are limited to recognized copy settings; URL/media/style/query-like settings are rejected.
-- A `content_hash` returned by the read endpoint must still match before a write is accepted, preventing stale edits from overwriting newer page changes.
-- A WordPress/Elementor revision is requested before the Elementor document is saved.
-- Elementor's document model is used for persistence rather than direct database writes.
-- The API never needs browser cookies or Elementor editor nonces from a Custom GPT.
+1. Switch GitHub to branch `fastbuild/elementize-v0.1`.
+2. Use **Code -> Download ZIP**.
+3. In WordPress, go to **Plugins -> Add Plugin -> Upload Plugin**.
+4. Upload the ZIP. If WordPress says the plugin already exists, replace the current plugin with the uploaded version.
+5. Activate Elementize if needed.
+6. Confirm **Elementize** appears in the WordPress left sidebar.
+7. Open **Elementize** and confirm the status screen loads.
 
-## Local test
+## First real validation
 
-1. Check out the `fastbuild/elementize-v0.1` branch in the WordPress plugins directory, or install a ZIP of that branch.
-2. Activate **Elementize** in WordPress.
-3. Create a dedicated WordPress Application Password for the test user rather than sharing the user's normal WordPress password.
-4. Call the status endpoint with HTTP Basic authentication over HTTPS.
-5. List pages, read one Elementor page's text inventory, then make one small copy change on a non-critical test page.
-6. Open the page in Elementor and verify that the text changed while the layout remained intact.
-7. If the test passes, continue with the Pixfort catalogue/template-insertion slice recorded in `DISCOVERY.md`.
+Do not merge this branch to `main` yet.
 
-Example request shape for a text update:
+The next test is deliberately small:
 
-```json
-{
-  "content_hash": "HASH_FROM_GET_TEXT",
-  "updates": [
-    {
-      "element_id": "ELEMENT_ID_FROM_GET_TEXT",
-      "setting_path": ["title"],
-      "expected_value": "Old heading",
-      "value": "New heading"
-    }
-  ]
-}
-```
+1. Confirm the Elementize sidebar/status page works.
+2. Choose a non-critical existing Elementor page.
+3. Authenticate to the REST API locally.
+4. Read the page text inventory.
+5. Change one harmless heading or paragraph.
+6. Open the page in Elementor and verify only that copy changed and the layout remained intact.
+7. Confirm a revision exists and the page can be restored if necessary.
 
-## Current evidence
+Only after that succeeds should the build move to Pixfort template catalogue and insertion endpoints.
 
-The supplied Elementor/Pixfort network capture established that the Essentials/Pixfort library is machine-readable:
+## Pixfort discovery already established
 
-- `pix_core_getElementorDemos` returns the remote section/page catalogue and preview metadata.
-- `pix_core_getElementorTemplate` returns a selected template as Elementor JSON.
-- Captured returned templates already referenced media imported into the local WordPress uploads directory.
-
-The sensitive HAR capture itself is intentionally not stored in Git. Sanitized findings are recorded in `DISCOVERY.md`.
-
-## Project files
-
-- `elementize.php` — current V0.1 plugin implementation.
-- `PROJECT.md` — product outcome, V0.1 scope, backlog, and working state.
-- `DISCOVERY.md` — validated technical findings and remaining unknowns.
-- `FAST_BUILD_OS.md` — development process and stop-loss rules.
-- `AGENTS.md` — operating instructions for coding agents.
-
-## Status
-
-The V0.1 code is syntax-checked and its core recursive text-targeting helper has been exercised with local fixture tests. It has **not yet been validated inside the real WordPress/Elementor installation**, so it should be treated as a test candidate, not a known-good release.
+A real Elementor/Pixfort HAR capture showed machine-usable Pixfort operations for the remote template catalogue and selected template JSON. Sensitive session data from that capture is not stored in this repository. Durable sanitized findings are in `DISCOVERY.md`.
