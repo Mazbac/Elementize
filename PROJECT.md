@@ -27,10 +27,11 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 - [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Local Application Password authentication is proven; external GPT connection is not yet tested.
 - [ ] List editable Elementor pages. Implemented; real-site endpoint test pending.
 - [x] Read an Elementor page's structured content / editable text inventory. Confirmed on a real Elementor test page.
-- [x] Update selected text values without rebuilding or flattening the Elementor JSON in the API path. Real write returned `saved: true`; visual editor integrity check still pending.
-- [x] Save through Elementor's document model rather than direct SQL. Real write returned `saved: true` through the implemented document-save path.
+- [x] Update selected text values without rebuilding or flattening the Elementor layout. Confirmed by real API write and visual Elementor verification.
+- [x] Save through Elementor's document model rather than direct SQL. Confirmed by real write and successful editor reopen.
 - [x] Return a clear result that can be checked in Elementor. Real response reported exactly one changed field with old/new values.
 - [ ] Reject unauthorized access and invalid/non-Elementor targets. Unauthenticated request returned 401; remaining invalid-target checks are not yet tested in the real site.
+- [ ] Create a pre-change revision before writes when WordPress revisions are enabled. 0.1.2 fix committed; real runtime retest pending.
 
 ### Explicitly out of scope for V0.1
 
@@ -62,12 +63,12 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Current objective
 
-- Reopen the disposable Elementor test page and verify visually that only the heading changed to `Changed by Elementize`, while the paragraph and layout remain intact.
+- Install Elementize 0.1.2 and repeat one controlled heading change to verify that the response now includes a non-null pre-change `revision_id` and that the visual result remains correct.
 
 ## Known blockers / issues
 
 - `mijn-ibp.local` is not remotely reachable by a Custom GPT Action. Local API behavior can be built/tested first; GPT integration requires a public HTTPS test/staging endpoint or secure tunnel.
-- The successful real write response returned `revision_id: null`. The page write succeeded, but explicit pre-change revision creation is therefore not yet proven and must be investigated before claiming rollback safety.
+- The first successful write returned `revision_id: null`. Root cause: WordPress normally skips a revision when its revisioned post fields have not changed; Elementize changes Elementor meta, so the pre-save revision call looked unchanged. Version 0.1.2 now temporarily forces revision creation for the Elementize pre-change snapshot and aborts the write if an enabled revision cannot be created.
 
 ## Backlog
 
@@ -82,14 +83,13 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: Elementize 0.1.1 is installed and active on the real local WordPress site; authenticated read and one targeted write have succeeded.
-- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, read-only extraction of two test copy fields, and one targeted heading update returning `saved: true`.
-- Real write result: exactly one field changed from `Original heading` to `Changed by Elementize`; returned `updated_count: 1`.
-- Visual Elementor integrity verification is still pending.
-- Explicit revision creation is not yet proven because the write response returned `revision_id: null`.
+- Status: Core authenticated read/write path is proven on the real local WordPress/Elementor site. Revision-safety fix 0.1.2 is committed and awaits one runtime retest.
+- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, read-only extraction of two test copy fields, one targeted heading update returning `saved: true`, and visual Elementor verification after reopening.
+- Visual verification confirmed: heading changed from `Original heading` to `Changed by Elementize`; paragraph remained `Original paragraph`; Elementor opened normally and layout remained intact.
 - Earlier fixture checks passed: recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior.
-- Last known-good real environment checkpoint: successful authenticated write response on the disposable test page.
-- V0.1 usable: Not yet proven; visual integrity verification and the revision question remain.
+- 0.1.2 PHP syntax check passed before commit.
+- Last known-good real environment checkpoint: successful write plus visual editor verification on Elementize 0.1.1.
+- V0.1 usable: Core editing path yes; final revision-safety retest still required before declaring V0.1 complete.
 
 ## Notes from real use
 
