@@ -1,88 +1,77 @@
 # Project
 
-> This file is the concise source of truth for what this specific project is trying to achieve. Keep it current and short.
-
 ## Desired outcome
 
-Elementize is a WordPress plugin that gives a Custom GPT a controlled API for working with WordPress and Elementor.
+Elementize is a WordPress plugin that gives a Custom GPT controlled API access to WordPress, Elementor, and the Essentials/Pixfort template library.
 
-The intended product should eventually let the GPT:
+Eventually the GPT should be able to:
 - list, inspect, create, draft, update, and delete WordPress/Elementor pages;
-- read Elementor page structure and edit copy, media, colors, icons, and supported settings;
-- browse the Pixfort/Essentials template library, inspect available sections/pages and previews, and insert selected templates;
-- use visual references supplied to the GPT to plan a page and choose suitable Pixfort sections.
+- edit Elementor copy, media, colors, icons, and supported settings;
+- browse Pixfort sections/pages and preview metadata;
+- insert selected Pixfort templates;
+- use visual references to plan a page and choose matching Pixfort sections.
 
-## Target user
+## Fast V0.1 — complete
 
-- A WordPress site owner using Elementor and the Essentials theme / Pixfort Core who wants to operate the site conversationally through a Custom GPT.
-
-## Fast V0.1
-
-The local authenticated Elementor copy-editing slice is complete and proven.
-
-- [x] Install/activate Elementize and show it in the WordPress sidebar.
-- [x] Authenticate with WordPress Application Passwords.
-- [x] List editable pages and distinguish Elementor/non-Elementor pages.
-- [x] Read editable Elementor copy fields.
-- [x] Apply targeted copy updates through Elementor's document model.
-- [x] Reject malformed/stale writes.
-- [x] Preserve neighboring layout/editor state.
-- [x] Create a real pre-change revision before writes when revisions are enabled.
+- [x] WordPress sidebar/status page.
+- [x] Application Password authentication.
+- [x] Page discovery and Elementor detection.
+- [x] Structured copy extraction.
+- [x] Targeted copy updates through Elementor's document model.
+- [x] Malformed/stale-write rejection.
+- [x] Visual layout/editor integrity after writes.
+- [x] Real pre-change WordPress/Elementor revision before writes.
 
 ## Fast V0.2 — Pixfort library
 
-### Current slice
-
-- [x] Inspect installed Pixfort Core 4.1.3 + Essentials 4.1.1 source and identify direct catalogue/template paths.
-- [x] Implement a read-only Pixfort catalogue endpoint on `fastbuild/pixfort-library`.
-- [x] Deduplicate catalogue records by template ID.
-- [x] Return thumbnail + preview metadata, categories, subtype, and container-based flag.
-- [x] Support section/page/all filtering, text search, category filtering, and pagination.
-- [x] Pass local syntax/fixture tests against the supplied Essentials catalogue: 983 unique sections, 150 unique pages; AI Agency Portfolio Intro search resolves correctly.
-- [ ] Install Elementize 0.2.0 on the real local WordPress site and validate the catalogue endpoint through REST.
-- [ ] Add one controlled Pixfort section insertion endpoint and validate it on the disposable Elementor test page.
+- [x] Inspect installed Pixfort Core 4.1.3 + Essentials 4.1.1 source.
+- [x] Identify direct catalogue path (`pixfort_elementor_library_data()`).
+- [x] Identify direct template-preparation path (`Elementor\TemplateLibrary\Source_Pixfort::get_data()`).
+- [x] Implement read-only searchable/paginated Pixfort catalogue.
+- [x] Real-site catalogue test passed: `AI Agency Portfolio Intro` returned correctly with thumbnail, preview URL, category, subtype and `container_based` metadata.
+- [x] Correct catalogue totals proven: 983 unique sections and 150 unique pages.
+- [x] Fix Pixfort Core detector so Elementize branch names containing `pixfort` are not misidentified.
+- [x] Implement first guarded Pixfort insertion candidate in Elementize 0.2.2.
+- [ ] Install 0.2.2 on the local site.
+- [ ] Read the disposable Elementor test page to obtain a fresh content hash.
+- [ ] Insert one selected Pixfort section at the end of that page.
+- [ ] Confirm `saved: true`, numeric `revision_id`, and inserted top-level IDs.
+- [ ] Reopen Elementor and visually verify the imported section/assets.
 
 ## Current environment
 
-- Platform / runtime: WordPress local development site (`mijn-ibp.local`).
-- WordPress: 7.0.3.
-- Elementor: 4.2.1.
-- Elementor Pro: 4.2.1 observed in editor assets.
-- Pixfort Core: 4.1.3.
-- Theme: Essentials 4.1.1.
-- Installed proven build: Elementize 0.1.2.
-- Candidate branch/build: `fastbuild/pixfort-library` / Elementize 0.2.0.
+- WordPress 7.0.3 at `mijn-ibp.local`.
+- Elementor 4.2.1 / Elementor Pro 4.2.1.
+- Pixfort Core 4.1.3.
+- Essentials 4.1.1.
+- Installed runtime build: 0.2.1.
+- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.2.
 
-## Constraints
+## Safety constraints
 
-- Preserve Elementor's structured JSON and addon-specific settings unless a requested operation deliberately changes them.
-- Prefer Elementor/WordPress/Pixfort APIs over direct database writes.
-- Authentication is mandatory for private/mutating endpoints.
-- No secrets, cookies, WordPress nonces, Application Passwords, HAR captures, purchase keys, or proprietary Pixfort/Essentials source are stored in the repository.
-- Mutations should be narrow, validated, and reversible where practical.
-- Do not use browser automation for normal operation.
+- Preserve Elementor structured data unless an operation deliberately changes it.
+- Use WordPress/Elementor/Pixfort APIs rather than direct SQL.
+- Mutating Pixfort operations require administrator permission and page edit permission.
+- Mutations use a fresh page content hash and a pre-change revision.
+- Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
+- Normal operation must not depend on browser automation.
+
+## Important source findings
+
+- Pixfort's own AJAX endpoints are wrappers; Elementize can call the underlying PHP implementation directly.
+- `Source_Pixfort::get_data()` replaces Elementor IDs, runs Elementor import processing, imports media/nested templates, and normalizes content against the target document.
+- Essentials adds `pix_domain` + `purchase_key` request headers through `pixfort_el_remote_get_args`; Elementize 0.2.2 reproduces this only internally during template download.
+- `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
 
 ## Current objective
 
-- Install/test Elementize 0.2.0 on the real local site and prove `GET /wp-json/elementize/v1/pixfort/templates` returns the normalized Pixfort catalogue correctly.
+Install/test 0.2.2 and prove one Pixfort section can be imported and appended safely to the disposable Elementor test page.
 
-## Known blockers / issues
+## Later
 
-- `mijn-ibp.local` is not remotely reachable by a Custom GPT Action. A public HTTPS test/staging endpoint or secure tunnel is still needed for the later GPT integration.
-- Pixfort template downloads require the Essentials purchase-key/domain request context. The insertion slice must reproduce that context internally without exposing or logging the purchase key.
-
-## Backlog
-
-- [ ] Fetch/import one Pixfort section through `Source_Pixfort::get_data()` and save it into a disposable Elementor page.
-- [ ] Validate a reliable image-delivery path so the GPT can compare Pixfort thumbnails visually.
-- [ ] Create Elementor pages from a section plan.
-- [ ] Add media, color, icon, and other targeted setting operations.
-- [ ] Add safe draft/delete/restore workflows.
-- [ ] Generate the Custom GPT OpenAPI schema and setup instructions.
-
-## Working state
-
-- V0.1 real runtime checks all passed, including numeric pre-change revision `951722`.
-- V0.2.0 candidate adds the read-only `/pixfort/templates` endpoint and an admin status card for the Pixfort library.
-- Local fixture checks against the supplied Essentials source passed for totals, search, and category filtering.
-- A Pixfort loader quirk was found: `pixfort_elementor_library_data()` uses `require_once` and can return an undefined local `$library` if called twice in one PHP request. Elementize caches the first successful catalogue load per request to avoid that failure.
+- Visual thumbnail delivery/matching for Custom GPT.
+- Arbitrary insertion position and section ordering.
+- New Elementor page creation from a section plan.
+- Media/color/icon operations.
+- Draft/delete/restore workflows.
+- Public HTTPS staging/tunnel and Custom GPT OpenAPI schema.
