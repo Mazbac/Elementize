@@ -36,7 +36,8 @@ Eventually the GPT should be able to:
 - [x] Read disposable Elementor page 951706 and obtain fresh content hash.
 - [x] Insert Pixfort section `ai-agency-portfolio-intro` at the end of the page through REST.
 - [x] Runtime insert returned `saved: true`, revision `951731`, one top-level inserted element, ID `4889ee30`, and a new content hash.
-- [ ] Reopen Elementor and visually verify the imported section, assets, and preservation of existing content.
+- [x] Reopen Elementor and visually verify the imported section renders with styling/images and preserves existing content.
+- [x] Fresh read after insertion proves top-level ID `4889ee30` contains the new AI hero widgets/copy and matches the post-insert content hash.
 
 ## Current environment
 
@@ -56,16 +57,18 @@ Eventually the GPT should be able to:
 - Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
 - Normal operation must not depend on browser automation.
 
-## Important source findings
+## Important source/runtime findings
 
 - Pixfort's own AJAX endpoints are wrappers; Elementize can call the underlying PHP implementation directly.
 - `Source_Pixfort::get_data()` replaces Elementor IDs, runs Elementor import processing, imports media/nested templates, and normalizes content against the target document.
 - Essentials adds `pix_domain` + `purchase_key` request headers through `pixfort_el_remote_get_args`; Elementize reproduces this only internally during template download.
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
+- Current copy-field detection incorrectly exposes layout settings such as `flex_justify_content` because the key contains `content`; this should be tightened before broader GPT-driven copy editing.
+- Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Visually verify the first runtime Pixfort insertion in Elementor: section renders correctly, imported assets are present, and the existing heading/paragraph remain intact.
+Harden the copy-read surface after the proven Pixfort insertion, then expand insertion from append-only to controlled positioning/composition.
 
 ## Later
 
