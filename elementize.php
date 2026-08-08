@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.2.2
+ * Version: 0.2.3
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -10,10 +10,10 @@
  * License: GPL-2.0-or-later
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
-if ( class_exists( 'Elementize_Plugin', false ) ) return;
 
+if ( ! class_exists( 'Elementize_Plugin', false ) ) {
 final class Elementize_Plugin {
-	private const VERSION='0.2.2', NS='elementize/v1', MAX_TEXT=20000, MAX_UPDATES=100;
+	private const VERSION='0.2.3', NS='elementize/v1', MAX_TEXT=20000, MAX_UPDATES=100;
 
 	public static function init(): void { add_action('rest_api_init',[self::class,'routes']); add_action('admin_menu',[self::class,'menu']); }
 	public static function menu(): void { add_menu_page('Elementize','Elementize','manage_options','elementize',[self::class,'admin'],'dashicons-admin-tools',58); }
@@ -27,7 +27,7 @@ final class Elementize_Plugin {
 		</div><div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Environment</h2><table class="widefat striped"><tbody>
 		<tr><td><strong>WordPress</strong></td><td><?php echo esc_html(get_bloginfo('version')); ?></td></tr><tr><td><strong>Theme</strong></td><td><?php echo esc_html(trim($theme->get('Name').' '.$theme->get('Version'))); ?></td></tr>
 		<tr><td><strong>Pixfort catalogue endpoint</strong></td><td><code><?php echo esc_html(rest_url(self::NS.'/pixfort/templates')); ?></code></td></tr><tr><td><strong>Pixfort insert endpoint</strong></td><td><code><?php echo esc_html(rest_url(self::NS.'/pages/{id}/pixfort/insert')); ?></code></td></tr>
-		</tbody></table></div><div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Current test state</h2><p><strong>Copy editing and Pixfort catalogue access are proven.</strong> 0.2.2 adds one guarded append-at-end Pixfort insertion operation.</p></div></div><?php
+		</tbody></table></div><div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Current test state</h2><p><strong>Copy editing and Pixfort catalogue access are proven.</strong> 0.2.3 fixes plugin bootstrap and keeps the guarded append-at-end Pixfort insertion operation.</p></div></div><?php
 	}
 	private static function card(string $label,bool $ok,string $detail): void { $bg=$ok?'#edfaef':'#fcf0f1';$c=$ok?'#116329':'#8a2424';$t=$ok?'Detected':'Attention'; echo '<div class="card" style="margin:0;padding:20px"><div style="display:flex;justify-content:space-between"><h2 style="margin:0">'.esc_html($label).'</h2><span style="padding:4px 8px;border-radius:999px;background:'.esc_attr($bg).';color:'.esc_attr($c).';font-weight:600">'.esc_html($t).'</span></div><p style="margin-bottom:0">'.esc_html($detail).'</p></div>'; }
 
@@ -77,9 +77,11 @@ final class Elementize_Plugin {
 	private static function collect(array $e,array &$items):void{foreach($e as $x){if(!is_array($x))continue;$id=(string)($x['id']??'');$et=$x['elType']??null;$wt=$x['widgetType']??null;if($id&&!empty($x['settings'])&&is_array($x['settings']))self::collect_settings($x['settings'],[],$id,$et,$wt,$items);if(!empty($x['elements'])&&is_array($x['elements']))self::collect($x['elements'],$items);}}
 	private static function collect_settings($v,array $p,string $id,?string $et,?string $wt,array &$items):void{if(is_array($v)){foreach($v as $k=>$n)self::collect_settings($n,array_merge($p,[$k]),$id,$et,$wt,$items);return;}if(!is_string($v)||!self::copy_field($p,$v))return;$items[]=['element_id'=>$id,'element_type'=>$et,'widget_type'=>$wt,'setting_path'=>array_values($p),'format'=>wp_strip_all_tags($v)===$v?'text':'html','value'=>$v];}
 	private static function copy_field(array $p,string $v):bool{if(trim($v)===''||strlen($v)>self::MAX_TEXT||str_starts_with(ltrim($v),'[elementor-tag'))return false;$k='';for($i=count($p)-1;$i>=0;$i--)if(is_string($p[$i])){$k=strtolower($p[$i]);break;}if(!$k)return false;if(preg_match('/(^|_)(url|link|href|src|id|class|selector|shortcode|icon|image|media|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id)(_|$)/i',$k))return false;return(bool)preg_match('/(^|_)(title|text|content|editor|description|heading|headline|subtitle|sub_title|label|caption|button_text|btn_text|placeholder|prefix|suffix|message)(_|$)/i',$k);}
+
 	private static function need_doc(int $id){if(!class_exists('\\Elementor\\Plugin'))return self::el_missing();$d=self::doc($id);if(!$d)return new WP_Error('elementize_elementor_document_not_found','Elementor could not load this page as a document.',['status'=>404]);if(!$d->is_built_with_elementor())return new WP_Error('elementize_not_elementor_page','This page is not currently built with Elementor.',['status'=>400]);return$d;}
 	private static function doc(int $id){try{return \Elementor\Plugin::$instance->documents->get($id);}catch(Throwable $e){return null;}}
 	private static function hash(array $e):string{$j=wp_json_encode($e,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);return hash('sha256',$j===false?'':$j);}
 	private static function el_missing():WP_Error{return new WP_Error('elementize_elementor_required','Elementor must be installed and active.',['status'=>503]);}
 }
 Elementize_Plugin::init();
+}
