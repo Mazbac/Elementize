@@ -45,6 +45,15 @@ Eventually the GPT should be able to:
 - [x] Runtime-test controlled `before` insertion: inserted new top-level ID `6bfbcd1a` before anchor `4889ee30`, with revision `951734` and new content hash `baab2a4d4b1472b5ff15bfec535e4d668fd8ca65f84e66f295beebd4fbe72baa`.
 - [x] Mark the newly inserted section unambiguously by changing nested heading widget `340abdf0` to `POSITION TEST — BEFORE`; targeted write saved with revision `951736` and content hash `30e52851e5777e61dd0e691ad73a7bc1fdd8a652438f1463dc7fdee7adc7ff80`.
 - [x] Visual proof passed: Elementor shows `POSITION TEST — BEFORE` on the newly inserted hero directly above the untouched original `Transform Your Business With Strategic AI` hero.
+- [x] Implement Elementize 0.2.5 candidate with guarded top-level section/container removal at `/pages/{id}/elements/remove`.
+- [x] Removal candidate requires administrator + page edit permission, fresh content hash, exact top-level element ID, and pre-change revision; only `container`/legacy `section` targets are allowed.
+- [x] Removal verifies after save that the requested top-level ID is actually gone and returns remaining top-level IDs plus the new content hash.
+- [x] PHP lint passed for the exact committed 0.2.5 blob (`af2febe448a1c0056b3b6afe503a7765854d87c8`).
+- [ ] Install 0.2.5 on the local site.
+- [ ] Read page 951706 for a fresh content hash after the position-marker edit.
+- [ ] Remove disposable top-level section `6bfbcd1a` through the guarded endpoint.
+- [ ] Verify `saved: true`, numeric revision, `6bfbcd1a` absent from remaining top-level IDs, and original hero `4889ee30` still present.
+- [ ] Reopen Elementor and visually confirm only the original AI hero remains.
 
 ## Current environment
 
@@ -53,15 +62,16 @@ Eventually the GPT should be able to:
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
 - Installed runtime build: 0.2.4.
-- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.4.
+- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.5.
 
 ## Safety constraints
 
 - Preserve Elementor structured data unless an operation deliberately changes it.
 - Use WordPress/Elementor/Pixfort APIs rather than direct SQL.
-- Mutating Pixfort operations require administrator permission and page edit permission.
+- Structural mutations require administrator permission plus page edit permission.
 - Mutations use a fresh page content hash and a pre-change revision.
 - `before`/`after` Pixfort insertion targets must be current top-level Elementor element IDs.
+- Top-level removal accepts only current top-level Elementor `container` or legacy `section` IDs and verifies the ID is absent after save.
 - Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
 - Normal operation must not depend on browser automation.
 
@@ -78,7 +88,7 @@ Eventually the GPT should be able to:
 
 ## Current objective
 
-Add the next composition safety primitive: remove one explicitly targeted top-level Elementor section/container with a fresh content hash and pre-change revision, then use it to cleanly remove the disposable `POSITION TEST — BEFORE` section without affecting the original hero.
+Install/test 0.2.5 and prove one guarded top-level removal by deleting only disposable section `6bfbcd1a`, while preserving original hero `4889ee30`.
 
 ## Later
 
