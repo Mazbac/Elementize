@@ -49,10 +49,12 @@ Eventually the GPT should be able to:
 - [x] Removal candidate requires administrator + page edit permission, fresh content hash, exact top-level element ID, and pre-change revision; only `container`/legacy `section` targets are allowed.
 - [x] Removal verifies after save that the requested top-level ID is actually gone and returns remaining top-level IDs plus the new content hash.
 - [x] PHP lint passed for the exact committed 0.2.5 blob (`af2febe448a1c0056b3b6afe503a7765854d87c8`).
-- [ ] Install 0.2.5 on the local site.
-- [ ] Read page 951706 for a fresh content hash after the position-marker edit.
-- [ ] Remove disposable top-level section `6bfbcd1a` through the guarded endpoint.
-- [ ] Verify `saved: true`, numeric revision, `6bfbcd1a` absent from remaining top-level IDs, and original hero `4889ee30` still present.
+- [x] Install 0.2.5 on the local site.
+- [x] Read page 951706 after the position-marker edit; fresh hash remained `30e52851e5777e61dd0e691ad73a7bc1fdd8a652438f1463dc7fdee7adc7ff80` and both heroes were present.
+- [x] Remove disposable top-level section `6bfbcd1a` through the guarded endpoint.
+- [x] Runtime removal returned `saved: true`, revision `951740`, removed type `container`, and remaining top-level IDs `4e0b32a`, `9f7d292`, `4889ee30`.
+- [x] Original hero `4889ee30` remained present; removed ID `6bfbcd1a` is absent.
+- [x] Post-removal content hash returned exactly to the pre-duplicate hash `8e487f247d1cc9893a7ec648baf0db94866a7baed9c9fc26159896c7bbc615fb`.
 - [ ] Reopen Elementor and visually confirm only the original AI hero remains.
 
 ## Current environment
@@ -61,7 +63,7 @@ Eventually the GPT should be able to:
 - Elementor 4.2.1 / Elementor Pro 4.2.1.
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
-- Installed runtime build: 0.2.4.
+- Installed runtime build: 0.2.5.
 - Candidate branch/build: `fastbuild/pixfort-library` / 0.2.5.
 
 ## Safety constraints
@@ -84,11 +86,12 @@ Eventually the GPT should be able to:
 - The first Pixfort runtime insert is proven visually and structurally; top-level inserted ID was `4889ee30` and pre-change revision was `951731`.
 - 0.2.4 copy hardening is runtime-proven: `flex_justify_content` and `flex_justify_content_tablet` no longer appear, while the real AI hero copy still does.
 - Controlled `before` insertion is now proven end-to-end, including visual order in Elementor.
+- Guarded top-level removal is runtime-proven at the API layer; the page structure hash returned exactly to its pre-duplicate value after removing the disposable hero.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Install/test 0.2.5 and prove one guarded top-level removal by deleting only disposable section `6bfbcd1a`, while preserving original hero `4889ee30`.
+Visually confirm the guarded top-level removal, then move to the next page-composition capability.
 
 ## Later
 
