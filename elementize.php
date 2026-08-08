@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: A controlled REST API for conversational WordPress and Elementor editing.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -15,12 +15,131 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Elementize_V01 {
+	private const VERSION = '0.1.1';
 	private const REST_NAMESPACE = 'elementize/v1';
 	private const MAX_TEXT_LENGTH = 20000;
 	private const MAX_UPDATES = 100;
 
 	public static function init(): void {
 		add_action( 'rest_api_init', [ self::class, 'register_routes' ] );
+		add_action( 'admin_menu', [ self::class, 'register_admin_menu' ] );
+	}
+
+	public static function register_admin_menu(): void {
+		add_menu_page(
+			'Elementize',
+			'Elementize',
+			'manage_options',
+			'elementize',
+			[ self::class, 'render_admin_page' ],
+			'dashicons-admin-tools',
+			58
+		);
+	}
+
+	public static function render_admin_page(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$elementor_loaded = class_exists( '\\Elementor\\Plugin' );
+		$pixfort = self::get_pixfort_plugin_info();
+		$theme = wp_get_theme();
+		$api_url = rest_url( self::REST_NAMESPACE . '/status' );
+		?>
+		<div class="wrap">
+			<h1>Elementize</h1>
+			<p>Controlled WordPress and Elementor access for conversational tools.</p>
+
+			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:1000px;margin-top:20px;">
+				<?php self::render_status_card( 'Elementize', true, 'Version ' . self::VERSION ); ?>
+				<?php self::render_status_card( 'Elementor', $elementor_loaded, $elementor_loaded && defined( 'ELEMENTOR_VERSION' ) ? 'Version ' . ELEMENTOR_VERSION : 'Not detected' ); ?>
+				<?php self::render_status_card( 'Pixfort Core', $pixfort['active'], $pixfort['active'] ? trim( $pixfort['name'] . ( $pixfort['version'] ? ' ' . $pixfort['version'] : '' ) ) : 'Not detected' ); ?>
+				<?php self::render_status_card( 'REST API', true, 'Endpoint registered' ); ?>
+			</div>
+
+			<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;">
+				<h2 style="margin-top:0;">Environment</h2>
+				<table class="widefat striped" style="border:0;box-shadow:none;">
+					<tbody>
+						<tr>
+							<td><strong>WordPress</strong></td>
+							<td><?php echo esc_html( get_bloginfo( 'version' ) ); ?></td>
+						</tr>
+						<tr>
+							<td><strong>Theme</strong></td>
+							<td><?php echo esc_html( trim( $theme->get( 'Name' ) . ' ' . $theme->get( 'Version' ) ) ); ?></td>
+						</tr>
+						<tr>
+							<td><strong>API status endpoint</strong></td>
+							<td><code><?php echo esc_html( $api_url ); ?></code></td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+
+			<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;">
+				<h2 style="margin-top:0;">V0.1 test state</h2>
+				<?php if ( $elementor_loaded ) : ?>
+					<p><strong>Ready for the first controlled API test.</strong> The next validation is to read one Elementor page and change one harmless text value.</p>
+				<?php else : ?>
+					<p><strong>Elementor is not detected.</strong> Activate Elementor before testing Elementize.</p>
+				<?php endif; ?>
+				<p>No destructive page operations are exposed in this build.</p>
+			</div>
+		</div>
+		<?php
+	}
+
+	private static function render_status_card( string $label, bool $ok, string $detail ): void {
+		$badge_background = $ok ? '#edfaef' : '#fcf0f1';
+		$badge_color = $ok ? '#116329' : '#8a2424';
+		$badge_text = $ok ? 'Detected' : 'Attention';
+		?>
+		<div class="card" style="margin:0;padding:20px;">
+			<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+				<h2 style="margin:0;"><?php echo esc_html( $label ); ?></h2>
+				<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:<?php echo esc_attr( $badge_background ); ?>;color:<?php echo esc_attr( $badge_color ); ?>;font-weight:600;"><?php echo esc_html( $badge_text ); ?></span>
+			</div>
+			<p style="margin-bottom:0;"><?php echo esc_html( $detail ); ?></p>
+		</div>
+		<?php
+	}
+
+	private static function get_pixfort_plugin_info(): array {
+		if ( ! function_exists( 'get_plugins' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		$active_plugins = (array) get_option( 'active_plugins', [] );
+		if ( is_multisite() ) {
+			$active_plugins = array_merge(
+				$active_plugins,
+				array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) )
+			);
+		}
+
+		$plugins = get_plugins();
+		foreach ( array_unique( $active_plugins ) as $plugin_file ) {
+			$plugin_data = $plugins[ $plugin_file ] ?? [];
+			$name = isset( $plugin_data['Name'] ) ? (string) $plugin_data['Name'] : '';
+
+			if ( false === stripos( $plugin_file, 'pixfort' ) && false === stripos( $name, 'pixfort' ) ) {
+				continue;
+			}
+
+			return [
+				'active'  => true,
+				'name'    => $name ?: 'Pixfort plugin',
+				'version' => isset( $plugin_data['Version'] ) ? (string) $plugin_data['Version'] : '',
+			];
+		}
+
+		return [
+			'active'  => false,
+			'name'    => '',
+			'version' => '',
+		];
 	}
 
 	public static function register_routes(): void {
@@ -61,7 +180,7 @@ final class Elementize_V01 {
 
 		register_rest_route(
 			self::REST_NAMESPACE,
-			'/pages/(?P<id>\d+)/text',
+			'/pages/(?P<id>\\d+)/text',
 			[
 				[
 					'methods'             => WP_REST_Server::READABLE,
@@ -150,13 +269,17 @@ final class Elementize_V01 {
 	public static function get_status(): WP_REST_Response {
 		$elementor_loaded = class_exists( '\\Elementor\\Plugin' );
 		$theme = wp_get_theme();
+		$pixfort = self::get_pixfort_plugin_info();
 
 		return new WP_REST_Response(
 			[
-				'elementize_version' => '0.1.0',
+				'elementize_version' => self::VERSION,
 				'wordpress_version'  => get_bloginfo( 'version' ),
 				'elementor_loaded'   => $elementor_loaded,
 				'elementor_version'  => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null,
+				'pixfort_loaded'     => $pixfort['active'],
+				'pixfort_name'       => $pixfort['active'] ? $pixfort['name'] : null,
+				'pixfort_version'    => $pixfort['active'] ? $pixfort['version'] : null,
 				'theme'              => $theme->get( 'Name' ),
 				'theme_version'      => $theme->get( 'Version' ),
 			],
@@ -370,14 +493,14 @@ final class Elementize_V01 {
 
 		return new WP_REST_Response(
 			[
-				'saved'        => true,
-				'page_id'      => $post_id,
-				'updated_count'=> count( $changed ),
-				'revision_id'  => $revision_id,
-				'content_hash' => self::hash_elements( is_array( $reloaded_elements ) ? $reloaded_elements : $elements ),
-				'changes'      => $changed,
-				'edit_url'     => $document->get_edit_url(),
-				'permalink'    => get_permalink( $post_id ),
+				'saved'         => true,
+				'page_id'       => $post_id,
+				'updated_count' => count( $changed ),
+				'revision_id'   => $revision_id,
+				'content_hash'  => self::hash_elements( is_array( $reloaded_elements ) ? $reloaded_elements : $elements ),
+				'changes'       => $changed,
+				'edit_url'      => $document->get_edit_url(),
+				'permalink'     => get_permalink( $post_id ),
 			],
 			200
 		);
@@ -623,7 +746,7 @@ final class Elementize_V01 {
 
 	private static function get_elementor_document( int $post_id ) {
 		try {
-			return \Elementor\Plugin::$instance->documents->get( $post_id );
+			return \\Elementor\\Plugin::$instance->documents->get( $post_id );
 		} catch ( Throwable $exception ) {
 			return null;
 		}
