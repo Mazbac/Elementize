@@ -75,8 +75,9 @@ Eventually the GPT should be able to:
 - [x] Install 0.2.7 on the local site.
 - [x] First runtime visual-probe request passed with two candidates: A=`ai-agency-home-features-bento-boxes` identity `ea3a1325b3bff383f9fb76e4a85f366bd2464c8ef9102ed755a075df7c9239dd`; B=`ai-agency-home-features-grid` identity `188778a289daef3c7772b56f160762298a9883ffa7e6ed4f01ce5859fb996e92`.
 - [x] Runtime response returned `probe_count: 2`; `openaiFileResponse` decoded successfully into `elementize-pixfort-visual-proof.json` (20,652 bytes).
-- [ ] Decode A/B thumbnail bytes from the proof file and verify they reproduce the exact source Pixfort thumbnails.
-- [ ] Test the same visual-probe handoff inside the Custom GPT with Code Interpreter enabled.
+- [x] Decode A/B thumbnail bytes from the proof file and verify they reproduce the exact source Pixfort thumbnails: SHA256 matched byte-for-byte for A vs `03-bento-boxes.webp` and B vs `04-features-grid.webp`.
+- [x] Expose local WordPress through a temporary Cloudflare Quick Tunnel and verify authenticated public `/status` access returns Elementize 0.2.7, Elementor/Pixfort detection, and `visual_probe_max_candidates: 4`.
+- [ ] Test the read-only Elementize Action inside the Custom GPT with Code Interpreter & Data Analysis enabled.
 
 ## Current environment
 
@@ -86,6 +87,7 @@ Eventually the GPT should be able to:
 - Essentials 4.1.1.
 - Installed runtime build: 0.2.7.
 - Candidate branch/build: `fastbuild/pixfort-library` / 0.2.7.
+- Temporary public test tunnel: active Quick Tunnel; hostname is ephemeral and must not be treated as production configuration.
 
 ## Safety constraints
 
@@ -113,16 +115,18 @@ Eventually the GPT should be able to:
 - Safe blank draft page creation is runtime-proven in 0.2.6; new page 951743 was created as an empty Elementor draft through REST.
 - Create → compose is proven end-to-end on page 951743: Elementize created the blank draft, inserted a real Pixfort hero, and Elementor rendered it correctly.
 - Search → visual compare → choose → insert is proven end-to-end manually on page 951743.
-- 0.2.7 visual-probe transport is runtime-proven through WordPress REST: candidate mappings and proof JSON file are returned and reconstruct successfully on disk; actual A/B image-byte reconstruction is the remaining local check.
+- 0.2.7 visual-probe transport and image fidelity are runtime-proven: returned mappings/proof JSON reconstruct successfully and A/B reconstructed thumbnails are byte-identical to the catalogue source images.
+- The current Quick Tunnel is reachable from the public internet and WordPress Application Password authentication works through it.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Finish the local 0.2.7 visual-probe verification by reconstructing A/B images from the returned proof JSON and matching them to the source Pixfort thumbnails. Then test the identical Action response inside the Custom GPT with Code Interpreter, so visual selection no longer requires manual thumbnail downloads.
+Configure a minimal read-only Custom GPT Action against the temporary public tunnel (`status`, Pixfort catalogue search, visual probe), enable Code Interpreter & Data Analysis, and verify that the GPT can receive the returned proof JSON, reconstruct A/B, inspect them visually, and map its choice back using `identity_hash`. Do not expose write endpoints to the GPT until this read-only handoff is proven.
 
 ## Later
 
+- Expand the Custom GPT Action schema to the already-proven guarded write primitives.
 - Multi-section page creation from a visually selected section plan.
 - Media/color/icon operations.
 - Draft/delete/restore and explicit publish workflows.
-- Public HTTPS staging/tunnel and Custom GPT OpenAPI schema.
+- Replace Quick Tunnel with stable public HTTPS staging/production connectivity.
