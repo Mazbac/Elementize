@@ -41,7 +41,7 @@ Eventually the GPT should be able to:
 - [x] Implement Elementize 0.2.4 candidate: block layout/style keys such as `flex_justify_content` from the copy surface.
 - [x] Implement guarded Pixfort insertion positions: `start`, `end`, `before`, `after`; before/after target only top-level Elementor IDs.
 - [x] PHP lint passed for the exact committed 0.2.4 blob (`a6aa7124b74f9d0da65800b9286212c39e14aefe`).
-- [ ] Install 0.2.4 and verify layout settings disappear from `/pages/{id}/text` while real Pixfort copy remains.
+- [x] Install 0.2.4 and verify layout settings disappear from `/pages/{id}/text` while real Pixfort copy remains.
 - [ ] Runtime-test one controlled before/after insertion on the disposable page.
 
 ## Current environment
@@ -50,7 +50,7 @@ Eventually the GPT should be able to:
 - Elementor 4.2.1 / Elementor Pro 4.2.1.
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
-- Installed runtime build: 0.2.3.
+- Installed runtime build: 0.2.4.
 - Candidate branch/build: `fastbuild/pixfort-library` / 0.2.4.
 
 ## Safety constraints
@@ -70,12 +70,12 @@ Eventually the GPT should be able to:
 - Essentials adds `pix_domain` + `purchase_key` request headers through `pixfort_el_remote_get_args`; Elementize reproduces this only internally during template download.
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
 - The first Pixfort runtime insert is proven visually and structurally; top-level inserted ID was `4889ee30` and pre-change revision was `951731`.
-- 0.2.4 hardens copy detection by blocking structural tokens including `flex`, `justify`, `grid`, `layout`, `display`, `gap`, `wrap`, `order`, and `overflow` before applying the copy-key allowlist.
+- 0.2.4 copy hardening is runtime-proven: `flex_justify_content` and `flex_justify_content_tablet` no longer appear, while the real AI hero copy still does.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Install/test 0.2.4: first prove the cleaned copy-read surface, then prove one positioned Pixfort insertion using a top-level target ID.
+Prove one positioned Pixfort insertion using the existing top-level Pixfort element `4889ee30` as the anchor.
 
 ## Later
 
