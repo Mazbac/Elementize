@@ -26,7 +26,7 @@ Determine whether Elementize can safely expose Elementor editing and the Essenti
 
 ## Observed behavior
 
-### Pixfort catalogue
+### Pixfort catalogue — HAR
 
 Observed in the supplied HAR capture. Sensitive values such as nonces/cookies are intentionally not recorded.
 
@@ -35,12 +35,37 @@ Observed in the supplied HAR capture. Sensitive values such as nonces/cookies ar
 - Template metadata includes machine-usable fields such as `id`, `file`, `title`, `thumbnail`, `url`, `type`, `subtype`, `categories`, and in newer records `container_based`.
 - Template thumbnails and preview URLs are supplied as normal web URLs.
 
-### Pixfort template fetch
+### Pixfort template fetch — HAR
 
 - Selecting a Pixfort section sends a local WordPress AJAX request with action `pix_core_getElementorTemplate`.
 - Captured request fields included `action`, `nonce`, `editor_post_id`, `initial_document_id`, and `template_id`.
 - Two captured template requests returned HTTP 200 Elementor JSON with `data.content`, `data.page_settings`, `data.version`, `data.title`, and `data.type`.
 - Returned media URLs pointed to the local WordPress uploads directory and those local assets were immediately available afterward.
+
+### Pixfort source inspection — exact implementation
+
+The user supplied the installed Pixfort Core 4.1.3 plugin and Essentials 4.1.1 theme source. The following was confirmed directly from those files; proprietary source itself is not committed to this repository.
+
+- `pixfort-core/includes/options/core-options.php` registers:
+  - `wp_ajax_pix_core_getElementorDemos` -> `CoreOptions::getElementorDemos()`;
+  - `wp_ajax_pix_core_getElementorTemplate` -> `CoreOptions::getElementorTemplate()`.
+- Both Pixfort AJAX handlers require a logged-in user, `manage_options`, and a valid Pixfort nonce. Elementize should preserve equivalent admin-level permission for Pixfort library operations instead of weakening the source plugin's permission model.
+- `CoreOptions::getElementorDemos()` is only a thin wrapper. It calls `pixfort_elementor_library_data()` and returns that structured array.
+- In Essentials, `inc/demo-content/elementor/loader.php` defines `pixfort_elementor_library_data()`. The function requires `library.php` and returns `$library`.
+- Essentials loads that Elementor library loader only inside its `is_admin()` block. A normal REST request is not guaranteed to have that function loaded, so Elementize must explicitly require the active parent theme's `inc/demo-content/elementor/loader.php` when needed.
+- Directly evaluating the supplied Essentials library source reproduced the HAR counts exactly: 1,137 sections, 151 pages, 32 section categories, 8 page categories, and 1,439 `library.templates` records.
+- Example source records contain `id`, `file`, `title`, `thumbnail`, `url`, `type`, `subtype`, `categories`, and `container_based` where applicable. This is enough for a read-only searchable/paginated Elementize catalogue API without calling Pixfort AJAX at all.
+- `CoreOptions::getElementorTemplate()` is also a wrapper. It requires `pixfort-core/includes/import/elementor/source.php`, creates `Elementor\TemplateLibrary\Source_Pixfort`, and calls `get_data([ 'template_id' => ..., 'editor_post_id' => ... ])`.
+- `Source_Pixfort::get_data()` performs the key preparation work:
+  - resolves/fetches the selected template;
+  - replaces Elementor element IDs;
+  - runs Elementor import processing via `process_export_import_content(..., 'on_import')`;
+  - passes the imported content through the target document's `get_elements_raw_data(..., true)`.
+- `Source_Pixfort::get_template_content()` resolves the selected template's `file` from the library and downloads JSON from the Pixfort import host. For Essentials the base is `https://import.pixfort.com/essentials/elementor/`.
+- Nested Pixfort templates are handled inside that source path: referenced nested templates are imported locally and placeholder template IDs are replaced before the final content is returned.
+- The source-level import processing explains the HAR observation that returned media already points at local WordPress uploads: this processing path is the correct one to reuse rather than reproducing media import logic in Elementize.
+- Pixfort's shipped Elementor library JavaScript defines `pixInsertElementorContent`. It iterates over `e.content` and creates each top-level element in the current Elementor preview container (`document/elements/create` in the current editor path; legacy `addChildElement` otherwise). It does not manually reconstruct widget internals and does not use `page_settings` for normal insert behavior.
+- Therefore the closest server-side equivalent for an Elementize insertion is: obtain prepared content through `Source_Pixfort::get_data()`, insert those returned top-level elements at a controlled top-level index in the existing Elementor document array, then save through the already-proven Elementor document model.
 
 ### Real Elementize V0.1 runtime
 
@@ -57,20 +82,21 @@ Observed in the supplied HAR capture. Sensitive values such as nonces/cookies ar
 
 ## Inferences
 
-- `pix_core_getElementorTemplate` appears to perform server-side asset importing/sideloading because its response already rewrites media to local upload URLs and those files are available immediately afterward. The exact internal Pixfort PHP implementation is not yet proven.
-- The Pixfort library can be exposed to Elementize without screen scraping: the catalogue and template content are already machine-readable.
-- Browser automation should not be needed for template discovery or template content retrieval.
+- Browser automation and loopback calls to `/wp-admin/admin-ajax.php` are unnecessary for the Pixfort integration. Elementize can call the underlying theme function/source class directly inside WordPress.
+- The Pixfort source path should be treated as an integration dependency: Elementize should detect missing/changed functions/classes and fail clearly rather than silently falling back to raw database writes.
+- The first Pixfort mutation test should insert one section into a disposable Elementor page at a known top-level position, using the same page-hash and pre-change-revision protections already proven in V0.1.
 
 ## Unknowns
 
-- What Pixfort PHP class/function is registered behind `wp_ajax_pix_core_getElementorDemos` and `wp_ajax_pix_core_getElementorTemplate`?
-- What is the cleanest persistence path for inserting returned Pixfort content into an Elementor document outside the browser editor?
+- Does `Source_Pixfort::get_data()` work unchanged during an authenticated Elementize REST request when Elementize explicitly loads the Essentials library loader and Pixfort source file?
+- Does merging its prepared `content` into the current top-level Elementor elements and calling `document->save()` render identically to Pixfort's editor-side insertion on the real site?
 - What response format should Elementize use so a Custom GPT can genuinely inspect Pixfort thumbnails as images rather than merely receive thumbnail URLs?
 - Which public HTTPS development/staging URL will be used when testing the Custom GPT Action? `mijn-ibp.local` itself is not remotely reachable.
 
 ## Evidence
 
 - Supplied HAR capture from the real local WordPress/Elementor/Pixfort environment. The HAR itself is intentionally not committed because it contains session-sensitive request data.
+- Supplied installed-source ZIPs for Pixfort Core 4.1.3 and Essentials 4.1.1. Their proprietary source is intentionally not committed.
 - Real local REST and visual-editor tests performed against Elementize 0.1.1 and 0.1.2 on the disposable `Elementize Test` page.
 - Elementor developer documentation:
   - https://developers.elementor.com/docs/data-structure/index.html
@@ -89,9 +115,9 @@ Observed in the supplied HAR capture. Sensitive values such as nonces/cookies ar
 
 ## Critical risk / assumption
 
-The V0.1 Elementor read/write risk is resolved for the tested workflow: page discovery, copy extraction, targeted mutation, stale-write protection, visual editor integrity, and pre-change revision creation all work in the real runtime.
+The V0.1 Elementor read/write risk is resolved for the tested workflow.
 
-The active high-risk assumption is now narrower: whether Pixfort's observed template catalogue/fetch path can be wrapped cleanly inside Elementize and persisted into Elementor without depending on browser-only state or brittle loopback AJAX.
+The previous Pixfort architecture risk is also resolved at source level: the exact catalogue and template preparation functions/classes are now known. The active risk is narrower and testable: whether the prepared Pixfort content can be inserted and saved through Elementize in a REST request with the same visual result as the editor-side Pixfort insert.
 
 ## Experiments / spikes
 
@@ -99,7 +125,7 @@ The active high-risk assumption is now narrower: whether Pixfort's observed temp
 
 **Result:** Pass.
 
-**Conclusion:** Pixfort exposes a structured catalogue through `pix_core_getElementorDemos` and returns selected templates as Elementor JSON through `pix_core_getElementorTemplate`.
+**Conclusion:** The HAR showed structured catalogue/template responses, and source inspection now proves the exact direct WordPress/PHP path behind them. Loopback AJAX/browser automation is not required.
 
 ### Targeted Elementor copy-save experiment
 
@@ -113,10 +139,17 @@ The active high-risk assumption is now narrower: whether Pixfort's observed temp
 - Use WordPress/Elementor APIs for page/document operations; avoid direct SQL and avoid browser automation.
 - Keep writes narrow and protect them with page hashes, expected old values, and pre-change revisions.
 - V0.1 is complete for the local authenticated Elementor copy-editing slice.
-- Next slice: expose Pixfort catalogue data read-only first; then fetch/import one selected template into a disposable Elementor page and visually verify it.
+- Pixfort slice:
+  1. expose a read-only normalized catalogue directly from `pixfort_elementor_library_data()`;
+  2. load `Source_Pixfort` directly for a selected template;
+  3. insert returned top-level `content` into a disposable Elementor document;
+  4. save through Elementor's document model and visually verify;
+  5. only then generalize insertion positions/page creation and GPT-facing visual selection.
 
 ## Paths deliberately rejected
 
 - Driving Elementor/Pixfort by simulated browser clicks as the primary integration mechanism.
+- Looping Elementize back through Pixfort's own AJAX endpoints when the direct callable implementation is available in-process.
+- Reimplementing Pixfort/Elementor media import logic instead of reusing `Source_Pixfort::get_data()`.
 - Giving the GPT unrestricted raw database or arbitrary Elementor JSON write access.
-- Committing HAR captures, cookies, nonces, tokens, Application Passwords, or other session-sensitive evidence to Git.
+- Committing HAR captures, proprietary Pixfort/Essentials source, cookies, nonces, tokens, Application Passwords, or other session-sensitive evidence to Git.
