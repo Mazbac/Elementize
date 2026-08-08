@@ -26,7 +26,7 @@ Eventually the GPT should be able to:
 
 - [x] Inspect installed Pixfort Core 4.1.3 + Essentials 4.1.1 source.
 - [x] Identify direct catalogue path (`pixfort_elementor_library_data()`).
-- [x] Identify direct template-preparation path (`Elementor\TemplateLibrary\Source_Pixfort::get_data()`).
+- [x] Identify direct template-preparation path (`Elementor\\TemplateLibrary\\Source_Pixfort::get_data()`).
 - [x] Implement read-only searchable/paginated Pixfort catalogue.
 - [x] Real-site catalogue test passed: `AI Agency Portfolio Intro` returned correctly with thumbnail, preview URL, category, subtype and `container_based` metadata.
 - [x] Correct catalogue totals proven: 983 unique sections and 150 unique pages.
@@ -44,7 +44,7 @@ Eventually the GPT should be able to:
 - [x] Install 0.2.4 and verify layout settings disappear from `/pages/{id}/text` while real Pixfort copy remains.
 - [x] Runtime-test controlled `before` insertion: inserted new top-level ID `6bfbcd1a` before anchor `4889ee30`, with revision `951734` and new content hash `baab2a4d4b1472b5ff15bfec535e4d668fd8ca65f84e66f295beebd4fbe72baa`.
 - [x] Mark the newly inserted section unambiguously by changing nested heading widget `340abdf0` to `POSITION TEST — BEFORE`; targeted write saved with revision `951736` and content hash `30e52851e5777e61dd0e691ad73a7bc1fdd8a652438f1463dc7fdee7adc7ff80`.
-- [ ] Reopen Elementor and visually verify `POSITION TEST — BEFORE` appears on the hero above the untouched original `Transform Your Business With Strategic AI` hero.
+- [x] Visual proof passed: Elementor shows `POSITION TEST — BEFORE` on the newly inserted hero directly above the untouched original `Transform Your Business With Strategic AI` hero.
 
 ## Current environment
 
@@ -73,12 +73,12 @@ Eventually the GPT should be able to:
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
 - The first Pixfort runtime insert is proven visually and structurally; top-level inserted ID was `4889ee30` and pre-change revision was `951731`.
 - 0.2.4 copy hardening is runtime-proven: `flex_justify_content` and `flex_justify_content_tablet` no longer appear, while the real AI hero copy still does.
-- Controlled `before` insertion is runtime-proven at the API layer; the new section now has a unique heading marker for visual ordering proof.
+- Controlled `before` insertion is now proven end-to-end, including visual order in Elementor.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Visually confirm the `before` positioning result, then move to the next composition capability.
+Add the next composition safety primitive: remove one explicitly targeted top-level Elementor section/container with a fresh content hash and pre-change revision, then use it to cleanly remove the disposable `POSITION TEST — BEFORE` section without affecting the original hero.
 
 ## Later
 
