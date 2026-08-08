@@ -64,7 +64,7 @@ Eventually the GPT should be able to:
 - [x] New blank draft returned content hash `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
 - [x] Insert real Pixfort section `ai-agency-portfolio-intro` into newly created draft page 951743 using that returned content hash.
 - [x] Runtime composition returned `saved: true`, inserted top-level ID `2a8e1ffa`, revision `951745`, and new content hash `4825160dbff90dccca63881e5d13b0b26a6bd342d19f5b012d240525dee28637`.
-- [ ] Reopen page 951743 in Elementor and visually verify the imported section renders correctly on a page created entirely through Elementize.
+- [x] Visual create→compose proof passed: page 951743 opens as `Elementize Draft Build — (Draft)` in Elementor and the imported AI hero renders correctly with its gradient styling, copy, avatars, and CTA.
 
 ## Current environment
 
@@ -98,17 +98,17 @@ Eventually the GPT should be able to:
 - Controlled `before` insertion is proven end-to-end, including visual order in Elementor.
 - Guarded top-level removal is proven end-to-end; the page structure hash returned exactly to its pre-duplicate value and Elementor visually shows only the original hero.
 - Safe blank draft page creation is runtime-proven in 0.2.6; new page 951743 was created as an empty Elementor draft through REST.
-- Create → compose is runtime-proven at the API layer on page 951743: Elementize created the blank draft and then inserted a real Pixfort hero into it.
+- Create → compose is proven end-to-end on page 951743: Elementize created the blank draft, inserted a real Pixfort hero, and Elementor rendered it correctly.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Visually verify page 951743 in Elementor, then move from single-section composition to a multi-section draft-page build flow.
+Move from single-section composition to building an ordered multi-section draft page. Reuse the already-proven create + insert primitives rather than introducing a batch mutation prematurely. The remaining gating capability for the intended GPT workflow is reliable visual inspection/selection of Pixfort candidates, so section choices are based on what the templates visibly look like rather than metadata alone.
 
 ## Later
 
-- Visual thumbnail delivery/matching for Custom GPT.
-- Multi-section page creation from a section plan.
+- Reliable visual thumbnail/probe delivery for Custom GPT.
+- Multi-section page creation from a visually selected section plan.
 - Media/color/icon operations.
 - Draft/delete/restore and explicit publish workflows.
 - Public HTTPS staging/tunnel and Custom GPT OpenAPI schema.
