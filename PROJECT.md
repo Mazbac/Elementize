@@ -43,7 +43,8 @@ Eventually the GPT should be able to:
 - [x] PHP lint passed for the exact committed 0.2.4 blob (`a6aa7124b74f9d0da65800b9286212c39e14aefe`).
 - [x] Install 0.2.4 and verify layout settings disappear from `/pages/{id}/text` while real Pixfort copy remains.
 - [x] Runtime-test controlled `before` insertion: inserted new top-level ID `6bfbcd1a` before anchor `4889ee30`, with revision `951734` and new content hash `baab2a4d4b1472b5ff15bfec535e4d668fd8ca65f84e66f295beebd4fbe72baa`.
-- [ ] Reopen Elementor and visually verify the two hero sections are ordered with `6bfbcd1a` before `4889ee30`.
+- [x] Mark the newly inserted section unambiguously by changing nested heading widget `340abdf0` to `POSITION TEST — BEFORE`; targeted write saved with revision `951736` and content hash `30e52851e5777e61dd0e691ad73a7bc1fdd8a652438f1463dc7fdee7adc7ff80`.
+- [ ] Reopen Elementor and visually verify `POSITION TEST — BEFORE` appears on the hero above the untouched original `Transform Your Business With Strategic AI` hero.
 
 ## Current environment
 
@@ -72,7 +73,7 @@ Eventually the GPT should be able to:
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
 - The first Pixfort runtime insert is proven visually and structurally; top-level inserted ID was `4889ee30` and pre-change revision was `951731`.
 - 0.2.4 copy hardening is runtime-proven: `flex_justify_content` and `flex_justify_content_tablet` no longer appear, while the real AI hero copy still does.
-- Controlled `before` insertion is runtime-proven at the API layer; visual ordering still needs confirmation.
+- Controlled `before` insertion is runtime-proven at the API layer; the new section now has a unique heading marker for visual ordering proof.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
