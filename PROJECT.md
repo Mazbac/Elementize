@@ -59,9 +59,11 @@ Eventually the GPT should be able to:
 - [x] Implement Elementize 0.2.6 candidate: `POST /pages/create` creates only a blank draft WordPress page and initializes it as an Elementor document.
 - [x] 0.2.6 creation requires administrator + page creation permission, never accepts a publish status, and rolls the just-created draft back if Elementor initialization/verification fails.
 - [x] PHP lint passed for the exact committed 0.2.6 blob (`1ec30ade0055ede34faecb13f0e0df9b90fb8dc5`).
-- [ ] Install 0.2.6 on the local site.
-- [ ] Create one disposable draft page through `/pages/create` and verify `status: draft`, `is_elementor: true`, `top_level_count: 0`, and a usable Elementor edit URL.
-- [ ] Insert a real Pixfort section into that newly created draft using its returned content hash.
+- [x] Install 0.2.6 on the local site.
+- [x] Create disposable draft page `Elementize Draft Build` through `/pages/create`: page ID `951743`, status `draft`, `is_elementor: true`, `top_level_count: 0`, slug `elementize-draft-build`, and usable Elementor edit URL.
+- [x] New blank draft returned content hash `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
+- [ ] Insert a real Pixfort section into newly created draft page 951743 using that returned content hash.
+- [ ] Reopen page 951743 in Elementor and visually verify the imported section renders correctly on a page created entirely through Elementize.
 
 ## Current environment
 
@@ -69,7 +71,7 @@ Eventually the GPT should be able to:
 - Elementor 4.2.1 / Elementor Pro 4.2.1.
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
-- Installed runtime build: 0.2.5.
+- Installed runtime build: 0.2.6.
 - Candidate branch/build: `fastbuild/pixfort-library` / 0.2.6.
 
 ## Safety constraints
@@ -94,11 +96,12 @@ Eventually the GPT should be able to:
 - 0.2.4 copy hardening is runtime-proven: `flex_justify_content` and `flex_justify_content_tablet` no longer appear, while the real AI hero copy still does.
 - Controlled `before` insertion is proven end-to-end, including visual order in Elementor.
 - Guarded top-level removal is proven end-to-end; the page structure hash returned exactly to its pre-duplicate value and Elementor visually shows only the original hero.
+- Safe blank draft page creation is runtime-proven in 0.2.6; new page 951743 was created as an empty Elementor draft through REST.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Install/test 0.2.6 and prove safe blank draft Elementor page creation, then compose that new draft with a real Pixfort section.
+Compose newly created draft page 951743 with a real Pixfort section using its fresh content hash, then visually verify the result in Elementor.
 
 ## Later
 
