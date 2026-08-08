@@ -22,16 +22,16 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ### Must work
 
-- [x] Install and activate Elementize as a normal WordPress plugin. Confirmed on the real local site with 0.1.1.
-- [x] Show Elementize directly in the WordPress admin sidebar with a basic environment/status screen. Confirmed on the real local site.
+- [x] Install and activate Elementize as a normal WordPress plugin.
+- [x] Show Elementize directly in the WordPress admin sidebar with a basic environment/status screen.
 - [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Local Application Password authentication is proven; external GPT connection is not yet tested.
-- [ ] List editable Elementor pages. Implemented; real-site endpoint test pending.
-- [x] Read an Elementor page's structured content / editable text inventory. Confirmed on a real Elementor test page.
-- [x] Update selected text values without rebuilding or flattening the Elementor layout. Confirmed by real API write and visual Elementor verification.
-- [x] Save through Elementor's document model rather than direct SQL. Confirmed by real write and successful editor reopen.
-- [x] Return a clear result that can be checked in Elementor. Real response reported exactly one changed field with old/new values.
-- [ ] Reject unauthorized access and invalid/non-Elementor targets. Unauthenticated request returned 401; remaining invalid-target checks are not yet tested in the real site.
-- [ ] Create a pre-change revision before writes when WordPress revisions are enabled. 0.1.2 fix committed; real runtime retest pending.
+- [ ] List editable Elementor pages. Implemented; one real-site endpoint test remains.
+- [x] Read an Elementor page's structured content / editable text inventory.
+- [x] Update selected text values without rebuilding or flattening the Elementor layout.
+- [x] Save through Elementor's document model rather than direct SQL.
+- [x] Return a clear result that can be checked in Elementor.
+- [ ] Reject unauthorized access and invalid/non-Elementor targets. Unauthenticated access returned 401; remaining invalid-target checks are not yet tested in the real site.
+- [x] Create a pre-change revision before writes when WordPress revisions are enabled. Confirmed on 0.1.2 with numeric revision ID `951722`.
 
 ### Explicitly out of scope for V0.1
 
@@ -63,12 +63,11 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Current objective
 
-- Install Elementize 0.1.2 and repeat one controlled heading change to verify that the response now includes a non-null pre-change `revision_id` and that the visual result remains correct.
+- Perform one real-site read-only test of `GET /wp-json/elementize/v1/pages` so page discovery is proven, then move to the Pixfort template catalogue/insertion slice.
 
 ## Known blockers / issues
 
 - `mijn-ibp.local` is not remotely reachable by a Custom GPT Action. Local API behavior can be built/tested first; GPT integration requires a public HTTPS test/staging endpoint or secure tunnel.
-- The first successful write returned `revision_id: null`. Root cause: WordPress normally skips a revision when its revisioned post fields have not changed; Elementize changes Elementor meta, so the pre-save revision call looked unchanged. Version 0.1.2 now temporarily forces revision creation for the Elementize pre-change snapshot and aborts the write if an enabled revision cannot be created.
 
 ## Backlog
 
@@ -83,17 +82,15 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: Core authenticated read/write path is proven on the real local WordPress/Elementor site. Revision-safety fix 0.1.2 is committed and awaits one runtime retest.
-- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, read-only extraction of two test copy fields, one targeted heading update returning `saved: true`, and visual Elementor verification after reopening.
-- Visual verification confirmed: heading changed from `Original heading` to `Changed by Elementize`; paragraph remained `Original paragraph`; Elementor opened normally and layout remained intact.
+- Status: Elementize 0.1.2 is installed and active on the real local WordPress site. Authenticated targeted Elementor read/write and pre-change revision creation are proven.
+- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, read-only extraction of two test copy fields, targeted heading updates returning `saved: true`, stale-write 409 protection, visual Elementor verification after reopening, and numeric pre-change revision creation (`951722`).
+- Visual verification confirmed the neighboring paragraph/layout remained intact and Elementor opened normally.
 - Earlier fixture checks passed: recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior.
-- 0.1.2 PHP syntax check passed before commit.
-- Last known-good real environment checkpoint: successful write plus visual editor verification on Elementize 0.1.1.
-- V0.1 usable: Core editing path yes; final revision-safety retest still required before declaring V0.1 complete.
+- Last known-good real environment checkpoint: 0.1.2 successfully changed `Changed by Elementize` to `Revision test passed` and returned `revision_id: 951722`.
+- V0.1 usable: Core editing/safety path yes; page-discovery endpoint still needs one real-site check before closing the slice.
 
 ## Notes from real use
 
 - A sanitized analysis of an Elementor/Pixfort HAR capture validated that Pixfort exposes machine-usable catalogue and template-fetch operations; details are recorded in `DISCOVERY.md`.
 - Elementor source confirms its revision manager copies Elementor meta into WordPress revisions and restores that meta on revision restore.
-- Real read test returned the normal Elementor Heading copy (`Original heading`) and Text Editor HTML (`<p>Original paragraph</p>`) as separate editable text items without exposing arbitrary page JSON for mutation.
-- First real write used the page content hash plus an expected old value and changed only the targeted Heading title; the API rejected an earlier malformed-JSON attempt before any mutation occurred.
+- Real read/write testing used page-level content hashes plus expected old values. A deliberately stale/incorrect hash was rejected with HTTP 409 before mutation.
