@@ -746,7 +746,7 @@ final class Elementize_V01 {
 
 	private static function get_elementor_document( int $post_id ) {
 		try {
-			return \\Elementor\\Plugin::$instance->documents->get( $post_id );
+			return \Elementor\Plugin::$instance->documents->get( $post_id );
 		} catch ( Throwable $exception ) {
 			return null;
 		}
