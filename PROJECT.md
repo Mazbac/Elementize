@@ -56,6 +56,12 @@ Eventually the GPT should be able to:
 - [x] Original hero `4889ee30` remained present; removed ID `6bfbcd1a` is absent.
 - [x] Post-removal content hash returned exactly to the pre-duplicate hash `8e487f247d1cc9893a7ec648baf0db94866a7baed9c9fc26159896c7bbc615fb`.
 - [x] Visual removal proof passed: Elementor shows only the original `Transform Your Business With Strategic AI` hero and the `POSITION TEST — BEFORE` duplicate is gone.
+- [x] Implement Elementize 0.2.6 candidate: `POST /pages/create` creates only a blank draft WordPress page and initializes it as an Elementor document.
+- [x] 0.2.6 creation requires administrator + page creation permission, never accepts a publish status, and rolls the just-created draft back if Elementor initialization/verification fails.
+- [x] PHP lint passed for the exact committed 0.2.6 blob (`1ec30ade0055ede34faecb13f0e0df9b90fb8dc5`).
+- [ ] Install 0.2.6 on the local site.
+- [ ] Create one disposable draft page through `/pages/create` and verify `status: draft`, `is_elementor: true`, `top_level_count: 0`, and a usable Elementor edit URL.
+- [ ] Insert a real Pixfort section into that newly created draft using its returned content hash.
 
 ## Current environment
 
@@ -64,7 +70,7 @@ Eventually the GPT should be able to:
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
 - Installed runtime build: 0.2.5.
-- Candidate branch: `fastbuild/pixfort-library`.
+- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.6.
 
 ## Safety constraints
 
@@ -74,7 +80,7 @@ Eventually the GPT should be able to:
 - Mutations use a fresh page content hash and a pre-change revision.
 - `before`/`after` Pixfort insertion targets must be current top-level Elementor element IDs.
 - Top-level removal accepts only current top-level Elementor `container` or legacy `section` IDs and verifies the ID is absent after save.
-- New page creation should default to draft and must not silently publish.
+- New page creation defaults to draft and cannot silently publish; failed Elementor initialization is rolled back.
 - Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
 - Normal operation must not depend on browser automation.
 
@@ -92,7 +98,7 @@ Eventually the GPT should be able to:
 
 ## Current objective
 
-Add safe creation of a blank draft Elementor page so the GPT can start a new page, then compose it using the already-proven Pixfort insertion/copy/removal primitives.
+Install/test 0.2.6 and prove safe blank draft Elementor page creation, then compose that new draft with a real Pixfort section.
 
 ## Later
 
