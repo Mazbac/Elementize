@@ -22,14 +22,14 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ### Must work
 
-- [ ] Install and activate Elementize as a normal WordPress plugin.
-- [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action.
-- [ ] List editable Elementor pages.
-- [ ] Read an Elementor page's structured content / editable text inventory.
-- [ ] Update selected text values without rebuilding or flattening the Elementor layout.
-- [ ] Save through Elementor's document model rather than direct SQL.
-- [ ] Return a clear result that can be checked in Elementor.
-- [ ] Reject unauthorized access and invalid/non-Elementor targets.
+- [ ] Install and activate Elementize as a normal WordPress plugin. Implemented; real-site activation not yet tested.
+- [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Implemented locally; external GPT connection not yet tested.
+- [ ] List editable Elementor pages. Implemented; real-site test pending.
+- [ ] Read an Elementor page's structured content / editable text inventory. Implemented; real-site test pending.
+- [ ] Update selected text values without rebuilding or flattening the Elementor layout. Implemented; real-site test pending.
+- [ ] Save through Elementor's document model rather than direct SQL. Implemented; real-site test pending.
+- [ ] Return a clear result that can be checked in Elementor. Implemented; real-site test pending.
+- [ ] Reject unauthorized access and invalid/non-Elementor targets. Implemented; real-site test pending.
 
 ### Explicitly out of scope for V0.1
 
@@ -61,7 +61,7 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Current objective
 
-- Implement the V0.1 end-to-end path: authenticated API -> list/read Elementor page -> update selected copy -> save -> verify.
+- Validate the V0.1 candidate in the real local WordPress/Elementor environment: activate -> authenticate -> list/read page -> make one small copy update -> open Elementor and verify layout/data integrity.
 
 ## Known blockers
 
@@ -80,10 +80,13 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: Discovery complete for the initial architecture; implementation not started.
-- Last known-good checkpoint: Fast Build template on `main`.
-- V0.1 usable: No.
+- Status: V0.1 implementation candidate committed on `fastbuild/elementize-v0.1`; awaiting real WordPress/Elementor validation.
+- Candidate checkpoint: `elementize.php` commit `5223fdef6a3feaf640be54cfe147f3bc0cfbbc31`.
+- Local validation performed: PHP syntax check passed; recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior passed fixture tests.
+- Last known-good real environment checkpoint: Existing WordPress/Elementor installation before Elementize is installed.
+- V0.1 usable: Not yet proven.
 
 ## Notes from real use
 
 - A sanitized analysis of an Elementor/Pixfort HAR capture validated that Pixfort exposes machine-usable catalogue and template-fetch operations; details are recorded in `DISCOVERY.md`.
+- Elementor source confirms its revision manager copies Elementor meta into WordPress revisions and restores that meta on revision restore.
