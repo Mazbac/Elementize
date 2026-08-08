@@ -9,12 +9,11 @@ Determine whether Elementize can safely expose Elementor editing and the Essenti
 ## Environment
 
 - Platform: local WordPress site at `mijn-ibp.local`.
-- WordPress core assets observed with `ver=7.0.3`.
-- Elementor editor assets observed with `ver=4.2.1`.
-- Elementor Pro assets observed with `ver=4.2.1`.
-- Pixfort Core assets primarily observed with `ver=4.1.3`.
-- Theme/integration: Essentials + Pixfort Core + Elementor.
-- Development/test context: Elementor editor opened on a new page while the Pixfort template library was browsed and two sections were selected/fetched.
+- WordPress: 7.0.3.
+- Elementor: 4.2.1.
+- Elementor Pro: 4.2.1 observed in editor assets.
+- Pixfort Core: 4.1.3.
+- Theme: Essentials 4.1.1.
 
 ## Verified facts
 
@@ -22,70 +21,67 @@ Facts supported by authoritative documentation or source code.
 
 - Elementor stores page configuration/content as structured JSON in WordPress post metadata. The page `content` is recursive and can contain nested containers and widgets.
 - Elementor's documented JSON structure contains `title`, `type`, `version`, `page_settings`, and `content`; data structure version `0.4` is documented.
-- Elementor's official developer material identifies the document model as the replacement path for reading/saving editor data (`documents->get(...)->get_elements_data()` and document `save()`) rather than older DB editor helpers.
+- Elementor's document model provides the current read/save path (`documents->get(...)->get_elements_data()` and document `save()`) rather than older DB editor helpers.
+- Elementor's revision manager copies Elementor meta into WordPress revisions and restores that meta on revision restore.
 - WordPress custom REST routes must be registered on `rest_api_init` and should use a `permission_callback`.
 - Custom GPT Actions connect to an external API defined by an OpenAPI schema and support API-key or OAuth authentication.
 
 ## Observed behavior
 
-Directly observed in the supplied HAR capture. Sensitive values such as nonces/cookies are intentionally not recorded.
-
 ### Pixfort catalogue
 
+Observed in the supplied HAR capture. Sensitive values such as nonces/cookies are intentionally not recorded.
+
 - Elementor/Pixfort sends a local WordPress AJAX request with action `pix_core_getElementorDemos` to `/wp-admin/admin-ajax.php`.
-- The captured response is JSON of roughly 1.49 MB and contains:
-  - `demos.sections`: 1,137 entries;
-  - `demos.pages`: 151 entries;
-  - `demos.sectionsCategories`: 32 category records;
-  - `demos.pagesCategories`: 8 category records;
-  - `demos.library.templates`: 1,439 records across block/page/lp representations.
+- The captured response contains 1,137 sections, 151 pages, 32 section categories, 8 page categories, and 1,439 library template records.
 - Template metadata includes machine-usable fields such as `id`, `file`, `title`, `thumbnail`, `url`, `type`, `subtype`, `categories`, and in newer records `container_based`.
-- Example template IDs seen in the capture include `ai-agency-portfolio-intro` and `ai-agency-pricing-intro-tables-clients-marquee`.
-- Template thumbnails are public image URLs hosted primarily on `wordpress.assets.pixfort.com` and the legacy `pixfort-space.sfo2.cdn.digitaloceanspaces.com` host.
-- When the template library was opened, the browser fetched 874 Pixfort thumbnail images in the capture.
-- Template metadata also contains preview URLs on `essentials.pixfort.com/.../templates-library/?template=...`.
+- Template thumbnails and preview URLs are supplied as normal web URLs.
 
 ### Pixfort template fetch
 
 - Selecting a Pixfort section sends a local WordPress AJAX request with action `pix_core_getElementorTemplate`.
-- Captured request fields were:
-  - `action`;
-  - `nonce` (not recorded here);
-  - `editor_post_id`;
-  - `initial_document_id`;
-  - `template_id`.
-- Two captured requests used template IDs:
-  - `ai-agency-portfolio-intro`;
-  - `ai-agency-pricing-intro-tables-clients-marquee`.
-- Both requests returned HTTP 200 JSON.
-- Returned payload shape was `data.content`, `data.page_settings`, `data.version`, `data.title`, and `data.type`.
-- Both captured payloads reported Elementor data version `0.4` and type `container`.
-- The first returned about 19.8 KB of Elementor JSON; the second returned about 116 KB.
-- Media URLs inside the returned Elementor data pointed to `mijn-ibp.local/wp-content/uploads/2026/08/...`, not to remote Pixfort demo media.
-- The browser subsequently fetched those local uploaded assets successfully (200/304 responses were observed).
+- Captured request fields included `action`, `nonce`, `editor_post_id`, `initial_document_id`, and `template_id`.
+- Two captured template requests returned HTTP 200 Elementor JSON with `data.content`, `data.page_settings`, `data.version`, `data.title`, and `data.type`.
+- Returned media URLs pointed to the local WordPress uploads directory and those local assets were immediately available afterward.
 
-### Separate local template list
+### Real Elementize REST read
 
-- A different action, `pix_get_templates_list`, returned locally available Pixfort/Elementor saved templates. This is not the remote Essentials section/page catalogue and should not be confused with `pix_core_getElementorDemos`.
+- Elementize 0.1.1 authenticated successfully on the real local site using a WordPress Application Password.
+- An unauthenticated request returned HTTP 401 from Elementize.
+- `GET /wp-json/elementize/v1/pages/951706/text` returned the disposable Elementor test page and exposed exactly the expected copy fields:
+  - Heading title: `Original heading`;
+  - Text Editor content: `<p>Original paragraph</p>`.
+- The response included a page-level `content_hash` used for optimistic concurrency control.
 
-### Save behavior
+### Real Elementize REST write
 
-- No Elementor document-save/update request was captured after the two Pixfort template fetches.
-- Therefore this HAR proves catalogue discovery and retrieval/import preparation, but does not by itself prove the exact persistence step used when an inserted section is finally saved to the page.
+- The first write attempt with malformed shell JSON was rejected by WordPress with `rest_invalid_json` / HTTP 400 before Elementize mutated anything.
+- A corrected request using a JSON file succeeded against `POST /wp-json/elementize/v1/pages/951706/text`.
+- The request targeted one Heading element and required both the previously read `content_hash` and `expected_value: Original heading`.
+- The response returned:
+  - `saved: true`;
+  - `updated_count: 1`;
+  - old value `Original heading`;
+  - new value `Changed by Elementize`;
+  - a new `content_hash`.
+- The response also returned `revision_id: null`.
+- Visual verification in the Elementor editor is still pending, so the API save is proven but preservation of the rendered/editor layout has not yet been visually confirmed.
 
 ## Inferences
 
-- `pix_core_getElementorTemplate` appears to perform server-side asset importing/sideloading because its response already rewrites media to local upload URLs and those files are available immediately afterward. The HAR does not expose the server-side PHP implementation, so the exact internal function is not yet proven.
-- The Pixfort library can be exposed to Elementize without screen scraping: the catalogue and template content are already represented as structured machine-readable data.
+- `pix_core_getElementorTemplate` appears to perform server-side asset importing/sideloading because its response already rewrites media to local upload URLs and those files are available immediately afterward. The exact internal Pixfort PHP implementation is not yet proven.
+- The Pixfort library can be exposed to Elementize without screen scraping: the catalogue and template content are already machine-readable.
 - Browser automation should not be needed for template discovery or template content retrieval.
+- `revision_id: null` means Elementize's current explicit pre-save revision attempt did not return a revision ID in this real write. This does not prove that Elementor created no revision elsewhere during its save lifecycle, so actual revision state should be inspected before changing the implementation.
 
 ## Unknowns
 
 Questions that still matter.
 
-- What Pixfort PHP class/function is registered behind `wp_ajax_pix_core_getElementorDemos` and `wp_ajax_pix_core_getElementorTemplate`? Inspecting Pixfort Core PHP source would let Elementize call the underlying implementation directly rather than loop back through `admin-ajax.php`.
+- Does the successfully saved test page reopen in Elementor with the paragraph/layout intact?
+- Why did the explicit pre-save `wp_save_post_revision()` attempt return no revision ID, and did Elementor create a revision later in its own save lifecycle?
+- What Pixfort PHP class/function is registered behind `wp_ajax_pix_core_getElementorDemos` and `wp_ajax_pix_core_getElementorTemplate`?
 - What is the cleanest persistence path for inserting returned Pixfort content into an Elementor document outside the browser editor?
-- Does the exact Elementor 4.2.1 document `save()` behavior require any additional data normalization for third-party Pixfort widgets/containers?
 - What response format should Elementize use so a Custom GPT can genuinely inspect Pixfort thumbnails as images rather than merely receive thumbnail URLs?
 - Which public HTTPS development/staging URL will be used when testing the Custom GPT Action? `mijn-ibp.local` itself is not remotely reachable.
 
@@ -94,6 +90,7 @@ Questions that still matter.
 ### Evidence log
 
 - Supplied HAR capture from the real local WordPress/Elementor/Pixfort environment. The HAR itself is intentionally not committed because it contains session-sensitive request data.
+- Real local REST tests performed against Elementize 0.1.1 on the disposable `Elementize Test` page.
 - Elementor developer documentation:
   - https://developers.elementor.com/docs/data-structure/index.html
   - https://developers.elementor.com/docs/data-structure/general-structure/
@@ -108,35 +105,41 @@ Questions that still matter.
 
 ## Critical risk / assumption
 
-The original high-risk assumption was whether Pixfort templates could be discovered and fetched programmatically. The HAR validates that mechanism.
+The original high-risk Pixfort discovery assumption is resolved.
 
-The main V0.1 implementation risk is now narrower: save targeted Elementor text changes through the Elementor document model without corrupting or flattening existing third-party Elementor/Pixfort data.
+The V0.1 save path now succeeds in the real runtime. The remaining validation risk is whether the targeted save preserves the Elementor editor/rendered structure exactly, plus whether rollback/revision behavior is actually available.
 
 ## Experiments / spikes
 
-### Pixfort programme access experiment
+### Pixfort programmatic access experiment
 
-**Question:**  
-Can the real Essentials/Pixfort Elementor library be discovered and can a chosen section be retrieved as Elementor data without manually reconstructing it?
+**Question:** Can the real Essentials/Pixfort Elementor library be discovered and can a chosen section be retrieved as Elementor data without manually reconstructing it?
 
-**Minimal test:**  
-Capture browser network traffic while opening the Pixfort template library and selecting two sections.
+**Minimal test:** Capture browser network traffic while opening the Pixfort template library and selecting two sections.
 
-**Result:**  
-Pass.
+**Result:** Pass.
 
-**Conclusion:**  
-Pixfort exposes a structured catalogue through `pix_core_getElementorDemos` and returns selected templates as Elementor JSON through `pix_core_getElementorTemplate`. The mechanism is suitable for an Elementize integration, subject to identifying the clean server-side callable path before productionizing it.
+**Conclusion:** Pixfort exposes a structured catalogue through `pix_core_getElementorDemos` and returns selected templates as Elementor JSON through `pix_core_getElementorTemplate`.
+
+### Targeted Elementor copy-save experiment
+
+**Question:** Can Elementize read a real Elementor page, update one recognized copy field through the document model, and receive a successful persisted result?
+
+**Minimal test:** Create a disposable page with one normal Heading and one Text Editor, read both through Elementize, then update only the Heading title using the returned content hash and expected old value.
+
+**Result:** API save pass; visual integrity verification pending.
+
+**Conclusion:** Authentication, structured copy extraction, stale-write protection inputs, targeted mutation, and the Elementor document-save call all work end-to-end in the real local runtime. The response reported exactly one changed field. Explicit pre-change revision creation remains unresolved because `revision_id` was null.
 
 ## Chosen technical path
 
 - Build Elementize as a WordPress plugin exposing its own authenticated REST API.
 - Use WordPress/Elementor APIs for page/document operations; avoid direct SQL and avoid browser automation.
 - For V0.1, implement one vertical slice: list Elementor pages -> read editable text -> update selected text -> save via Elementor -> verify in the real editor.
-- Keep Pixfort catalogue/template insertion as the next slice. The discovery risk is resolved, but the direct PHP integration path should be inspected before implementation.
+- Keep Pixfort catalogue/template insertion as the next slice after V0.1 is visually verified and the revision question is understood.
 
 ## Paths deliberately rejected
 
 - Driving Elementor/Pixfort by simulated browser clicks as the primary integration mechanism.
 - Giving the GPT unrestricted raw database or arbitrary Elementor JSON write access.
-- Committing HAR captures, cookies, nonces, tokens, or other session-sensitive evidence to Git.
+- Committing HAR captures, cookies, nonces, tokens, Application Passwords, or other session-sensitive evidence to Git.
