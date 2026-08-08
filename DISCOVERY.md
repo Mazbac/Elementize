@@ -24,6 +24,7 @@ Facts supported by authoritative documentation or source code.
 - Elementor's document model provides the current read/save path (`documents->get(...)->get_elements_data()` and document `save()`) rather than older DB editor helpers.
 - Elementor's revision manager copies Elementor meta into WordPress revisions and restores that meta on revision restore.
 - WordPress custom REST routes must be registered on `rest_api_init` and should use a `permission_callback`.
+- WordPress `wp_save_post_revision()` normally skips a new revision when its revisioned post fields are unchanged. The `wp_save_post_revision_check_for_changes` filter can override that comparison.
 - Custom GPT Actions connect to an external API defined by an OpenAPI schema and support API-key or OAuth authentication.
 
 ## Observed behavior
@@ -65,21 +66,26 @@ Observed in the supplied HAR capture. Sensitive values such as nonces/cookies ar
   - new value `Changed by Elementize`;
   - a new `content_hash`.
 - The response also returned `revision_id: null`.
-- Visual verification in the Elementor editor is still pending, so the API save is proven but preservation of the rendered/editor layout has not yet been visually confirmed.
+- Reopening the page in Elementor visually confirmed that the Heading changed to `Changed by Elementize`, the Text Editor still contained `Original paragraph`, the layout remained intact, and Elementor opened normally.
+
+### Revision finding
+
+- The null revision is explained by WordPress's normal revision comparison. Elementize called `wp_save_post_revision()` before changing Elementor meta, while the ordinary revisioned post fields still matched the latest revision, so WordPress could skip creating another revision.
+- Elementize 0.1.2 now temporarily forces creation for its explicit pre-change revision by disabling the change comparison only around that call and immediately removing the filter afterward.
+- When WordPress revisions are enabled, 0.1.2 refuses to modify the page if that pre-change revision cannot be created.
+- The 0.1.2 revision change passed PHP syntax validation before commit but still requires one runtime retest.
 
 ## Inferences
 
 - `pix_core_getElementorTemplate` appears to perform server-side asset importing/sideloading because its response already rewrites media to local upload URLs and those files are available immediately afterward. The exact internal Pixfort PHP implementation is not yet proven.
 - The Pixfort library can be exposed to Elementize without screen scraping: the catalogue and template content are already machine-readable.
 - Browser automation should not be needed for template discovery or template content retrieval.
-- `revision_id: null` means Elementize's current explicit pre-save revision attempt did not return a revision ID in this real write. This does not prove that Elementor created no revision elsewhere during its save lifecycle, so actual revision state should be inspected before changing the implementation.
 
 ## Unknowns
 
 Questions that still matter.
 
-- Does the successfully saved test page reopen in Elementor with the paragraph/layout intact?
-- Why did the explicit pre-save `wp_save_post_revision()` attempt return no revision ID, and did Elementor create a revision later in its own save lifecycle?
+- Does Elementize 0.1.2 return a non-null pre-change revision ID on the real site while preserving the already-proven write behavior?
 - What Pixfort PHP class/function is registered behind `wp_ajax_pix_core_getElementorDemos` and `wp_ajax_pix_core_getElementorTemplate`?
 - What is the cleanest persistence path for inserting returned Pixfort content into an Elementor document outside the browser editor?
 - What response format should Elementize use so a Custom GPT can genuinely inspect Pixfort thumbnails as images rather than merely receive thumbnail URLs?
@@ -90,7 +96,7 @@ Questions that still matter.
 ### Evidence log
 
 - Supplied HAR capture from the real local WordPress/Elementor/Pixfort environment. The HAR itself is intentionally not committed because it contains session-sensitive request data.
-- Real local REST tests performed against Elementize 0.1.1 on the disposable `Elementize Test` page.
+- Real local REST and visual-editor tests performed against Elementize 0.1.1 on the disposable `Elementize Test` page.
 - Elementor developer documentation:
   - https://developers.elementor.com/docs/data-structure/index.html
   - https://developers.elementor.com/docs/data-structure/general-structure/
@@ -100,6 +106,9 @@ Questions that still matter.
 - WordPress REST endpoint documentation:
   - https://developer.wordpress.org/reference/functions/register_rest_route/
   - https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/
+- WordPress revision references:
+  - https://developer.wordpress.org/reference/functions/wp_save_post_revision/
+  - https://developer.wordpress.org/reference/hooks/wp_save_post_revision_check_for_changes/
 - OpenAI Custom GPT Actions configuration:
   - https://help.openai.com/en/articles/9442513
 
@@ -107,7 +116,7 @@ Questions that still matter.
 
 The original high-risk Pixfort discovery assumption is resolved.
 
-The V0.1 save path now succeeds in the real runtime. The remaining validation risk is whether the targeted save preserves the Elementor editor/rendered structure exactly, plus whether rollback/revision behavior is actually available.
+The V0.1 read/write path is proven in the real runtime and visually verified. The only remaining V0.1 safety check is confirming the pre-change revision behavior in 0.1.2.
 
 ## Experiments / spikes
 
@@ -123,20 +132,20 @@ The V0.1 save path now succeeds in the real runtime. The remaining validation ri
 
 ### Targeted Elementor copy-save experiment
 
-**Question:** Can Elementize read a real Elementor page, update one recognized copy field through the document model, and receive a successful persisted result?
+**Question:** Can Elementize read a real Elementor page, update one recognized copy field through the document model, and preserve the neighboring widget/layout/editor state?
 
-**Minimal test:** Create a disposable page with one normal Heading and one Text Editor, read both through Elementize, then update only the Heading title using the returned content hash and expected old value.
+**Minimal test:** Create a disposable page with one normal Heading and one Text Editor, read both through Elementize, update only the Heading title using the returned content hash and expected old value, then reopen Elementor.
 
-**Result:** API save pass; visual integrity verification pending.
+**Result:** Pass for the content/save/editor-integrity path.
 
-**Conclusion:** Authentication, structured copy extraction, stale-write protection inputs, targeted mutation, and the Elementor document-save call all work end-to-end in the real local runtime. The response reported exactly one changed field. Explicit pre-change revision creation remains unresolved because `revision_id` was null.
+**Conclusion:** Authentication, structured copy extraction, stale-write protection inputs, targeted mutation, Elementor document saving, and visual editor integrity all work end-to-end for the tested operation. Explicit pre-change revision creation is the final V0.1 retest.
 
 ## Chosen technical path
 
 - Build Elementize as a WordPress plugin exposing its own authenticated REST API.
 - Use WordPress/Elementor APIs for page/document operations; avoid direct SQL and avoid browser automation.
 - For V0.1, implement one vertical slice: list Elementor pages -> read editable text -> update selected text -> save via Elementor -> verify in the real editor.
-- Keep Pixfort catalogue/template insertion as the next slice after V0.1 is visually verified and the revision question is understood.
+- Keep Pixfort catalogue/template insertion as the next slice after the 0.1.2 revision-safety retest.
 
 ## Paths deliberately rejected
 
