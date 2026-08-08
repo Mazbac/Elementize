@@ -65,6 +65,10 @@ Eventually the GPT should be able to:
 - [x] Insert real Pixfort section `ai-agency-portfolio-intro` into newly created draft page 951743 using that returned content hash.
 - [x] Runtime composition returned `saved: true`, inserted top-level ID `2a8e1ffa`, revision `951745`, and new content hash `4825160dbff90dccca63881e5d13b0b26a6bd342d19f5b012d240525dee28637`.
 - [x] Visual create→compose proof passed: page 951743 opens as `Elementize Draft Build — (Draft)` in Elementor and the imported AI hero renders correctly with its gradient styling, copy, avatars, and CTA.
+- [x] Search Pixfort `features` returned 158 candidates with stable template IDs and thumbnail URLs.
+- [x] First manual visual-selection test compared four real AI Agency feature thumbnails and selected `ai-agency-home-features-bento-boxes` based on visible composition rather than metadata/title alone.
+- [x] Insert visually selected `ai-agency-home-features-bento-boxes` at the end of page 951743: `saved: true`, inserted top-level ID `258e274f`, revision `951747`, new hash `7225f9b40f9ff100bd77d236c23eb173b4e95ca47e71f2ff57be07f3adfb8794`.
+- [ ] Reopen page 951743 in Elementor and visually confirm the bento section renders directly below the hero.
 
 ## Current environment
 
@@ -99,11 +103,12 @@ Eventually the GPT should be able to:
 - Guarded top-level removal is proven end-to-end; the page structure hash returned exactly to its pre-duplicate value and Elementor visually shows only the original hero.
 - Safe blank draft page creation is runtime-proven in 0.2.6; new page 951743 was created as an empty Elementor draft through REST.
 - Create → compose is proven end-to-end on page 951743: Elementize created the blank draft, inserted a real Pixfort hero, and Elementor rendered it correctly.
+- The first search → visual compare → choose → insert loop is proven at the API layer; the remaining check is visual rendering/order of the chosen bento section in Elementor.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Move from single-section composition to building an ordered multi-section draft page. Reuse the already-proven create + insert primitives rather than introducing a batch mutation prematurely. The remaining gating capability for the intended GPT workflow is reliable visual inspection/selection of Pixfort candidates, so section choices are based on what the templates visibly look like rather than metadata alone.
+Visually confirm the chosen bento feature section renders below the hero on page 951743. Then replace the manual thumbnail-download step with a reliable read-only visual probe that a Custom GPT can consume directly, while continuing to reuse the already-proven create + insert primitives for multi-section composition.
 
 ## Later
 
