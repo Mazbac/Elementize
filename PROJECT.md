@@ -31,12 +31,12 @@ Eventually the GPT should be able to:
 - [x] Real-site catalogue test passed: `AI Agency Portfolio Intro` returned correctly with thumbnail, preview URL, category, subtype and `container_based` metadata.
 - [x] Correct catalogue totals proven: 983 unique sections and 150 unique pages.
 - [x] Fix Pixfort Core detector so Elementize branch names containing `pixfort` are not misidentified.
-- [x] Implement first guarded Pixfort insertion candidate in Elementize 0.2.2.
-- [ ] Install 0.2.2 on the local site.
-- [ ] Read the disposable Elementor test page to obtain a fresh content hash.
-- [ ] Insert one selected Pixfort section at the end of that page.
-- [ ] Confirm `saved: true`, numeric `revision_id`, and inserted top-level IDs.
-- [ ] Reopen Elementor and visually verify the imported section/assets.
+- [x] Fix 0.2.2 bootstrap guard regression; Elementize 0.2.3 restores admin menu + REST hook registration.
+- [x] Install Elementize 0.2.3 on the local site.
+- [x] Read disposable Elementor page 951706 and obtain fresh content hash.
+- [x] Insert Pixfort section `ai-agency-portfolio-intro` at the end of the page through REST.
+- [x] Runtime insert returned `saved: true`, revision `951731`, one top-level inserted element, ID `4889ee30`, and a new content hash.
+- [ ] Reopen Elementor and visually verify the imported section, assets, and preservation of existing content.
 
 ## Current environment
 
@@ -44,8 +44,8 @@ Eventually the GPT should be able to:
 - Elementor 4.2.1 / Elementor Pro 4.2.1.
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
-- Installed runtime build: 0.2.1.
-- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.2.
+- Installed runtime build: 0.2.3.
+- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.3.
 
 ## Safety constraints
 
@@ -60,12 +60,12 @@ Eventually the GPT should be able to:
 
 - Pixfort's own AJAX endpoints are wrappers; Elementize can call the underlying PHP implementation directly.
 - `Source_Pixfort::get_data()` replaces Elementor IDs, runs Elementor import processing, imports media/nested templates, and normalizes content against the target document.
-- Essentials adds `pix_domain` + `purchase_key` request headers through `pixfort_el_remote_get_args`; Elementize 0.2.2 reproduces this only internally during template download.
+- Essentials adds `pix_domain` + `purchase_key` request headers through `pixfort_el_remote_get_args`; Elementize reproduces this only internally during template download.
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
 
 ## Current objective
 
-Install/test 0.2.2 and prove one Pixfort section can be imported and appended safely to the disposable Elementor test page.
+Visually verify the first runtime Pixfort insertion in Elementor: section renders correctly, imported assets are present, and the existing heading/paragraph remain intact.
 
 ## Later
 
