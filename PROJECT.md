@@ -18,19 +18,19 @@ The intended product should eventually let the GPT:
 
 ## Fast V0.1
 
-The smallest genuinely useful vertical slice is safe copy editing of an existing Elementor page through the Elementize API.
+The smallest useful vertical slice is safe copy editing of an existing Elementor page through the Elementize API.
 
 ### Must work
 
 - [x] Install and activate Elementize as a normal WordPress plugin.
 - [x] Show Elementize directly in the WordPress admin sidebar with a basic environment/status screen.
-- [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Local Application Password authentication is proven; external GPT connection is not yet tested.
-- [ ] List editable Elementor pages. Implemented; one real-site endpoint test remains.
+- [x] Expose authenticated REST endpoints suitable for external tooling. WordPress Application Password authentication is proven locally; remote Custom GPT reachability is a separate deployment step.
+- [x] List editable Elementor pages. Real-site `/pages` test returned 23 pages, correctly distinguishing Elementor and non-Elementor pages.
 - [x] Read an Elementor page's structured content / editable text inventory.
 - [x] Update selected text values without rebuilding or flattening the Elementor layout.
 - [x] Save through Elementor's document model rather than direct SQL.
 - [x] Return a clear result that can be checked in Elementor.
-- [ ] Reject unauthorized access and invalid/non-Elementor targets. Unauthenticated access returned 401; remaining invalid-target checks are not yet tested in the real site.
+- [x] Reject unsafe/stale writes. Unauthenticated access returned 401, malformed JSON was rejected before mutation, and a stale/incorrect content hash returned 409.
 - [x] Create a pre-change revision before writes when WordPress revisions are enabled. Confirmed on 0.1.2 with numeric revision ID `951722`.
 
 ### Explicitly out of scope for V0.1
@@ -63,11 +63,12 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Current objective
 
-- Perform one real-site read-only test of `GET /wp-json/elementize/v1/pages` so page discovery is proven, then move to the Pixfort template catalogue/insertion slice.
+- Start the next Fast Build slice: expose the Pixfort/Essentials remote template catalogue through Elementize as read-only structured data, then prove one chosen template can be fetched and inserted safely into a disposable Elementor page.
 
 ## Known blockers / issues
 
-- `mijn-ibp.local` is not remotely reachable by a Custom GPT Action. Local API behavior can be built/tested first; GPT integration requires a public HTTPS test/staging endpoint or secure tunnel.
+- `mijn-ibp.local` is not remotely reachable by a Custom GPT Action. Local API behavior can continue to be built/tested first; GPT integration requires a public HTTPS test/staging endpoint or secure tunnel.
+- Before productionizing Pixfort access, identify the Pixfort Core PHP handler behind the observed AJAX actions if practical; avoid depending on browser automation.
 
 ## Backlog
 
@@ -82,12 +83,12 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: Elementize 0.1.2 is installed and active on the real local WordPress site. Authenticated targeted Elementor read/write and pre-change revision creation are proven.
-- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, read-only extraction of two test copy fields, targeted heading updates returning `saved: true`, stale-write 409 protection, visual Elementor verification after reopening, and numeric pre-change revision creation (`951722`).
-- Visual verification confirmed the neighboring paragraph/layout remained intact and Elementor opened normally.
-- Earlier fixture checks passed: recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior.
-- Last known-good real environment checkpoint: 0.1.2 successfully changed `Changed by Elementize` to `Revision test passed` and returned `revision_id: 951722`.
-- V0.1 usable: Core editing/safety path yes; page-discovery endpoint still needs one real-site check before closing the slice.
+- Status: Fast V0.1 core is complete and proven on the real local WordPress/Elementor site.
+- Installed build: Elementize 0.1.2.
+- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, page discovery, read-only copy extraction, targeted copy writes, malformed-request rejection, stale-write 409 protection, visual Elementor integrity after reopening, and numeric pre-change revision creation (`951722`).
+- `/pages` real-site result: 23 editable pages across two result pages; `Elementize Test` returned first with `is_elementor: true`, while normal WordPress pages such as the default Sample Page were correctly returned with `is_elementor: false`.
+- Last known-good checkpoint: 0.1.2 successfully changed `Changed by Elementize` to `Revision test passed`, returned `revision_id: 951722`, and page discovery succeeded afterward.
+- V0.1 usable: Yes for the local authenticated Elementor copy-editing slice.
 
 ## Notes from real use
 
