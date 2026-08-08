@@ -22,7 +22,7 @@ Eventually the GPT should be able to:
 - [x] Visual layout/editor integrity after writes.
 - [x] Real pre-change WordPress/Elementor revision before writes.
 
-## Fast V0.2 — Pixfort library
+## Fast V0.2 — Pixfort library/composition
 
 - [x] Inspect installed Pixfort Core 4.1.3 + Essentials 4.1.1 source.
 - [x] Identify direct catalogue path (`pixfort_elementor_library_data()`).
@@ -55,7 +55,7 @@ Eventually the GPT should be able to:
 - [x] Runtime removal returned `saved: true`, revision `951740`, removed type `container`, and remaining top-level IDs `4e0b32a`, `9f7d292`, `4889ee30`.
 - [x] Original hero `4889ee30` remained present; removed ID `6bfbcd1a` is absent.
 - [x] Post-removal content hash returned exactly to the pre-duplicate hash `8e487f247d1cc9893a7ec648baf0db94866a7baed9c9fc26159896c7bbc615fb`.
-- [ ] Reopen Elementor and visually confirm only the original AI hero remains.
+- [x] Visual removal proof passed: Elementor shows only the original `Transform Your Business With Strategic AI` hero and the `POSITION TEST — BEFORE` duplicate is gone.
 
 ## Current environment
 
@@ -64,7 +64,7 @@ Eventually the GPT should be able to:
 - Pixfort Core 4.1.3.
 - Essentials 4.1.1.
 - Installed runtime build: 0.2.5.
-- Candidate branch/build: `fastbuild/pixfort-library` / 0.2.5.
+- Candidate branch: `fastbuild/pixfort-library`.
 
 ## Safety constraints
 
@@ -74,6 +74,7 @@ Eventually the GPT should be able to:
 - Mutations use a fresh page content hash and a pre-change revision.
 - `before`/`after` Pixfort insertion targets must be current top-level Elementor element IDs.
 - Top-level removal accepts only current top-level Elementor `container` or legacy `section` IDs and verifies the ID is absent after save.
+- New page creation should default to draft and must not silently publish.
 - Purchase keys, Application Passwords, cookies, nonces, HAR files, and proprietary theme/plugin source are never committed or returned by the API.
 - Normal operation must not depend on browser automation.
 
@@ -85,18 +86,18 @@ Eventually the GPT should be able to:
 - `pixfort_elementor_library_data()` must not be called twice in one request in Essentials 4.1.1 because its `require_once('library.php')` leaves the second call without the local `$library` variable. The catalogue endpoint caches its first result; the insertion path intentionally lets `Source_Pixfort` make the single catalogue call itself.
 - The first Pixfort runtime insert is proven visually and structurally; top-level inserted ID was `4889ee30` and pre-change revision was `951731`.
 - 0.2.4 copy hardening is runtime-proven: `flex_justify_content` and `flex_justify_content_tablet` no longer appear, while the real AI hero copy still does.
-- Controlled `before` insertion is now proven end-to-end, including visual order in Elementor.
-- Guarded top-level removal is runtime-proven at the API layer; the page structure hash returned exactly to its pre-duplicate value after removing the disposable hero.
+- Controlled `before` insertion is proven end-to-end, including visual order in Elementor.
+- Guarded top-level removal is proven end-to-end; the page structure hash returned exactly to its pre-duplicate value and Elementor visually shows only the original hero.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Visually confirm the guarded top-level removal, then move to the next page-composition capability.
+Add safe creation of a blank draft Elementor page so the GPT can start a new page, then compose it using the already-proven Pixfort insertion/copy/removal primitives.
 
 ## Later
 
 - Visual thumbnail delivery/matching for Custom GPT.
-- New Elementor page creation from a section plan.
+- Multi-section page creation from a section plan.
 - Media/color/icon operations.
-- Draft/delete/restore workflows.
+- Draft/delete/restore and explicit publish workflows.
 - Public HTTPS staging/tunnel and Custom GPT OpenAPI schema.
