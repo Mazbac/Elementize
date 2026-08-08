@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: A controlled REST API for conversational WordPress and Elementor editing.
- * Version: 0.1.2
+ * Version: 0.2.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Elementize_V01 {
-	private const VERSION = '0.1.2';
+	private const VERSION = '0.2.0';
 	private const REST_NAMESPACE = 'elementize/v1';
 	private const MAX_TEXT_LENGTH = 20000;
 	private const MAX_UPDATES = 100;
@@ -46,15 +46,18 @@ final class Elementize_V01 {
 		$pixfort = self::get_pixfort_plugin_info();
 		$theme = wp_get_theme();
 		$api_url = rest_url( self::REST_NAMESPACE . '/status' );
+		$pixfort_library_file = trailingslashit( get_template_directory() ) . 'inc/demo-content/elementor/loader.php';
+		$pixfort_library_available = file_exists( $pixfort_library_file );
 		?>
 		<div class="wrap">
 			<h1>Elementize</h1>
-			<p>Controlled WordPress and Elementor access for conversational tools.</p>
+			<p>Controlled WordPress, Elementor, and Pixfort access for conversational tools.</p>
 
 			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:1000px;margin-top:20px;">
 				<?php self::render_status_card( 'Elementize', true, 'Version ' . self::VERSION ); ?>
 				<?php self::render_status_card( 'Elementor', $elementor_loaded, $elementor_loaded && defined( 'ELEMENTOR_VERSION' ) ? 'Version ' . ELEMENTOR_VERSION : 'Not detected' ); ?>
 				<?php self::render_status_card( 'Pixfort Core', $pixfort['active'], $pixfort['active'] ? trim( $pixfort['name'] . ( $pixfort['version'] ? ' ' . $pixfort['version'] : '' ) ) : 'Not detected' ); ?>
+				<?php self::render_status_card( 'Pixfort Library', $pixfort_library_available, $pixfort_library_available ? 'Catalogue source detected' : 'Catalogue source not detected' ); ?>
 				<?php self::render_status_card( 'REST API', true, 'Endpoint registered' ); ?>
 			</div>
 
@@ -74,18 +77,18 @@ final class Elementize_V01 {
 							<td><strong>API status endpoint</strong></td>
 							<td><code><?php echo esc_html( $api_url ); ?></code></td>
 						</tr>
+						<tr>
+							<td><strong>Pixfort catalogue endpoint</strong></td>
+							<td><code><?php echo esc_html( rest_url( self::REST_NAMESPACE . '/pixfort/templates' ) ); ?></code></td>
+						</tr>
 					</tbody>
 				</table>
 			</div>
 
 			<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;">
-				<h2 style="margin-top:0;">V0.1 test state</h2>
-				<?php if ( $elementor_loaded ) : ?>
-					<p><strong>Ready for the first controlled API test.</strong> The next validation is to read one Elementor page and change one harmless text value.</p>
-				<?php else : ?>
-					<p><strong>Elementor is not detected.</strong> Activate Elementor before testing Elementize.</p>
-				<?php endif; ?>
-				<p>No destructive page operations are exposed in this build.</p>
+				<h2 style="margin-top:0;">Current test state</h2>
+				<p><strong>V0.1 Elementor copy editing is proven.</strong> Version 0.2.0 adds the first read-only Pixfort catalogue endpoint.</p>
+				<p>No Pixfort template insertion or destructive page operations are exposed in this build.</p>
 			</div>
 		</div>
 		<?php
@@ -162,6 +165,46 @@ final class Elementize_V01 {
 				'permission_callback' => [ self::class, 'can_access' ],
 				'args'                => [
 					'page'     => [
+						'type'              => 'integer',
+						'default'           => 1,
+						'minimum'           => 1,
+						'sanitize_callback' => 'absint',
+					],
+					'per_page' => [
+						'type'              => 'integer',
+						'default'           => 50,
+						'minimum'           => 1,
+						'maximum'           => 100,
+						'sanitize_callback' => 'absint',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/pixfort/templates',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ self::class, 'list_pixfort_templates' ],
+				'permission_callback' => [ self::class, 'can_access' ],
+				'args'                => [
+					'type' => [
+						'type'              => 'string',
+						'default'           => 'section',
+						'sanitize_callback' => 'sanitize_key',
+					],
+					'q' => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'category' => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_key',
+					],
+					'page' => [
 						'type'              => 'integer',
 						'default'           => 1,
 						'minimum'           => 1,
@@ -270,18 +313,20 @@ final class Elementize_V01 {
 		$elementor_loaded = class_exists( '\\Elementor\\Plugin' );
 		$theme = wp_get_theme();
 		$pixfort = self::get_pixfort_plugin_info();
+		$pixfort_library_file = trailingslashit( get_template_directory() ) . 'inc/demo-content/elementor/loader.php';
 
 		return new WP_REST_Response(
 			[
-				'elementize_version' => self::VERSION,
-				'wordpress_version'  => get_bloginfo( 'version' ),
-				'elementor_loaded'   => $elementor_loaded,
-				'elementor_version'  => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null,
-				'pixfort_loaded'     => $pixfort['active'],
-				'pixfort_name'       => $pixfort['active'] ? $pixfort['name'] : null,
-				'pixfort_version'    => $pixfort['active'] ? $pixfort['version'] : null,
-				'theme'              => $theme->get( 'Name' ),
-				'theme_version'      => $theme->get( 'Version' ),
+				'elementize_version'       => self::VERSION,
+				'wordpress_version'        => get_bloginfo( 'version' ),
+				'elementor_loaded'         => $elementor_loaded,
+				'elementor_version'        => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null,
+				'pixfort_loaded'           => $pixfort['active'],
+				'pixfort_name'             => $pixfort['active'] ? $pixfort['name'] : null,
+				'pixfort_version'          => $pixfort['active'] ? $pixfort['version'] : null,
+				'pixfort_library_detected' => file_exists( $pixfort_library_file ),
+				'theme'                    => $theme->get( 'Name' ),
+				'theme_version'            => $theme->get( 'Version' ),
 			],
 			200
 		);
@@ -340,6 +385,211 @@ final class Elementize_V01 {
 		);
 	}
 
+	public static function list_pixfort_templates( WP_REST_Request $request ) {
+		$library = self::load_pixfort_library();
+		if ( is_wp_error( $library ) ) {
+			return $library;
+		}
+
+		$type = strtolower( (string) $request->get_param( 'type' ) );
+		if ( '' === $type ) {
+			$type = 'section';
+		}
+		if ( ! in_array( $type, [ 'section', 'page', 'all' ], true ) ) {
+			return new WP_Error(
+				'elementize_invalid_pixfort_type',
+				'Pixfort type must be section, page, or all.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$q = strtolower( trim( (string) $request->get_param( 'q' ) ) );
+		$category = strtolower( trim( (string) $request->get_param( 'category' ) ) );
+		$page = max( 1, absint( $request->get_param( 'page' ) ) );
+		$per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+
+		$templates = [];
+		if ( 'section' === $type || 'all' === $type ) {
+			self::append_pixfort_templates( $templates, $library['sections'] ?? [], 'section' );
+		}
+		if ( 'page' === $type || 'all' === $type ) {
+			self::append_pixfort_templates( $templates, $library['pages'] ?? [], 'page' );
+		}
+
+		$filtered = [];
+		foreach ( array_values( $templates ) as $template ) {
+			$categories = array_map( 'strtolower', $template['categories'] );
+			if ( '' !== $category && 'all' !== $category && ! in_array( $category, $categories, true ) ) {
+				continue;
+			}
+
+			if ( '' !== $q ) {
+				$haystack = strtolower(
+					implode(
+						' ',
+						array_filter(
+							[
+								$template['id'],
+								$template['title'],
+								$template['subtype'],
+								implode( ' ', $template['categories'] ),
+							]
+						)
+					)
+				);
+				if ( false === strpos( $haystack, $q ) ) {
+					continue;
+				}
+			}
+
+			$filtered[] = $template;
+		}
+
+		usort(
+			$filtered,
+			static function ( array $a, array $b ): int {
+				return strcasecmp( $a['title'], $b['title'] );
+			}
+		);
+
+		$total = count( $filtered );
+		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
+		$offset = ( $page - 1 ) * $per_page;
+		$items = array_slice( $filtered, $offset, $per_page );
+
+		$category_data = [];
+		if ( 'section' === $type ) {
+			$category_data = self::normalize_pixfort_categories( $library['sectionsCategories'] ?? [] );
+		} elseif ( 'page' === $type ) {
+			$category_data = self::normalize_pixfort_categories( $library['pagesCategories'] ?? [] );
+		} else {
+			$category_data = [
+				'section' => self::normalize_pixfort_categories( $library['sectionsCategories'] ?? [] ),
+				'page'    => self::normalize_pixfort_categories( $library['pagesCategories'] ?? [] ),
+			];
+		}
+
+		return new WP_REST_Response(
+			[
+				'type'                 => $type,
+				'q'                    => $q,
+				'category'             => $category,
+				'page'                 => $page,
+				'per_page'             => $per_page,
+				'total'                => $total,
+				'total_pages'          => $total_pages,
+				'available_categories' => $category_data,
+				'templates'            => $items,
+			],
+			200
+		);
+	}
+
+	private static function append_pixfort_templates( array &$templates, $source, string $kind ): void {
+		if ( ! is_array( $source ) ) {
+			return;
+		}
+
+		foreach ( $source as $raw ) {
+			if ( ! is_array( $raw ) || empty( $raw['id'] ) ) {
+				continue;
+			}
+
+			$id = (string) $raw['id'];
+			$key = $kind . '|' . $id;
+			$categories = [];
+			if ( isset( $raw['categories'] ) && is_array( $raw['categories'] ) ) {
+				foreach ( $raw['categories'] as $raw_category ) {
+					if ( is_string( $raw_category ) && '' !== trim( $raw_category ) ) {
+						$categories[] = strtolower( trim( $raw_category ) );
+					}
+			}
+
+			if ( isset( $templates[ $key ] ) ) {
+				$templates[ $key ]['categories'] = array_values(
+					array_unique( array_merge( $templates[ $key ]['categories'], $categories ) )
+				);
+				continue;
+			}
+
+			$templates[ $key ] = [
+				'id'              => $id,
+				'kind'            => $kind,
+				'title'           => isset( $raw['title'] ) ? (string) $raw['title'] : $id,
+				'thumbnail'       => isset( $raw['thumbnail'] ) ? esc_url_raw( (string) $raw['thumbnail'] ) : null,
+				'preview_url'     => isset( $raw['url'] ) ? esc_url_raw( (string) $raw['url'] ) : null,
+				'pixfort_type'    => isset( $raw['type'] ) ? (string) $raw['type'] : null,
+				'subtype'         => isset( $raw['subtype'] ) ? (string) $raw['subtype'] : null,
+				'categories'      => array_values( array_unique( $categories ) ),
+				'container_based' => ! empty( $raw['container_based'] ),
+			];
+		}
+	}
+
+	private static function normalize_pixfort_categories( $source ): array {
+		if ( ! is_array( $source ) ) {
+			return [];
+		}
+
+		$categories = [];
+		foreach ( $source as $raw ) {
+			if ( ! is_array( $raw ) || empty( $raw['id'] ) ) {
+				continue;
+			}
+
+			$categories[] = [
+				'id'     => (string) $raw['id'],
+				'title'  => isset( $raw['title'] ) ? (string) $raw['title'] : (string) $raw['id'],
+				'number' => isset( $raw['number'] ) ? absint( $raw['number'] ) : null,
+			];
+		}
+
+		return $categories;
+	}
+
+	private static function load_pixfort_library() {
+		static $cached_library = null;
+		if ( is_array( $cached_library ) ) {
+			return $cached_library;
+		}
+
+		if ( ! function_exists( 'pixfort_elementor_library_data' ) ) {
+			$loader = trailingslashit( get_template_directory() ) . 'inc/demo-content/elementor/loader.php';
+			if ( file_exists( $loader ) ) {
+				require_once $loader;
+			}
+		}
+
+		if ( ! function_exists( 'pixfort_elementor_library_data' ) ) {
+			return new WP_Error(
+				'elementize_pixfort_library_unavailable',
+				'The active theme does not expose the Pixfort Elementor template library.',
+				[ 'status' => 503 ]
+			);
+		}
+
+		try {
+			$library = pixfort_elementor_library_data();
+		} catch ( Throwable $exception ) {
+			return new WP_Error(
+				'elementize_pixfort_library_failed',
+				'Pixfort could not load its Elementor template catalogue: ' . $exception->getMessage(),
+				[ 'status' => 500 ]
+			);
+		}
+
+		if ( ! is_array( $library ) || ! isset( $library['sections'], $library['pages'] ) ) {
+			return new WP_Error(
+				'elementize_pixfort_library_invalid',
+				'Pixfort returned an invalid template catalogue.',
+				[ 'status' => 500 ]
+			);
+		}
+
+		$cached_library = $library;
+		return $cached_library;
+	}
+
 	public static function get_page_text( WP_REST_Request $request ) {
 		$post_id = absint( $request['id'] );
 		$document = self::require_elementor_document( $post_id );
@@ -358,7 +608,6 @@ final class Elementize_V01 {
 
 		$items = [];
 		self::collect_text_items_from_elements( $elements, $items );
-
 		$post = get_post( $post_id );
 
 		return new WP_REST_Response(
@@ -462,27 +711,9 @@ final class Elementize_V01 {
 			];
 		}
 
-		$revision_id = null;
-		$post = get_post( $post_id );
-		$revisions_enabled = $post && post_type_supports( $post->post_type, 'revisions' ) && wp_revisions_enabled( $post );
-
-		if ( $revisions_enabled ) {
-			add_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
-			try {
-				$saved_revision = wp_save_post_revision( $post_id );
-			} finally {
-				remove_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
-			}
-
-			if ( is_wp_error( $saved_revision ) || ! is_int( $saved_revision ) || $saved_revision <= 0 ) {
-				return new WP_Error(
-					'elementize_revision_failed',
-					'Elementize could not create a pre-change revision, so the page was not modified.',
-					[ 'status' => 500 ]
-				);
-			}
-
-			$revision_id = $saved_revision;
+		$revision = self::create_prechange_revision( $post_id );
+		if ( is_wp_error( $revision ) ) {
+			return $revision;
 		}
 
 		try {
@@ -511,7 +742,7 @@ final class Elementize_V01 {
 				'saved'         => true,
 				'page_id'       => $post_id,
 				'updated_count' => count( $changed ),
-				'revision_id'   => $revision_id,
+				'revision_id'   => $revision,
 				'content_hash'  => self::hash_elements( is_array( $reloaded_elements ) ? $reloaded_elements : $elements ),
 				'changes'       => $changed,
 				'edit_url'      => $document->get_edit_url(),
@@ -519,6 +750,32 @@ final class Elementize_V01 {
 			],
 			200
 		);
+	}
+
+	private static function create_prechange_revision( int $post_id ) {
+		$post = get_post( $post_id );
+		$revisions_enabled = $post && post_type_supports( $post->post_type, 'revisions' ) && wp_revisions_enabled( $post );
+
+		if ( ! $revisions_enabled ) {
+			return null;
+		}
+
+		add_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
+		try {
+			$saved_revision = wp_save_post_revision( $post_id );
+		} finally {
+			remove_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
+		}
+
+		if ( is_wp_error( $saved_revision ) || ! is_int( $saved_revision ) || $saved_revision <= 0 ) {
+			return new WP_Error(
+				'elementize_revision_failed',
+				'Elementize could not create a pre-change revision, so the page was not modified.',
+				[ 'status' => 500 ]
+			);
+		}
+
+		return $saved_revision;
 	}
 
 	private static function validate_update( $update, int $index ) {
@@ -603,7 +860,7 @@ final class Elementize_V01 {
 				if ( ! is_string( $cursor ) || ! self::is_copy_candidate( $setting_path, $cursor ) ) {
 					return new WP_Error(
 						'elementize_not_copy_field',
-						'Elementize only permits text updates to recognized copy fields in V0.1.',
+						'Elementize only permits text updates to recognized copy fields in this build.',
 						[ 'status' => 400 ]
 					);
 				}
