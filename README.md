@@ -1,73 +1,76 @@
-# Fast Build OS Template
+# Elementize
 
-A lightweight template for building small, useful AI-assisted software products quickly.
+Elementize is a WordPress plugin that exposes a controlled API for working with Elementor from an external AI client such as a Custom GPT.
 
-## Goal
+This repository also contains the Fast Build OS project/discovery files used to keep implementation evidence-driven and scoped.
 
-Get to a genuinely useful V0.1 as fast as practical without letting AI drift into unnecessary scope, speculative debugging, or large rewrites.
+## Current V0.1
 
-## Included files
+The first vertical slice is deliberately limited to safe copy editing of existing Elementor pages.
 
-- `FAST_BUILD_OS.md` — the development process and stop-loss rules.
-- `AGENTS.md` — operating instructions for coding agents such as Codex.
-- `PROJECT.md` — the current project's outcome, V0.1 scope, backlog, and working state.
-- `DISCOVERY.md` — verified technical knowledge, evidence, unknowns, and validated decisions.
+Implemented endpoints:
 
-## Starting a new project
+- `GET /wp-json/elementize/v1/status`
+- `GET /wp-json/elementize/v1/pages`
+- `GET /wp-json/elementize/v1/pages/{id}/text`
+- `POST|PUT|PATCH /wp-json/elementize/v1/pages/{id}/text`
 
-1. Create a new repository from this GitHub template.
-2. Open/use the new repository with ChatGPT/Codex.
-3. Start with:
+V0.1 does **not** expose arbitrary Elementor JSON writes, styling/media changes, page deletion, or Pixfort insertion yet.
 
-   `Start Fast Build: I want [desired outcome].`
+## Safety model
 
-4. Let the AI update `PROJECT.md` as the outcome and V0.1 are clarified.
-5. If the implementation path is uncertain, let the AI research first and update `DISCOVERY.md`.
-6. Provide screenshots, logs, sanitized network traces, or other real-world evidence only when requested and useful.
-7. Let Codex implement the smallest end-to-end vertical slice.
-8. Test the real result and report what happened.
-9. Once V0.1 is useful, use it before expanding the scope.
+- Every endpoint requires an authenticated WordPress user with page-editing capability.
+- Per-page operations also require `edit_post` permission for that page.
+- Text updates are limited to recognized copy settings; URL/media/style/query-like settings are rejected.
+- A `content_hash` returned by the read endpoint must still match before a write is accepted, preventing stale edits from overwriting newer page changes.
+- A WordPress/Elementor revision is requested before the Elementor document is saved.
+- Elementor's document model is used for persistence rather than direct database writes.
+- The API never needs browser cookies or Elementor editor nonces from a Custom GPT.
 
-## Typical conversation
+## Local test
 
-**You:** `Start Fast Build: I want a tool that ...`
+1. Check out the `fastbuild/elementize-v0.1` branch in the WordPress plugins directory, or install a ZIP of that branch.
+2. Activate **Elementize** in WordPress.
+3. Create a dedicated WordPress Application Password for the test user rather than sharing the user's normal WordPress password.
+4. Call the status endpoint with HTTP Basic authentication over HTTPS.
+5. List pages, read one Elementor page's text inventory, then make one small copy change on a non-critical test page.
+6. Open the page in Elementor and verify that the text changed while the layout remained intact.
+7. If the test passes, continue with the Pixfort catalogue/template-insertion slice recorded in `DISCOVERY.md`.
 
-**AI:** Defines the smallest useful outcome, checks whether the technical path is known, researches or asks for targeted evidence if necessary, then scopes the implementation.
+Example request shape for a text update:
 
-**You:** `Here is the evidence you asked for.`
+```json
+{
+  "content_hash": "HASH_FROM_GET_TEXT",
+  "updates": [
+    {
+      "element_id": "ELEMENT_ID_FROM_GET_TEXT",
+      "setting_path": ["title"],
+      "expected_value": "Old heading",
+      "value": "New heading"
+    }
+  ]
+}
+```
 
-**AI:** Analyzes it, records durable findings, validates the critical path, and proceeds when the approach is sufficiently established.
+## Current evidence
 
-**You:** `I tested it. This happened ...`
+The supplied Elementor/Pixfort network capture established that the Essentials/Pixfort library is machine-readable:
 
-**AI:** Reproduces/diagnoses from evidence and makes a focused fix. After two failed speculative fixes, it stops coding and investigates instead of thrashing.
+- `pix_core_getElementorDemos` returns the remote section/page catalogue and preview metadata.
+- `pix_core_getElementorTemplate` returns a selected template as Elementor JSON.
+- Captured returned templates already referenced media imported into the local WordPress uploads directory.
 
-**You:** `New idea: ...`
+The sensitive HAR capture itself is intentionally not stored in Git. Sanitized findings are recorded in `DISCOVERY.md`.
 
-**AI:** Adds it to the backlog unless it is required for the current useful outcome.
+## Project files
 
-## Human role
+- `elementize.php` — current V0.1 plugin implementation.
+- `PROJECT.md` — product outcome, V0.1 scope, backlog, and working state.
+- `DISCOVERY.md` — validated technical findings and remaining unknowns.
+- `FAST_BUILD_OS.md` — development process and stop-loss rules.
+- `AGENTS.md` — operating instructions for coding agents.
 
-You do not need to be the developer. Your main responsibilities are:
-- describe what you want to achieve;
-- provide access/context about the real environment;
-- perform simple evidence-gathering steps when useful;
-- test the resulting product;
-- report what actually happened.
+## Status
 
-## AI role
-
-The AI should:
-- research before guessing;
-- prefer proven/supported paths;
-- keep V0.1 small;
-- prove dangerous assumptions early;
-- implement in small vertical slices;
-- preserve known-good states;
-- diagnose with evidence;
-- prevent unrelated ideas from hijacking the build;
-- keep `PROJECT.md` and `DISCOVERY.md` current.
-
-## Core principle
-
-> The fastest responsible path to a genuinely useful working product.
+The V0.1 code is syntax-checked and its core recursive text-targeting helper has been exercised with local fixture tests. It has **not yet been validated inside the real WordPress/Elementor installation**, so it should be treated as a test candidate, not a known-good release.
