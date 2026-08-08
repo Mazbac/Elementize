@@ -22,15 +22,15 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ### Must work
 
-- [ ] Install and activate Elementize as a normal WordPress plugin. Implemented; real-site activation of the latest build still needs validation.
-- [ ] Show Elementize directly in the WordPress admin sidebar with a basic environment/status screen. Implemented in 0.1.1; real-site test pending.
-- [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Implemented locally; external GPT connection not yet tested.
-- [ ] List editable Elementor pages. Implemented; real-site test pending.
-- [ ] Read an Elementor page's structured content / editable text inventory. Implemented; real-site test pending.
-- [ ] Update selected text values without rebuilding or flattening the Elementor layout. Implemented; real-site test pending.
-- [ ] Save through Elementor's document model rather than direct SQL. Implemented; real-site test pending.
-- [ ] Return a clear result that can be checked in Elementor. Implemented; real-site test pending.
-- [ ] Reject unauthorized access and invalid/non-Elementor targets. Implemented; real-site test pending.
+- [x] Install and activate Elementize as a normal WordPress plugin. Confirmed on the real local site with 0.1.1.
+- [x] Show Elementize directly in the WordPress admin sidebar with a basic environment/status screen. Confirmed on the real local site.
+- [ ] Expose authenticated REST endpoints suitable for a Custom GPT Action. Local Application Password authentication is proven; external GPT connection is not yet tested.
+- [ ] List editable Elementor pages. Implemented; real-site endpoint test pending.
+- [x] Read an Elementor page's structured content / editable text inventory. Confirmed on a real Elementor test page.
+- [ ] Update selected text values without rebuilding or flattening the Elementor layout. Implemented; real-site write test pending.
+- [ ] Save through Elementor's document model rather than direct SQL. Implemented; real-site write test pending.
+- [ ] Return a clear result that can be checked in Elementor. Implemented; real-site write test pending.
+- [ ] Reject unauthorized access and invalid/non-Elementor targets. Unauthenticated request returned 401; remaining invalid-target checks are not yet tested in the real site.
 
 ### Explicitly out of scope for V0.1
 
@@ -44,11 +44,11 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 ## Current environment
 
 - Platform / runtime: WordPress local development site (`mijn-ibp.local`).
-- WordPress assets observed at version 7.0.3.
-- Elementor editor assets observed at version 4.2.1.
-- Elementor Pro assets observed at version 4.2.1.
-- Pixfort Core assets observed at version 4.1.3.
-- Theme/integration: Essentials + Pixfort Core + Elementor.
+- WordPress: 7.0.3.
+- Elementor: 4.2.1.
+- Elementor Pro: 4.2.1 observed in editor assets.
+- Pixfort Core: 4.1.3.
+- Theme: Essentials 4.1.1.
 - Development/test environment: local WordPress installation; a public HTTPS endpoint will be needed before a Custom GPT Action can call the API remotely.
 
 ## Constraints
@@ -56,13 +56,13 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 - Preserve Elementor's structured JSON and addon-specific settings unless a requested operation deliberately changes them.
 - Prefer Elementor/WordPress APIs over direct database writes.
 - Authentication is mandatory for every mutating or private endpoint.
-- No secrets, cookies, WordPress nonces, or HAR captures are stored in the repository.
+- No secrets, cookies, WordPress nonces, Application Passwords, or HAR captures are stored in the repository.
 - Mutations should be narrow, validated, and reversible where practical.
 - The plugin should not depend on browser automation for normal operation.
 
 ## Current objective
 
-- Validate the 0.1.1 candidate in the real local WordPress/Elementor environment: install/update -> confirm Elementize sidebar/status page -> authenticate -> list/read page -> make one small copy update -> open Elementor and verify layout/data integrity.
+- Perform one controlled copy write on the disposable Elementor test page, then reopen it in Elementor and verify the heading changed while the paragraph/layout remain intact.
 
 ## Known blockers
 
@@ -81,14 +81,15 @@ The smallest genuinely useful vertical slice is safe copy editing of an existing
 
 ## Working state
 
-- Status: V0.1.1 implementation candidate committed on `fastbuild/elementize-v0.1`; awaiting real WordPress/Elementor validation.
-- Latest candidate checkpoint: `elementize.php` commit `3e196b7abd61303360bd1ddc9a73076ad19fc8ee`.
-- Earlier local validation: PHP syntax check passed for 0.1.0; recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior passed fixture tests.
-- 0.1.1 adds the WordPress admin sidebar/status page and Pixfort detection; runtime validation is pending.
-- Last known-good real environment checkpoint: Existing WordPress/Elementor installation before updating to Elementize 0.1.1.
-- V0.1 usable: Not yet proven.
+- Status: Elementize 0.1.1 is installed and active on the real local WordPress site.
+- Plugin checkpoint: `elementize.php` commit `3e196b7abd61303360bd1ddc9a73076ad19fc8ee`.
+- Real runtime checks passed: admin sidebar/status page, Elementor/Pixfort detection, Application Password authentication, unauthorized 401 behavior, and read-only extraction of the two test copy fields from a real Elementor page.
+- Earlier fixture checks passed: recursive target traversal, nested setting-path update, blocked-field rejection, and missing-element behavior.
+- Last known-good real environment checkpoint: test page successfully read through `/wp-json/elementize/v1/pages/{id}/text` before any API write.
+- V0.1 usable: Not yet proven; one real write-and-verify test remains.
 
 ## Notes from real use
 
 - A sanitized analysis of an Elementor/Pixfort HAR capture validated that Pixfort exposes machine-usable catalogue and template-fetch operations; details are recorded in `DISCOVERY.md`.
 - Elementor source confirms its revision manager copies Elementor meta into WordPress revisions and restores that meta on revision restore.
+- Real read test returned the normal Elementor Heading copy (`Original heading`) and Text Editor HTML (`<p>Original paragraph</p>`) as separate editable text items without exposing arbitrary page JSON for mutation.
