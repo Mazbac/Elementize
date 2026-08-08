@@ -26,7 +26,7 @@ Eventually the GPT should be able to:
 
 - [x] Inspect installed Pixfort Core 4.1.3 + Essentials 4.1.1 source.
 - [x] Identify direct catalogue path (`pixfort_elementor_library_data()`).
-- [x] Identify direct template-preparation path (`Elementor\\TemplateLibrary\\Source_Pixfort::get_data()`).
+- [x] Identify direct template-preparation path (`Elementor\TemplateLibrary\Source_Pixfort::get_data()`).
 - [x] Implement read-only searchable/paginated Pixfort catalogue.
 - [x] Real-site catalogue test passed: `AI Agency Portfolio Intro` returned correctly with thumbnail, preview URL, category, subtype and `container_based` metadata.
 - [x] Correct catalogue totals proven: 983 unique sections and 150 unique pages.
@@ -62,7 +62,8 @@ Eventually the GPT should be able to:
 - [x] Install 0.2.6 on the local site.
 - [x] Create disposable draft page `Elementize Draft Build` through `/pages/create`: page ID `951743`, status `draft`, `is_elementor: true`, `top_level_count: 0`, slug `elementize-draft-build`, and usable Elementor edit URL.
 - [x] New blank draft returned content hash `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
-- [ ] Insert a real Pixfort section into newly created draft page 951743 using that returned content hash.
+- [x] Insert real Pixfort section `ai-agency-portfolio-intro` into newly created draft page 951743 using that returned content hash.
+- [x] Runtime composition returned `saved: true`, inserted top-level ID `2a8e1ffa`, revision `951745`, and new content hash `4825160dbff90dccca63881e5d13b0b26a6bd342d19f5b012d240525dee28637`.
 - [ ] Reopen page 951743 in Elementor and visually verify the imported section renders correctly on a page created entirely through Elementize.
 
 ## Current environment
@@ -97,11 +98,12 @@ Eventually the GPT should be able to:
 - Controlled `before` insertion is proven end-to-end, including visual order in Elementor.
 - Guarded top-level removal is proven end-to-end; the page structure hash returned exactly to its pre-duplicate value and Elementor visually shows only the original hero.
 - Safe blank draft page creation is runtime-proven in 0.2.6; new page 951743 was created as an empty Elementor draft through REST.
+- Create → compose is runtime-proven at the API layer on page 951743: Elementize created the blank draft and then inserted a real Pixfort hero into it.
 - Pixfort `template_title` currently returns the slug for the tested insertion; this is cosmetic cleanup.
 
 ## Current objective
 
-Compose newly created draft page 951743 with a real Pixfort section using its fresh content hash, then visually verify the result in Elementor.
+Visually verify page 951743 in Elementor, then move from single-section composition to a multi-section draft-page build flow.
 
 ## Later
 
