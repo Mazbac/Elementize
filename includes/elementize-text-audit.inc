@@ -3,10 +3,11 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Text_Audit {
-    private const VERSION = '0.5.4';
+    private const VERSION = '0.5.5';
     private const NS = 'elementize/v1';
     private const MAX_MATCHES = 50;
     private const MAX_DEPTH = 3;
+    private const MAX_ERRORS = 20;
 
     public static function init(): void {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 65 );
@@ -60,6 +61,10 @@ final class Elementize_Text_Audit {
             if ( count( $template_matches ) >= self::MAX_MATCHES ) break;
         }
 
+        $effective_matches = [];
+        $effective_errors = [];
+        self::scan_effective_widget_settings( $elements, $q, $effective_matches, $effective_errors );
+
         return new WP_REST_Response( [
             'page_id' => $id,
             'query' => $q,
@@ -72,7 +77,11 @@ final class Elementize_Text_Audit {
             'elementor_library_ref_sources' => self::ref_sources( $all_template_refs ),
             'template_match_count' => count( $template_matches ),
             'template_matches' => $template_matches,
-            'diagnosis' => self::diagnosis( $page_matches, $template_matches, $all_template_refs ),
+            'effective_widget_match_count' => count( $effective_matches ),
+            'effective_widget_matches' => $effective_matches,
+            'effective_widget_error_count' => count( $effective_errors ),
+            'effective_widget_errors' => $effective_errors,
+            'diagnosis' => self::diagnosis( $page_matches, $template_matches, $all_template_refs, $effective_matches ),
             'read_only' => true,
         ], 200 );
     }
@@ -86,6 +95,7 @@ final class Elementize_Text_Audit {
         $data['text_source_audit'] = true;
         $data['text_source_audit_read_only'] = true;
         $data['text_source_audit_broad_template_refs'] = true;
+        $data['text_source_audit_effective_widget_settings'] = true;
         $response->set_data( $data );
         return $response;
     }
@@ -122,8 +132,123 @@ final class Elementize_Text_Audit {
         $matches[] = [
             'path' => array_values( $path ),
             'setting_key' => self::last_string_key( $path ),
-            'value' => mb_strlen( $value ) > 1200 ? mb_substr( $value, 0, 1200 ) . '…' : $value,
+            'value' => self::trim_value( $value ),
         ];
+    }
+
+    private static function scan_effective_widget_settings( array $elements, string $q, array &$matches, array &$errors ): void {
+        if ( ! class_exists( '\\Elementor\\Plugin' ) ) return;
+
+        foreach ( $elements as $element_data ) {
+            if ( ! is_array( $element_data ) ) continue;
+
+            $element_id = isset( $element_data['id'] ) && is_scalar( $element_data['id'] ) ? (string) $element_data['id'] : '';
+            $el_type = isset( $element_data['elType'] ) && is_scalar( $element_data['elType'] ) ? (string) $element_data['elType'] : '';
+            $widget_type = isset( $element_data['widgetType'] ) && is_scalar( $element_data['widgetType'] ) ? (string) $element_data['widgetType'] : '';
+
+            if ( 'widget' === $el_type && count( $matches ) < self::MAX_MATCHES ) {
+                try {
+                    $instance = \Elementor\Plugin::$instance->elements_manager->create_element_instance( $element_data );
+                    if ( $instance && method_exists( $instance, 'get_settings_for_display' ) ) {
+                        $effective = $instance->get_settings_for_display();
+                        if ( is_array( $effective ) ) {
+                            $raw_settings = isset( $element_data['settings'] ) && is_array( $element_data['settings'] ) ? $element_data['settings'] : [];
+                            self::scan_effective_strings(
+                                $effective,
+                                $raw_settings,
+                                $q,
+                                [],
+                                $matches,
+                                $element_id,
+                                $widget_type
+                            );
+                        }
+                    } elseif ( count( $errors ) < self::MAX_ERRORS ) {
+                        $errors[] = [
+                            'element_id' => $element_id,
+                            'widget_type' => $widget_type,
+                            'reason' => 'element_instance_unavailable',
+                        ];
+                    }
+                } catch ( Throwable $exception ) {
+                    if ( count( $errors ) < self::MAX_ERRORS ) {
+                        $errors[] = [
+                            'element_id' => $element_id,
+                            'widget_type' => $widget_type,
+                            'reason' => 'effective_settings_exception',
+                            'exception_class' => get_class( $exception ),
+                        ];
+                    }
+                }
+            }
+
+            if ( ! empty( $element_data['elements'] ) && is_array( $element_data['elements'] ) ) {
+                self::scan_effective_widget_settings( $element_data['elements'], $q, $matches, $errors );
+            }
+
+            if ( count( $matches ) >= self::MAX_MATCHES ) return;
+        }
+    }
+
+    private static function scan_effective_strings(
+        $value,
+        array $raw_settings,
+        string $q,
+        array $path,
+        array &$matches,
+        string $element_id,
+        string $widget_type
+    ): void {
+        if ( count( $matches ) >= self::MAX_MATCHES ) return;
+
+        if ( is_array( $value ) ) {
+            foreach ( $value as $key => $next ) {
+                self::scan_effective_strings(
+                    $next,
+                    $raw_settings,
+                    $q,
+                    array_merge( $path, [ $key ] ),
+                    $matches,
+                    $element_id,
+                    $widget_type
+                );
+                if ( count( $matches ) >= self::MAX_MATCHES ) return;
+            }
+            return;
+        }
+
+        if ( ! is_string( $value ) || false === mb_stripos( $value, $q ) ) return;
+
+        $raw_found = false;
+        $raw_value = self::path_value( $raw_settings, $path, $raw_found );
+        $raw_matches_query = $raw_found && is_string( $raw_value ) && false !== mb_stripos( $raw_value, $q );
+        $source = $raw_matches_query
+            ? 'stored_setting'
+            : ( $raw_found ? 'derived_from_stored_setting' : 'control_default_or_runtime_value' );
+
+        $matches[] = [
+            'element_id' => $element_id,
+            'widget_type' => $widget_type,
+            'setting_path' => array_values( $path ),
+            'setting_key' => self::last_string_key( $path ),
+            'effective_value' => self::trim_value( $value ),
+            'raw_present' => $raw_found,
+            'raw_matches_query' => $raw_matches_query,
+            'source' => $source,
+        ];
+    }
+
+    private static function path_value( array $root, array $path, bool &$found ) {
+        $cursor = $root;
+        foreach ( $path as $segment ) {
+            if ( ! is_array( $cursor ) || ! array_key_exists( $segment, $cursor ) ) {
+                $found = false;
+                return null;
+            }
+            $cursor = $cursor[ $segment ];
+        }
+        $found = true;
+        return $cursor;
     }
 
     private static function collect_named_template_refs( $value, array &$refs, array $path = [] ): void {
@@ -216,11 +341,16 @@ final class Elementize_Text_Audit {
         }
     }
 
-    private static function diagnosis( array $page_matches, array $template_matches, array $template_refs ): string {
+    private static function diagnosis( array $page_matches, array $template_matches, array $template_refs, array $effective_matches ): string {
         if ( $page_matches ) return 'query_found_in_page_elementor_data';
         if ( $template_matches ) return 'query_found_in_referenced_elementor_template';
+        if ( $effective_matches ) return 'query_found_in_effective_widget_settings_only';
         if ( $template_refs ) return 'query_not_found_but_elementor_library_refs_detected';
-        return 'query_not_found_in_page_elementor_data_and_no_elementor_library_refs_detected';
+        return 'query_not_found_in_page_or_effective_widget_settings_and_no_elementor_library_refs_detected';
+    }
+
+    private static function trim_value( string $value ): string {
+        return mb_strlen( $value ) > 1200 ? mb_substr( $value, 0, 1200 ) . '…' : $value;
     }
 
     private static function last_string_key( array $path ): string {
