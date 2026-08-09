@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.2.7
+ * Version: 0.2.8
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 if ( ! class_exists( 'Elementize_Plugin', false ) ) {
 final class Elementize_Plugin {
-    private const VERSION = '0.2.7';
+    private const VERSION = '0.2.8';
     private const NS = 'elementize/v1';
     private const MAX_TEXT = 20000;
     private const MAX_UPDATES = 100;
@@ -100,7 +100,7 @@ final class Elementize_Plugin {
             'permission_callback' => [ self::class, 'can_create_page' ],
             'args' => [
                 'title' => [ 'type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
-                'slug' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_title' ],
+                'slug' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => [ self::class, 'sanitize_slug' ] ],
             ],
         ] );
         register_rest_route( self::NS, '/pixfort/templates', [
@@ -163,6 +163,10 @@ final class Elementize_Plugin {
                 ],
             ],
         ] );
+    }
+
+    public static function sanitize_slug( $value, $request = null, $param = null ): string {
+        return sanitize_title( is_scalar( $value ) ? (string) $value : '' );
     }
 
     public static function can_access() {
