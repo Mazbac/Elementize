@@ -7,7 +7,7 @@ final class Elementize_Design_Audit_Hardening {
     }
 
     public static function after_rest( $response, $handler, WP_REST_Request $request ) {
-        if ( '/elementize/v1/pages/' === substr( $request->get_route(), 0, 22 ) && false !== strpos( $request->get_route(), '/design-audit' ) ) {
+        if ( preg_match( '#^/elementize/v1/pages/\d+/design-audit$#', $request->get_route() ) ) {
             if ( is_wp_error( $response ) || ! $response instanceof WP_REST_Response || $response->get_status() < 200 || $response->get_status() >= 300 ) return $response;
             $data = $response->get_data();
             if ( ! is_array( $data ) ) return $response;
