@@ -1,0 +1,55 @@
+name: GPT Builder contract
+
+on:
+  push:
+    branches:
+      - fastbuild/design-intelligence
+  pull_request:
+
+jobs:
+  validate-gpt-builder-materials:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Enforce GPT Builder limits and required actions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          instruction_chars=$(wc -m < WP_BUILDER_INSTRUCTIONS.md | tr -d ' ')
+          echo "WP Builder instruction characters: ${instruction_chars}/8000"
+          if [ "$instruction_chars" -gt 8000 ]; then
+            echo "WP_BUILDER_INSTRUCTIONS.md exceeds ChatGPT's 8000-character instruction limit."
+            exit 1
+          fi
+
+          cp CUSTOM_GPT_ACTIONS.openapi.yaml /tmp/elementize-generated-schema.yaml
+          if ! grep -q 'operationId: getElementizePageQualityAudit' CUSTOM_GPT_ACTIONS.openapi.yaml; then
+            printf '\n' >> /tmp/elementize-generated-schema.yaml
+            cat CUSTOM_GPT_ACTIONS_0.6_APPEND.yaml >> /tmp/elementize-generated-schema.yaml
+          fi
+
+          operation_count=$(grep -c 'operationId:' /tmp/elementize-generated-schema.yaml || true)
+          echo "Generated GPT Action operations: ${operation_count}/30"
+          if [ "$operation_count" -gt 30 ]; then
+            echo "Generated GPT Actions schema exceeds the 30-operation editor limit."
+            exit 1
+          fi
+
+          required_operations=(
+            getElementizeStatus
+            getElementizePageQualityAudit
+            getElementizePageDesignAudit
+            getElementizePageDesignSettings
+            getElementizePixfortCatalogueSummary
+            inspectElementizePixfortTemplateStructure
+          )
+
+          for operation in "${required_operations[@]}"; do
+            if ! grep -q "operationId: ${operation}" /tmp/elementize-generated-schema.yaml; then
+              echo "Required GPT operation is missing: ${operation}"
+              exit 1
+            fi
+          done
