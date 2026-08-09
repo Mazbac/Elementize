@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.5.0.1
+  version: 0.5.0.2
   description: Controlled WordPress, Elementor, Pixfort, visual editing, page layout, and guarded lifecycle actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
@@ -17,7 +17,14 @@ paths:
           description: Elementize status
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  elementize_version: { type: string }
+                  lifecycle_management: { type: boolean }
+                  page_layout_management: { type: boolean }
+                  hard_delete_available: { type: boolean }
+                additionalProperties: true
 
   /wp-json/elementize/v1/pixfort/templates:
     get:
@@ -49,7 +56,23 @@ paths:
           description: Pixfort catalogue results
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  page: { type: integer }
+                  per_page: { type: integer }
+                  templates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        thumbnail: { type: string }
+                        identity_hash: { type: string }
+                      additionalProperties: true
+                additionalProperties: true
 
   /wp-json/elementize/v1/pixfort/visual-probe:
     post:
@@ -74,7 +97,28 @@ paths:
           description: Pixfort visual proof
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  probe_count: { type: integer }
+                  mapping:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        template_id: { type: string }
+                        identity_hash: { type: string }
+                      additionalProperties: true
+                  openaiFileResponse:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        mime_type: { type: string }
+                        content: { type: string }
+                      additionalProperties: true
+                additionalProperties: true
 
   /wp-json/elementize/v1/pages/create:
     post:
@@ -97,12 +141,31 @@ paths:
           description: Draft creation result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  created: { type: boolean }
+                  content_hash: { type: string }
+                  elementize_managed: { type: boolean }
+                  page:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      title: { type: string }
+                      status: { type: string }
+                      preview_url: { type: string }
+                    additionalProperties: true
+                additionalProperties: true
         '201':
           description: Draft creation result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  created: { type: boolean }
+                  content_hash: { type: string }
+                additionalProperties: true
 
   /wp-json/elementize/v1/pages/{id}/pixfort/insert:
     post:
@@ -131,7 +194,18 @@ paths:
           description: Pixfort insertion result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  saved: { type: boolean }
+                  page_id: { type: integer }
+                  inserted_top_level_count: { type: integer }
+                  inserted_top_level_ids:
+                    type: array
+                    items: { type: string }
+                  content_hash: { type: string }
+                  revision_id: { type: integer }
+                additionalProperties: true
 
   /wp-json/elementize/v1/pages/{id}/text:
     get:
@@ -147,7 +221,25 @@ paths:
           description: Editable Elementor text
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  content_hash: { type: string }
+                  text_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        element_id: { type: string }
+                        setting_path:
+                          type: array
+                          items:
+                            anyOf:
+                              - { type: string }
+                              - { type: integer }
+                        value: { type: string }
+                      additionalProperties: true
+                additionalProperties: true
     post:
       operationId: updateElementorPageText
       summary: Update recognized Elementor copy with stale-value protection
@@ -179,7 +271,9 @@ paths:
                         type: array
                         minItems: 1
                         items:
-                          anyOf: [{ type: string }, { type: integer }]
+                          anyOf:
+                            - { type: string }
+                            - { type: integer }
                       expected_value: { type: string }
                       value: { type: string }
       responses:
@@ -187,7 +281,15 @@ paths:
           description: Text update result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  saved: { type: boolean }
+                  page_id: { type: integer }
+                  updated_count: { type: integer }
+                  revision_id: { type: integer }
+                  content_hash: { type: string }
+                additionalProperties: true
 
   /wp-json/elementize/v1/pages/{id}/visual-settings:
     get:
@@ -232,7 +334,49 @@ paths:
           description: Compact visual settings result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  content_hash: { type: string }
+                  visual_item_total: { type: integer }
+                  visual_item_matched: { type: integer }
+                  visual_item_count: { type: integer }
+                  visual_items_truncated: { type: boolean }
+                  next_offset: { type: integer }
+                  returned_kind_counts:
+                    type: object
+                    properties:
+                      color: { type: integer }
+                      icon: { type: integer }
+                      media: { type: integer }
+                    additionalProperties: true
+                  visual_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        element_id: { type: string }
+                        widget_type: { type: string }
+                        setting_path:
+                          type: array
+                          items:
+                            anyOf:
+                              - { type: string }
+                              - { type: integer }
+                        value:
+                          anyOf:
+                            - { type: string }
+                            - type: object
+                              properties:
+                                id: { type: integer }
+                                file: { type: string }
+                                source: { type: string }
+                              additionalProperties: true
+                        active: { type: boolean }
+                        writable: { type: boolean }
+                      additionalProperties: true
+                additionalProperties: true
     post:
       operationId: updateElementorVisualSettings
       summary: Guardedly update active colors, Pixfort icons, or image attachments
@@ -267,7 +411,9 @@ paths:
                         type: array
                         minItems: 1
                         items:
-                          anyOf: [{ type: string }, { type: integer }]
+                          anyOf:
+                            - { type: string }
+                            - { type: integer }
                       expected_value: { type: string }
                       value: { type: string }
                       expected_attachment_id: { type: integer, minimum: 1 }
@@ -277,12 +423,18 @@ paths:
           description: Visual update result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  saved: { type: boolean }
+                  page_id: { type: integer }
+                  updated_count: { type: integer }
+                  revision_id: { type: integer }
+                  content_hash: { type: string }
+                  css_regenerated: { type: boolean }
+                additionalProperties: true
         '409':
           description: Page or visual target changed after the fresh read
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
 
   /wp-json/elementize/v1/pages/{id}/layout:
     get:
@@ -299,7 +451,19 @@ paths:
           description: Current page layout state
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  page_id: { type: integer }
+                  title: { type: string }
+                  status: { type: string }
+                  elementize_managed: { type: boolean }
+                  mode: { type: string }
+                  elementor_template: { type: string }
+                  layout_token: { type: string }
+                  content_hash: { type: string }
+                  preview_url: { type: string }
+                additionalProperties: true
     post:
       operationId: updateElementizePageLayout
       summary: Change a managed draft between site and standalone layout
@@ -330,12 +494,22 @@ paths:
           description: Page layout update result
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  saved: { type: boolean }
+                  changed: { type: boolean }
+                  page_id: { type: integer }
+                  previous_mode: { type: string }
+                  mode: { type: string }
+                  elementor_template: { type: string }
+                  revision_id: { type: integer }
+                  content_hash: { type: string }
+                  layout_token: { type: string }
+                  preview_url: { type: string }
+                additionalProperties: true
         '409':
           description: Page layout or content changed after the fresh read
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
 
   /wp-json/elementize/v1/pages/{id}/lifecycle:
     get:
@@ -351,7 +525,25 @@ paths:
           description: Current page lifecycle snapshot
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  page_id: { type: integer }
+                  exists: { type: boolean }
+                  title: { type: string }
+                  status: { type: string }
+                  elementize_managed: { type: boolean }
+                  managed_version: { type: string }
+                  lifecycle_token: { type: string }
+                  content_hash: { type: string }
+                  is_elementor: { type: boolean }
+                  top_level_count: { type: integer }
+                  preview_url: { type: string }
+                  permalink: { type: string }
+                  allowed_actions:
+                    type: array
+                    items: { type: string }
+                additionalProperties: true
 
   /wp-json/elementize/v1/pages/{id}/trash:
     post:
@@ -382,12 +574,17 @@ paths:
           description: Page moved to Trash
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  trashed: { type: boolean }
+                  page_id: { type: integer }
+                  status: { type: string }
+                  hard_deleted: { type: boolean }
+                  restore_available: { type: boolean }
+                additionalProperties: true
         '409':
           description: Lifecycle or content changed after the fresh read
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
 
   /wp-json/elementize/v1/pages/{id}/restore:
     post:
@@ -417,12 +614,15 @@ paths:
           description: Page restored to draft
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  restored: { type: boolean }
+                  page_id: { type: integer }
+                  status: { type: string }
+                additionalProperties: true
         '409':
           description: Lifecycle changed after the fresh read
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
 
   /wp-json/elementize/v1/pages/{id}/publish:
     post:
@@ -453,17 +653,19 @@ paths:
           description: Page published
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  published: { type: boolean }
+                  page_id: { type: integer }
+                  status: { type: string }
+                  revision_id: { type: integer }
+                  permalink: { type: string }
+                additionalProperties: true
         '400':
           description: Publication refused
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
         '409':
           description: Lifecycle or content changed after the fresh read
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
 
   /wp-json/elementize/v1/pages/{id}/unpublish:
     post:
@@ -494,9 +696,14 @@ paths:
           description: Page returned to draft
           content:
             application/json:
-              schema: { type: object, additionalProperties: true }
+              schema:
+                type: object
+                properties:
+                  unpublished: { type: boolean }
+                  page_id: { type: integer }
+                  status: { type: string }
+                  revision_id: { type: integer }
+                  preview_url: { type: string }
+                additionalProperties: true
         '409':
           description: Lifecycle or content changed after the fresh read
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
