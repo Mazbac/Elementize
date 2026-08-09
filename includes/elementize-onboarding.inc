@@ -151,7 +151,14 @@ final class Elementize_Onboarding {
     private static function schema( string $public ): string {
         $s = self::file( 'CUSTOM_GPT_ACTIONS.openapi.yaml' );
         $o = self::origin( $public ); if ( is_wp_error( $o ) ) $o = self::default_origin();
-        return (string) preg_replace( '/(?m)^\\s*- url: .*$/', '- url: ' . $o, $s, 1 );
+        $s = (string) preg_replace( '/(?m)^\\s*- url: .*$/', '- url: ' . $o, $s, 1 );
+        $s = str_replace( 'version: 0.5.14.0', 'version: 0.6.0.0', $s );
+        $s = str_replace( 'Controlled WordPress, Elementor, Pixfort, Media Library, conversation-image import, visual, layout, lifecycle, and page-owned embedded Pixfort copy actions for Elementize.', 'Controlled WordPress, Elementor, Pixfort, media, links, quality audit, layout, lifecycle, and embedded-copy actions for Elementize.', $s );
+        $old_desc = 'Use when the user supplied an image in the conversation and wants that exact image used on the WordPress page. Send exactly one conversation image through openaiFileIdRefs. The action imports it as a normal WordPress image attachment; use the returned attachment_id in a later guarded media write. JPG, PNG, WEBP, AVIF, and GIF are supported. Do not use for unrelated files.';
+        $new_desc = 'Import one image attached in this ChatGPT conversation into WordPress and return its attachment_id for a later guarded media write.';
+        $s = str_replace( $old_desc, $new_desc, $s );
+        if ( false === strpos( $s, 'operationId: getElementizePageQualityAudit' ) ) $s .= "\n" . self::file( 'CUSTOM_GPT_ACTIONS_0.6_APPEND.yaml' );
+        return $s;
     }
 
     public static function status( $response, $handler, WP_REST_Request $request ) {
