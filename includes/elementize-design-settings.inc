@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Design_Settings {
-    private const VERSION = '0.9.1';
+    private const VERSION = '0.9.2';
     private const NS = 'elementize/v1';
     private const DEFAULT_LIMIT = 100;
     private const MAX_LIMIT = 300;
@@ -297,6 +297,7 @@ final class Elementize_Design_Settings {
         $data['design_settings_responsive_classification'] = true;
         $data['design_settings_writer_candidates_advisory'] = true;
         $data['design_settings_php_lint_hotfix'] = true;
+        $data['design_settings_php_lint_gate'] = true;
         $response->set_data( $data );
         return $response;
     }
