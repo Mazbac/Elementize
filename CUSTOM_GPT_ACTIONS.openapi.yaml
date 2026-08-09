@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.4.0.1
+  version: 0.4.0.2
   description: >-
     Controlled WordPress, Elementor, Pixfort, and guarded page lifecycle actions for Elementize.
     Authentication is configured separately in the Custom GPT Action settings.
@@ -784,10 +784,9 @@ paths:
       operationId: publishElementizeManagedPage
       summary: Publish a non-empty Elementize-managed Elementor draft
       description: >-
-        Publication is a high-impact action. Only invoke when the user explicitly asked to publish this exact page and after
-        getElementizePageLifecycle returns elementize_managed=true, status=draft, top_level_count greater than zero, and
-        allowed_actions contains publish. Use the fresh title, lifecycle_token, and content_hash exactly. Empty Elementor
-        pages are refused by the server.
+        High-impact. Only invoke when the user explicitly asked to publish this exact page and a fresh lifecycle read returns
+        elementize_managed=true, status=draft, top_level_count>0, and allowed_actions includes publish. Use the fresh title,
+        lifecycle_token, and content_hash exactly.
       parameters:
         - name: id
           in: path
