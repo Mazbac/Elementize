@@ -1,13 +1,12 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.3.2
-  description: >-
-    Controlled WordPress, Elementor, and Pixfort actions for Elementize.
-    Authentication is configured separately in the Custom GPT Action settings.
+  version: 0.3.2.1
+  description: Controlled WordPress, Elementor, and Pixfort actions for Elementize. Authentication is configured separately
+    in the Custom GPT Action settings.
 servers:
-  - url: https://permitted-tucson-invention-principles.trycloudflare.com
-    description: Current Cloudflare quick tunnel. Replace this URL if the quick tunnel changes.
+- url: https://permitted-tucson-invention-principles.trycloudflare.com
+  description: Current Cloudflare quick tunnel. Replace this URL if the quick tunnel changes.
 paths:
   /wp-json/elementize/v1/status:
     get:
@@ -20,45 +19,57 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  elementize_version:
+                    type: string
+                  visual_settings_write_types:
+                    type: array
+                    items:
+                      type: string
+                  visual_color_active_state:
+                    type: boolean
+                  visual_css_regeneration:
+                    type: string
                 additionalProperties: true
-
   /wp-json/elementize/v1/pixfort/templates:
     get:
       operationId: searchPixfortPlannerCandidates
       summary: Search Pixfort template candidates
       parameters:
-        - name: type
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [section, page]
-            default: section
-        - name: q
-          in: query
-          required: false
-          schema:
-            type: string
-        - name: category
-          in: query
-          required: false
-          schema:
-            type: string
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: per_page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 50
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - section
+          - page
+          default: section
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
       responses:
         '200':
           description: Pixfort template catalogue results
@@ -66,8 +77,22 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                      additionalProperties: true
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
                 additionalProperties: true
-
   /wp-json/elementize/v1/pixfort/visual-probe:
     post:
       operationId: getPixfortVisualProbe
@@ -79,7 +104,8 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [template_ids]
+              required:
+              - template_ids
               properties:
                 template_ids:
                   type: array
@@ -94,8 +120,16 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  openaiFileResponse:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                      additionalProperties: true
                 additionalProperties: true
-
   /wp-json/elementize/v1/pages/create:
     post:
       operationId: createElementorDraft
@@ -107,7 +141,8 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [title]
+              required:
+              - title
               properties:
                 title:
                   type: string
@@ -121,18 +156,32 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  page_id:
+                    type: integer
+                  title:
+                    type: string
+                  status:
+                    type: string
+                  slug:
+                    type: string
+                  content_hash:
+                    type: string
+                  edit_url:
+                    type: string
+                  permalink:
+                    type: string
                 additionalProperties: true
-
   /wp-json/elementize/v1/pages/{id}/pixfort/insert:
     post:
       operationId: insertPixfortTemplate
       summary: Insert a Pixfort template into an Elementor page
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
       requestBody:
         required: true
         content:
@@ -140,7 +189,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [content_hash, template_id]
+              required:
+              - content_hash
+              - template_id
               properties:
                 content_hash:
                   type: string
@@ -149,7 +200,11 @@ paths:
                   type: string
                 position:
                   type: string
-                  enum: [start, end, before, after]
+                  enum:
+                  - start
+                  - end
+                  - before
+                  - after
                   default: end
                 target_element_id:
                   type: string
@@ -161,18 +216,34 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  saved:
+                    type: boolean
+                  page_id:
+                    type: integer
+                  inserted_element_ids:
+                    type: array
+                    items:
+                      type: string
+                  content_hash:
+                    type: string
+                  revision_id:
+                    type: integer
+                  edit_url:
+                    type: string
+                  permalink:
+                    type: string
                 additionalProperties: true
-
   /wp-json/elementize/v1/pages/{id}/text:
     get:
       operationId: getElementorPageText
       summary: Read editable Elementor text and the current content hash
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
       responses:
         '200':
           description: Editable Elementor text items
@@ -180,16 +251,35 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  content_hash:
+                    type: string
+                  text_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        element_id:
+                          type: string
+                        setting_path:
+                          type: array
+                          items:
+                            anyOf:
+                            - type: string
+                            - type: integer
+                        value:
+                          type: string
+                      additionalProperties: true
                 additionalProperties: true
     post:
       operationId: updateElementorPageText
       summary: Update recognized Elementor copy fields with stale-value protection
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
       requestBody:
         required: true
         content:
@@ -197,7 +287,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [content_hash, updates]
+              required:
+              - content_hash
+              - updates
               properties:
                 content_hash:
                   type: string
@@ -207,7 +299,10 @@ paths:
                   items:
                     type: object
                     additionalProperties: false
-                    required: [element_id, setting_path, value]
+                    required:
+                    - element_id
+                    - setting_path
+                    - value
                     properties:
                       element_id:
                         type: string
@@ -216,8 +311,8 @@ paths:
                         minItems: 1
                         items:
                           anyOf:
-                            - type: string
-                            - type: integer
+                          - type: string
+                          - type: integer
                       expected_value:
                         type: string
                         description: Strongly recommended. The write is rejected if the current value differs.
@@ -230,21 +325,38 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  saved:
+                    type: boolean
+                  page_id:
+                    type: integer
+                  updated_count:
+                    type: integer
+                  revision_id:
+                    type: integer
+                  content_hash:
+                    type: string
+                  changes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        element_id:
+                          type: string
+                      additionalProperties: true
                 additionalProperties: true
-
   /wp-json/elementize/v1/pages/{id}/visual-settings:
     get:
       operationId: getElementorVisualSettings
       summary: Inspect Elementor media, colors, icons, active state, writability, and content hash
-      description: >-
-        Read this immediately before any visual write. Prefer items where active=true and writable=true.
-        Global references and inactive visual settings are not writable.
+      description: Read this immediately before any visual write. Prefer items where active=true and writable=true. Global
+        references and inactive visual settings are not writable.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
       responses:
         '200':
           description: Visual settings inventory
@@ -252,20 +364,60 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  content_hash:
+                    type: string
+                  visual_item_count:
+                    type: integer
+                  visual_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                        element_id:
+                          type: string
+                        setting_key:
+                          type: string
+                        setting_path:
+                          type: array
+                          items:
+                            anyOf:
+                            - type: string
+                            - type: integer
+                        value:
+                          anyOf:
+                          - type: string
+                          - type: object
+                            properties:
+                              id:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                              url:
+                                type: string
+                            additionalProperties: true
+                        active:
+                          type: boolean
+                        writable:
+                          type: boolean
+                      additionalProperties: true
+                  css_regeneration_after_visual_write:
+                    type: boolean
                 additionalProperties: true
     post:
       operationId: updateElementorVisualSettings
       summary: Guardedly update active Elementor colors, Pixfort icons, or WordPress image attachments
-      description: >-
-        Always call getElementorVisualSettings immediately before this action and use its fresh content_hash.
-        Only mutate targets returned as writable=true. For color and icon updates include the exact expected_value.
-        For media include the exact expected_attachment_id and a WordPress image attachment_id.
+      description: Always call getElementorVisualSettings immediately before this action and use its fresh content_hash. Only
+        mutate targets returned as writable=true. For color and icon updates include the exact expected_value. For media include
+        the exact expected_attachment_id and a WordPress image attachment_id.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
       requestBody:
         required: true
         content:
@@ -273,7 +425,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [content_hash, updates]
+              required:
+              - content_hash
+              - updates
               properties:
                 content_hash:
                   type: string
@@ -285,11 +439,17 @@ paths:
                   items:
                     type: object
                     additionalProperties: false
-                    required: [kind, element_id, setting_path]
+                    required:
+                    - kind
+                    - element_id
+                    - setting_path
                     properties:
                       kind:
                         type: string
-                        enum: [color, icon, media]
+                        enum:
+                        - color
+                        - icon
+                        - media
                       element_id:
                         type: string
                       setting_path:
@@ -297,8 +457,8 @@ paths:
                         minItems: 1
                         items:
                           anyOf:
-                            - type: string
-                            - type: integer
+                          - type: string
+                          - type: integer
                       expected_value:
                         type: string
                         description: Required by Elementize when kind is color or icon.
@@ -320,6 +480,29 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  saved:
+                    type: boolean
+                  page_id:
+                    type: integer
+                  updated_count:
+                    type: integer
+                  revision_id:
+                    type: integer
+                  content_hash:
+                    type: string
+                  changes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                      additionalProperties: true
+                  css_regenerated:
+                    type: boolean
+                  css_regeneration_error:
+                    type: string
                 additionalProperties: true
         '409':
           description: The page or target value changed after it was read
@@ -327,4 +510,17 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: integer
+                      content_hash:
+                        type: string
+                    additionalProperties: true
                 additionalProperties: true
