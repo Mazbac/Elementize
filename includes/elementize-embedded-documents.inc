@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Embedded_Documents {
-    private const VERSION = '0.5.10';
+    private const VERSION = '0.5.11';
     private const NS = 'elementize/v1';
     private const MAX_DEPTH = 6;
     private const MAX_NODES = 100;
@@ -51,7 +51,7 @@ final class Elementize_Embedded_Documents {
         $edges = [];
         $documents = [];
 
-        while ( $queue && count( $documents ) < self::MAX_NODES ) {
+        while ( $queue && count( $seen ) < self::MAX_NODES ) {
             $current = array_shift( $queue );
             $source_id = absint( $current['post_id'] );
             $depth = absint( $current['depth'] );
@@ -73,7 +73,7 @@ final class Elementize_Embedded_Documents {
                     'value' => $reference['value'],
                     'depth' => $depth + 1,
                 ];
-                if ( ! isset( $seen[ $target_id ] ) ) {
+                if ( ! isset( $seen[ $target_id ] ) && count( $seen ) < self::MAX_NODES ) {
                     $seen[ $target_id ] = true;
                     $queue[] = [ 'post_id' => $target_id, 'depth' => $depth + 1 ];
                 }
@@ -89,9 +89,22 @@ final class Elementize_Embedded_Documents {
             $elementor_raw = self::elementor_data_raw( $embedded_id );
             $post_content = (string) $post->post_content;
             $reverse = self::reverse_references( $embedded_id );
-            $external = array_values( array_filter( $reverse, static function( $ref ) use ( $graph_ids ) {
-                return ! in_array( absint( $ref['source_post_id'] ), $graph_ids, true );
-            } ) );
+
+            $graph_references = [];
+            $historical_references = [];
+            $independent_external_references = [];
+            foreach ( $reverse as $reference ) {
+                $source_id = absint( $reference['source_post_id'] ?? 0 );
+                if ( in_array( $source_id, $graph_ids, true ) ) {
+                    $graph_references[] = $reference;
+                    continue;
+                }
+                if ( ! empty( $reference['is_revision'] ) || ! empty( $reference['is_autosave'] ) ) {
+                    $historical_references[] = $reference;
+                    continue;
+                }
+                $independent_external_references[] = $reference;
+            }
 
             $documents[] = [
                 'post_id' => $embedded_id,
@@ -108,10 +121,15 @@ final class Elementize_Embedded_Documents {
                     'elementor_data' => self::count_query( $elementor_raw, $query ),
                 ],
                 'reverse_reference_count' => count( $reverse ),
-                'external_reference_count' => count( $external ),
-                'exclusive_to_page_graph' => 0 === count( $external ),
+                'current_graph_reference_count' => count( $graph_references ),
+                'historical_revision_reference_count' => count( $historical_references ),
+                'independent_external_reference_count' => count( $independent_external_references ),
+                'exclusive_to_current_page' => 0 === count( $independent_external_references ),
+                'recommended_write_strategy' => 'clone_and_relink',
                 'reverse_references' => $reverse,
-                'external_references' => $external,
+                'current_graph_references' => $graph_references,
+                'historical_revision_references' => $historical_references,
+                'independent_external_references' => $independent_external_references,
             ];
         }
 
@@ -125,6 +143,9 @@ final class Elementize_Embedded_Documents {
             'reference_edge_count' => count( $edges ),
             'reference_edges' => array_values( $edges ),
             'graph_post_ids' => $graph_ids,
+            'revision_references_are_historical_only' => true,
+            'direct_template_mutation_recommended' => false,
+            'recommended_write_strategy' => 'clone_and_relink',
             'max_depth' => self::MAX_DEPTH,
             'read_only' => true,
         ], 200 );
@@ -198,12 +219,18 @@ final class Elementize_Embedded_Documents {
                 if ( absint( $reference['post_id'] ) !== $target_id ) continue;
                 $source = get_post( $source_id );
                 if ( ! $source ) continue;
+                $revision_parent = wp_is_post_revision( $source_id );
+                $autosave_parent = wp_is_post_autosave( $source_id );
                 $key = $source_id . ':' . $reference['path'];
                 $result[ $key ] = [
                     'source_post_id' => $source_id,
                     'source_post_type' => (string) $source->post_type,
                     'source_post_status' => (string) $source->post_status,
                     'source_post_title' => (string) $source->post_title,
+                    'is_revision' => false !== $revision_parent,
+                    'revision_parent' => false !== $revision_parent ? absint( $revision_parent ) : 0,
+                    'is_autosave' => false !== $autosave_parent,
+                    'autosave_parent' => false !== $autosave_parent ? absint( $autosave_parent ) : 0,
                     'path' => $reference['path'],
                 ];
             }
@@ -224,6 +251,8 @@ final class Elementize_Embedded_Documents {
         $data['elementize_version'] = self::VERSION;
         $data['embedded_documents_diagnostic'] = true;
         $data['embedded_documents_diagnostic_read_only'] = true;
+        $data['embedded_documents_revision_classification'] = true;
+        $data['embedded_documents_recommended_write_strategy'] = 'clone_and_relink';
         $response->set_data( $data );
         return $response;
     }
