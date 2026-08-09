@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Visual_Writes', false ) ) return;
 
 final class Elementize_Visual_Rendering {
-    private const VERSION = '0.3.1';
+    private const VERSION = '0.3.2';
     private const NS = 'elementize/v1';
 
     public static function init(): void {
@@ -23,7 +23,7 @@ final class Elementize_Visual_Rendering {
         $html = str_replace( 'Version 0.3.0', 'Version ' . self::VERSION, $html );
         $html = str_replace(
             '0.3.0 adds guarded writes for explicit CSS colors, Pixfort icon values, and WordPress image attachments. Global style references, dynamic values, divider colors, and icon behavior/layout settings remain protected.',
-            '0.3.1 keeps guarded visual writes, filters color writability by active control state, and regenerates the affected Elementor post CSS after successful visual writes. Global style references, dynamic values, divider colors, and inactive custom-color fields remain protected.',
+            '0.3.2 keeps guarded visual writes, filters color writability by active control state, and regenerates the affected Elementor post CSS after successful visual writes. Global style references, dynamic values, divider colors, and inactive custom-color fields remain protected.',
             $html
         );
         echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
@@ -103,7 +103,7 @@ final class Elementize_Visual_Rendering {
         if ( ! is_array( $data ) || empty( $data['saved'] ) ) return $response;
 
         try {
-            if ( ! class_exists( '\\Elementor\\Core\\Files\\CSS\\Post' ) ) {
+            if ( ! class_exists( '\Elementor\Core\Files\CSS\Post' ) ) {
                 $data['css_regenerated'] = false;
                 $data['css_regeneration_error'] = 'Elementor post CSS class is unavailable.';
             } else {
@@ -121,7 +121,7 @@ final class Elementize_Visual_Rendering {
     }
 
     private static function elements( int $page_id ): ?array {
-        if ( ! class_exists( '\\Elementor\\Plugin' ) ) return null;
+        if ( ! class_exists( '\Elementor\Plugin' ) ) return null;
         try {
             $document = \Elementor\Plugin::$instance->documents->get( $page_id );
             if ( ! $document ) return null;
@@ -159,6 +159,7 @@ final class Elementize_Visual_Rendering {
             if ( 'color' === $key ) return true;
         }
 
+        $found = false;
         $parent = self::get_path_value( $settings, array_slice( $path, 0, -1 ), $found );
         if ( ! $found || ! is_array( $parent ) ) return false;
 
