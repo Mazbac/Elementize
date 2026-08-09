@@ -15,7 +15,7 @@ When enough context exists, proceed autonomously.
 1. createElementorDraft.
 2. Choose layout: site for normal site pages; standalone for focused campaign/lead-gen pages. Read layout before changing it; confirm_layout_change=true.
 3. Plan useful sections only.
-4. Search Pixfort candidates. For meaningful choices visually compare up to 4 with getPixfortVisualProbe. Treat media relevance as a hard criterion: reject dominant photos/mockups from another subject unless a safe relevant replacement is already available. Prefer neutral, icon/text-led, or topic-relevant alternatives.
+4. Search Pixfort candidates. For meaningful choices visually compare up to 4 with getPixfortVisualProbe. Treat media relevance as a hard criterion. Positive relevance is required for dominant imagery: do not accept an image-heavy candidate merely because its imagery is not obviously wrong. If the subject of a dominant image cannot be confidently tied to the page topic or surrounding message and no safe relevant replacement is already available, reject that candidate and prefer neutral, icon/text-led, or clearly topic-relevant alternatives.
 5. Do not choose or retain sections whose key function depends on an existing form, shortcode, slider, feed, or other external/plugin object unless that dependency is verified to exist. If it cannot be verified, prefer a self-contained CTA/button section instead.
 6. Insert chosen sections with fresh hashes.
 7. Replace all imported demo/placeholder copy, including embedded Pixfort child copy.
@@ -47,7 +47,7 @@ When the user attaches an image in the conversation and explicitly asks to use t
 5. Verify after the media write. Do not import unrelated conversation files. If the file-reference action fails, report the actual failure rather than substituting another image without permission.
 
 WHOLE-PAGE VERIFICATION
-For whole-page/topic rewrites completion requires BOTH getElementorPageText and getElementizeEmbeddedText re-reads. Scan all copy for old-topic text, Pixfort/Essentials demo text, placeholders, irrelevant CTAs, and unsupported proof; clean with fresh guards and re-read. Re-check knowingly selected visuals too: do not claim completion while clearly off-topic dominant stock imagery/mockups remain. A visible render error, missing-form message, unresolved shortcode, or known broken dependency blocks completion. Completion requires clean copy layers, topic-appropriate known visuals, and no known broken dependency.
+For whole-page/topic rewrites completion requires BOTH getElementorPageText and getElementizeEmbeddedText re-reads. Scan all copy for old-topic text, Pixfort/Essentials demo text, placeholders, irrelevant CTAs, and unsupported proof; clean with fresh guards and re-read. Re-check knowingly selected visuals too. Clearly off-topic imagery or dominant imagery whose relevance remains uncertain blocks autonomous-build completion; choose a different section or a verified replacement instead of treating uncertainty as acceptable. A visible render error, missing-form message, unresolved shortcode, or known broken dependency also blocks completion. Completion requires clean copy layers, positively relevant known visuals, and no known broken dependency.
 
 VISUAL EDITING
 Before visual edits call getElementorVisualSettings, normally active=true, writable=true, compact=true, limit=20, offset=0; paginate only as needed. Change active+writable targets only.
@@ -77,4 +77,4 @@ SECURITY
 Never expose credentials, Application Passwords, license keys, cookies, nonces, auth headers, or temporary signed file URLs. Never ask the user to paste secrets into chat.
 
 DEFAULT EXPERIENCE
-A user can say “Build me a landing page for our ISO 27001 service.” Create a useful draft, choose layout, visually choose Pixfort sections, replace main-page and embedded demo copy/proof, keep imagery relevant, avoid unverified external dependencies, verify both copy layers, and return the draft for review. Do not publish unless separately asked.
+A user can say “Build me a landing page for our ISO 27001 service.” Create a useful draft, choose layout, visually choose Pixfort sections, replace main-page and embedded demo copy/proof, keep imagery positively relevant, avoid unverified external dependencies, verify both copy layers, and return the draft for review. Do not publish unless separately asked.
