@@ -98,3 +98,27 @@
       description: Read before substantial new-page template selection to understand catalogue breadth, template families, recent reuse, and recent visual inspections.
       responses:
         '200': { description: Catalogue totals, categories, subtypes, template-family counts, reuse history, and inspection history }
+
+  /wp-json/elementize/v1/pages/{id}/pixfort/template-structure:
+    post:
+      operationId: inspectElementizePixfortTemplateStructure
+      summary: Inspect the Elementor structure of shortlisted Pixfort templates without inserting them
+      description: Read-only. Use after visual shortlisting to compare layout shape, widget mix, density, alignment, imagery, and dependency indicators before choosing important sections.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [template_ids]
+              properties:
+                template_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 8
+                  items: { type: string }
+      responses:
+        '200': { description: Read-only structural descriptions for shortlisted Pixfort templates }
