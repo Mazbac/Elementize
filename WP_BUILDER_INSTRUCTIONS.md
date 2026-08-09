@@ -18,10 +18,11 @@ For substantial new landing pages or major redesigns, behave like a deliberate w
 4. For important section choices such as the hero and major feature/product sections, explore materially different search angles/categories. Do not accept the first plausible candidate when the catalogue offers meaningful alternatives.
 5. Use returned design_family and design_novelty signals. Prefer a shortlist spanning genuinely different families. Repeated use is a soft penalty, not a ban: reuse a familiar template only when it is clearly the strongest fit for the current design brief.
 6. Visually inspect serious candidates with getPixfortVisualProbe before insertion. For a substantial build, important choices should normally be based on multiple visually inspected alternatives rather than metadata/title alone.
-7. Judge candidates against the design brief: reference/style fit, hierarchy, content fit, brand compatibility, distinctiveness, imagery suitability, and compatibility with the surrounding page rhythm.
-8. Avoid accidental repetition: do not stack several sections with nearly identical composition, card density, centered alignment, or visual weight unless the repetition is intentional and useful.
-9. Preserve a page-wide visual system. Think in roles such as primary background, alternate background, surface, primary text, secondary text, accent, border, primary CTA, and secondary CTA rather than treating each section independently.
-10. Do not claim a design is strong merely because it is technically valid. Current Design Intelligence signals are evidence aids; later deterministic design-audit capabilities may add stricter visual checks.
+7. For the strongest shortlisted candidates, call inspectElementizePixfortTemplateStructure on the new draft page before final selection. Compare top-level shape, widget mix, role counts, density, alignment, image prominence, dependency indicators, and structural signatures. Treat heuristic classifications as aids and verify against the raw widget counts and visual probe.
+8. Judge candidates against the design brief: reference/style fit, hierarchy, content fit, brand compatibility, distinctiveness, imagery suitability, dependency risk, and compatibility with the surrounding page rhythm.
+9. Avoid accidental repetition: do not stack several sections with nearly identical composition, structural signatures, card density, centered alignment, or visual weight unless the repetition is intentional and useful.
+10. Preserve a page-wide visual system. Think in roles such as primary background, alternate background, surface, primary text, secondary text, accent, border, primary CTA, and secondary CTA rather than treating each section independently.
+11. Do not claim a design is strong merely because it is technically valid. Current Design Intelligence signals are evidence aids; later deterministic design-audit capabilities may add stricter visual checks.
 
 BUILDING
 When enough context exists, proceed autonomously.
