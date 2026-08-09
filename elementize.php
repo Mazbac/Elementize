@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.2.8
+ * Version: 0.2.9
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 if ( ! class_exists( 'Elementize_Plugin', false ) ) {
 final class Elementize_Plugin {
-    private const VERSION = '0.2.8';
+    private const VERSION = '0.2.9';
     private const NS = 'elementize/v1';
     private const MAX_TEXT = 20000;
     private const MAX_UPDATES = 100;
@@ -52,9 +52,10 @@ final class Elementize_Plugin {
         <tr><td><strong>Pixfort catalogue endpoint</strong></td><td><code><?php echo esc_html( rest_url( self::NS . '/pixfort/templates' ) ); ?></code></td></tr>
         <tr><td><strong>Pixfort visual probe endpoint</strong></td><td><code><?php echo esc_html( rest_url( self::NS . '/pixfort/visual-probe' ) ); ?></code></td></tr>
         <tr><td><strong>Pixfort insert endpoint</strong></td><td><code><?php echo esc_html( rest_url( self::NS . '/pages/{id}/pixfort/insert' ) ); ?></code></td></tr>
+        <tr><td><strong>Visual settings endpoint</strong></td><td><code><?php echo esc_html( rest_url( self::NS . '/pages/{id}/visual-settings' ) ); ?></code></td></tr>
         <tr><td><strong>Top-level remove endpoint</strong></td><td><code><?php echo esc_html( rest_url( self::NS . '/pages/{id}/elements/remove' ) ); ?></code></td></tr>
         </tbody></table></div>
-        <div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Current test state</h2><p><strong>Create → visually select → compose is proven manually.</strong> 0.2.7 adds a read-only GPT Actions visual probe that returns candidate thumbnails inside a JSON file for Code Interpreter inspection.</p></div></div>
+        <div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Current test state</h2><p><strong>Visual matching, guarded draft composition, and controlled copy editing are runtime-proven.</strong> 0.2.9 adds read-only inspection of Elementor media, colors, global references, dynamic visual references, and icons.</p></div></div>
         <?php
     }
 
@@ -145,6 +146,12 @@ final class Elementize_Plugin {
                 'element_id' => [ 'type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
             ],
         ] );
+        register_rest_route( self::NS, '/pages/(?P<id>\\d+)/visual-settings', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [ self::class, 'visual_settings' ],
+            'permission_callback' => [ self::class, 'can_edit_page' ],
+            'args' => [ 'id' => [ 'type' => 'integer', 'required' => true, 'sanitize_callback' => 'absint' ] ],
+        ] );
         register_rest_route( self::NS, '/pages/(?P<id>\\d+)/text', [
             [
                 'methods' => WP_REST_Server::READABLE,
@@ -223,6 +230,7 @@ final class Elementize_Plugin {
             'theme' => $t->get( 'Name' ),
             'theme_version' => $t->get( 'Version' ),
             'visual_probe_max_candidates' => self::MAX_VISUAL_PROBE,
+            'visual_settings_read_only' => true,
         ], 200 );
     }
 
@@ -668,6 +676,37 @@ final class Elementize_Plugin {
         ], 200 );
     }
 
+    public static function visual_settings( WP_REST_Request $r ) {
+        $id = absint( $r['id'] );
+        $d = self::need_doc( $id );
+        if ( is_wp_error( $d ) ) return $d;
+        $e = $d->get_elements_data();
+        if ( ! is_array( $e ) ) return new WP_Error( 'elementize_invalid_elementor_data', 'Elementor returned invalid page data.', [ 'status' => 500 ] );
+        $items = [];
+        self::collect_visual( $e, $items );
+        $counts = [ 'media' => 0, 'color' => 0, 'global' => 0, 'icon' => 0, 'dynamic' => 0 ];
+        foreach ( $items as $item ) {
+            $kind = (string) ( $item['kind'] ?? '' );
+            if ( array_key_exists( $kind, $counts ) ) $counts[ $kind ]++;
+        }
+        $p = get_post( $id );
+        return new WP_REST_Response( [
+            'page' => [
+                'id' => $id,
+                'title' => get_the_title( $id ),
+                'status' => $p->post_status,
+                'modified_gmt' => $p->post_modified_gmt,
+                'edit_url' => $d->get_edit_url(),
+                'permalink' => get_permalink( $id ),
+            ],
+            'content_hash' => self::hash( $e ),
+            'read_only' => true,
+            'visual_item_count' => count( $items ),
+            'counts' => $counts,
+            'visual_items' => $items,
+        ], 200 );
+    }
+
     public static function update_text( WP_REST_Request $r ) {
         $id = absint( $r['id'] );
         $d = self::need_doc( $id );
@@ -780,6 +819,116 @@ final class Elementize_Plugin {
             'setting_path' => array_values( $p ),
             'format' => wp_strip_all_tags( $v ) === $v ? 'text' : 'html',
             'value' => $v,
+        ];
+    }
+
+    private static function collect_visual( array $e, array &$items ): void {
+        foreach ( $e as $x ) {
+            if ( ! is_array( $x ) ) continue;
+            $id = (string) ( $x['id'] ?? '' );
+            $et = isset( $x['elType'] ) && is_string( $x['elType'] ) ? $x['elType'] : null;
+            $wt = isset( $x['widgetType'] ) && is_string( $x['widgetType'] ) ? $x['widgetType'] : null;
+            if ( $id && ! empty( $x['settings'] ) && is_array( $x['settings'] ) ) self::collect_visual_settings( $x['settings'], [], $id, $et, $wt, $items );
+            if ( ! empty( $x['elements'] ) && is_array( $x['elements'] ) ) self::collect_visual( $x['elements'], $items );
+        }
+    }
+
+    private static function collect_visual_settings( $v, array $p, string $id, ?string $et, ?string $wt, array &$items ): void {
+        $key = self::last_path_key( $p );
+        if ( is_array( $v ) ) {
+            if ( $key === '__globals__' ) {
+                foreach ( $v as $global_key => $global_value ) {
+                    if ( ! is_string( $global_key ) || ! is_scalar( $global_value ) ) continue;
+                    $value = trim( (string) $global_value );
+                    if ( $value === '' ) continue;
+                    self::add_visual_item( $items, 'global', $id, $et, $wt, array_merge( $p, [ $global_key ] ), $value );
+                }
+                return;
+            }
+            $icon = self::visual_icon_array( $key, $v );
+            if ( $icon !== null ) {
+                self::add_visual_item( $items, 'icon', $id, $et, $wt, $p, $icon );
+                return;
+            }
+            $media = self::visual_media_array( $key, $v );
+            if ( $media !== null ) {
+                self::add_visual_item( $items, 'media', $id, $et, $wt, $p, $media );
+                return;
+            }
+            foreach ( $v as $k => $n ) self::collect_visual_settings( $n, array_merge( $p, [ $k ] ), $id, $et, $wt, $items );
+            return;
+        }
+        if ( ! is_scalar( $v ) ) return;
+        $value = trim( (string) $v );
+        if ( $value === '' ) return;
+        $kind = self::visual_scalar_kind( $p, $value );
+        if ( $kind === null ) return;
+        self::add_visual_item( $items, $kind, $id, $et, $wt, $p, $value );
+    }
+
+    private static function visual_media_array( string $key, array $v ): ?array {
+        $url = isset( $v['url'] ) && is_string( $v['url'] ) ? trim( $v['url'] ) : '';
+        $id = $v['id'] ?? null;
+        $looks_media = (bool) preg_match( '/(^|_)(image|media|logo|thumbnail|avatar|photo|poster)(_|$)/i', $key ) || str_contains( $key, 'background_image' );
+        if ( ! $looks_media && ! ( $url !== '' && array_key_exists( 'id', $v ) ) ) return null;
+        if ( $url === '' && ( $id === null || $id === '' || $id === 0 || $id === '0' ) ) return null;
+        $out = [];
+        if ( $id !== null && $id !== '' ) $out['id'] = is_numeric( $id ) ? absint( $id ) : (string) $id;
+        if ( $url !== '' ) $out['url'] = esc_url_raw( $url );
+        foreach ( [ 'alt', 'title', 'source' ] as $field ) if ( isset( $v[ $field ] ) && is_scalar( $v[ $field ] ) && trim( (string) $v[ $field ] ) !== '' ) $out[ $field ] = (string) $v[ $field ];
+        return $out ?: null;
+    }
+
+    private static function visual_icon_array( string $key, array $v ): ?array {
+        if ( ! str_contains( $key, 'icon' ) || ( ! array_key_exists( 'value', $v ) && ! array_key_exists( 'library', $v ) ) ) return null;
+        $out = [];
+        if ( isset( $v['value'] ) && is_scalar( $v['value'] ) && trim( (string) $v['value'] ) !== '' ) $out['value'] = (string) $v['value'];
+        if ( isset( $v['library'] ) && is_scalar( $v['library'] ) && trim( (string) $v['library'] ) !== '' ) $out['library'] = (string) $v['library'];
+        return $out ?: null;
+    }
+
+    private static function visual_scalar_kind( array $p, string $value ): ?string {
+        $key = self::last_path_key( $p );
+        if ( self::path_has_key( $p, '__globals__' ) ) return 'global';
+        $is_media_key = (bool) preg_match( '/(^|_)(image|media|logo|thumbnail|avatar|photo|poster)(_|$)/i', $key ) || str_contains( $key, 'background_image' );
+        $is_icon_key = str_contains( $key, 'icon' );
+        $is_color_key = str_contains( $key, 'color' );
+        if ( str_starts_with( ltrim( $value ), '[elementor-tag' ) && ( $is_media_key || $is_icon_key || $is_color_key ) ) return 'dynamic';
+        if ( $is_color_key && self::looks_like_color( $value ) ) return 'color';
+        if ( $is_icon_key && strlen( $value ) <= 500 ) return 'icon';
+        if ( $is_media_key && strlen( $value ) <= 2000 && preg_match( '#^https?://#i', $value ) ) return 'media';
+        return null;
+    }
+
+    private static function looks_like_color( string $value ): bool {
+        $v = trim( $value );
+        if ( preg_match( '/^#[0-9a-f]{3,8}$/i', $v ) ) return true;
+        if ( preg_match( '/^(rgba?|hsla?)\(/i', $v ) ) return true;
+        if ( str_starts_with( strtolower( $v ), 'var(' ) ) return true;
+        return in_array( strtolower( $v ), [ 'transparent', 'currentcolor', 'inherit', 'initial', 'unset', 'white', 'black' ], true );
+    }
+
+    private static function last_path_key( array $p ): string {
+        for ( $i = count( $p ) - 1; $i >= 0; $i-- ) if ( is_string( $p[ $i ] ) ) return strtolower( $p[ $i ] );
+        return '';
+    }
+
+    private static function path_has_key( array $p, string $needle ): bool {
+        $needle = strtolower( $needle );
+        foreach ( $p as $segment ) if ( is_string( $segment ) && strtolower( $segment ) === $needle ) return true;
+        return false;
+    }
+
+    private static function add_visual_item( array &$items, string $kind, string $id, ?string $et, ?string $wt, array $p, $value ): void {
+        $items[] = [
+            'kind' => $kind,
+            'element_id' => $id,
+            'element_type' => $et,
+            'widget_type' => $wt,
+            'setting_path' => array_values( $p ),
+            'setting_key' => self::last_path_key( $p ),
+            'value' => $value,
+            'writable' => false,
         ];
     }
 
