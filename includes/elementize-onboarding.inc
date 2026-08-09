@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Onboarding {
-    private const VERSION = '0.6.0';
+    private const VERSION = '0.6.1';
     private const SLUG = 'elementize-setup';
     private const OPT_PUBLIC = 'elementize_public_api_origin';
     private const OPT_GPT = 'elementize_wp_builder_gpt_url';
@@ -86,7 +86,7 @@ final class Elementize_Onboarding {
                 <section class="elz-card"><h2>4. GPT Builder</h2><p><a class="button button-primary" target="_blank" rel="noopener" href="https://chatgpt.com/gpts/editor">Open GPT Builder</a></p><ol><li>Paste the Instructions below.</li><li>Create a new Action and paste the generated schema.</li><li>Authentication: <strong>API Key → Basic</strong>.</li><li>Paste the Connection Key as the API key value.</li><li>Save, then test in Preview with <code>Call getElementizeStatus and show me the full raw result.</code></li></ol></section>
                 <section class="elz-card elz-full"><h2>5. WP Builder Instructions</h2><textarea id="elz-instructions" class="elz-text" readonly><?php echo esc_textarea( $instructions ); ?></textarea><p><button type="button" class="button elz-copy" data-target="elz-instructions">Copy GPT Instructions</button></p></section>
                 <section class="elz-card elz-full"><h2>6. Generated Actions Schema</h2><p>Generated for <code><?php echo esc_html( $public ); ?></code>.</p><textarea id="elz-schema" class="elz-text elz-schema" readonly><?php echo esc_textarea( $schema ); ?></textarea><p><button type="button" class="button elz-copy" data-target="elz-schema">Copy Actions Schema</button></p></section>
-                <section class="elz-card elz-full"><h2>7. Finish</h2><p>After the GPT is saved, its status test should report <code>elementize_version: 0.6.0</code> and <code>onboarding_wizard: true</code>. Save the GPT link above for a one-click <strong>Open WP Builder</strong> shortcut.</p></section>
+                <section class="elz-card elz-full"><h2>7. Finish</h2><p>After the GPT is saved, its status test should report <code>elementize_version: 0.6.1</code> and <code>onboarding_wizard: true</code>. Save the GPT link above for a one-click <strong>Open WP Builder</strong> shortcut.</p></section>
             </div>
         </div>
         <script>(function(){const ajax=<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,nonce=<?php echo wp_json_encode( $nonce ); ?>;function val(id){const e=document.getElementById(id);return e?(('value'in e)?e.value:e.textContent):''}async function copy(id,b){const t=val(id);if(!t)return;try{await navigator.clipboard.writeText(t);const o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1000)}catch(e){const n=document.getElementById(id);if(n&&n.select){n.select();document.execCommand('copy')}}}document.querySelectorAll('.elz-copy').forEach(b=>b.onclick=()=>copy(b.dataset.target,b));const btn=document.getElementById('elz-key-btn');btn.onclick=async()=>{btn.disabled=true;btn.textContent='Generating…';const er=document.getElementById('elz-key-error');er.style.display='none';try{const body=new URLSearchParams({action:'elementize_generate_connection_key',nonce});const r=await fetch(ajax,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString(),cache:'no-store'});const j=await r.json();if(!j.success)throw new Error(j?.data?.message||'Generation failed');document.getElementById('elz-key').textContent=j.data.connection_key;document.getElementById('elz-key-meta').textContent='Created: '+j.data.name+'. Copy it now; it will not be shown again.';document.getElementById('elz-key-box').style.display='block'}catch(e){er.textContent=e.message;er.style.display='block'}finally{btn.disabled=false;btn.textContent='Generate New Connection Key'}}})();</script>
@@ -151,9 +151,10 @@ final class Elementize_Onboarding {
     private static function schema( string $public ): string {
         $s = self::file( 'CUSTOM_GPT_ACTIONS.openapi.yaml' );
         $o = self::origin( $public ); if ( is_wp_error( $o ) ) $o = self::default_origin();
-        $s = (string) preg_replace( '/(?m)^\\s*- url: .*$/', '- url: ' . $o, $s, 1 );
-        $s = str_replace( 'version: 0.5.14.0', 'version: 0.6.0.0', $s );
+        $s = (string) preg_replace( '/(?m)^(\\s*)- url: .*$/', '${1}- url: ' . $o, $s, 1 );
+        $s = str_replace( 'version: 0.5.14.0', 'version: 0.6.1.0', $s );
         $s = str_replace( 'Controlled WordPress, Elementor, Pixfort, Media Library, conversation-image import, visual, layout, lifecycle, and page-owned embedded Pixfort copy actions for Elementize.', 'Controlled WordPress, Elementor, Pixfort, media, links, quality audit, layout, lifecycle, and embedded-copy actions for Elementize.', $s );
+        $s = str_replace( 'Current Cloudflare quick tunnel. Replace if the quick tunnel changes.', 'Elementize public WordPress API origin.', $s );
         $old_desc = 'Use when the user supplied an image in the conversation and wants that exact image used on the WordPress page. Send exactly one conversation image through openaiFileIdRefs. The action imports it as a normal WordPress image attachment; use the returned attachment_id in a later guarded media write. JPG, PNG, WEBP, AVIF, and GIF are supported. Do not use for unrelated files.';
         $new_desc = 'Import one image attached in this ChatGPT conversation into WordPress and return its attachment_id for a later guarded media write.';
         $s = str_replace( $old_desc, $new_desc, $s );
@@ -170,6 +171,7 @@ final class Elementize_Onboarding {
         $d['onboarding_connection_key_generator'] = true;
         $d['onboarding_connection_key_stored'] = false;
         $d['onboarding_gpt_url_storage'] = true;
+        $d['onboarding_schema_server_indent_fix'] = true;
         $response->set_data( $d ); return $response;
     }
 }
