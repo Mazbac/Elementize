@@ -91,6 +91,16 @@
       responses:
         '200': { description: Page quality findings and default completion-pass state }
 
+  /wp-json/elementize/v1/pages/{id}/design-audit:
+    get:
+      operationId: getElementizePageDesignAudit
+      summary: Audit measurable page-level design consistency and readability signals
+      description: Read-only. Reports conservative palette, typography, spacing, explicit contrast, CTA-style, and repeated-composition findings. Visual inspection remains necessary for rendered appearance.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: Page design audit, section composition summaries, findings, and default design-pass state }
+
   /wp-json/elementize/v1/pixfort/catalogue-summary:
     get:
       operationId: getElementizePixfortCatalogueSummary
