@@ -16,8 +16,10 @@ require_once __DIR__ . '/includes/elementize-visual-writes.inc';
 require_once __DIR__ . '/includes/elementize-visual-rendering.inc';
 require_once __DIR__ . '/includes/elementize-lifecycle.inc';
 require_once __DIR__ . '/includes/elementize-visual-filters.inc';
+require_once __DIR__ . '/includes/elementize-admin-display.inc';
 
 Elementize_Visual_Writes::init();
 Elementize_Visual_Rendering::init();
 Elementize_Lifecycle::init();
 Elementize_Visual_Filters::init();
+Elementize_Admin_Display::init();
