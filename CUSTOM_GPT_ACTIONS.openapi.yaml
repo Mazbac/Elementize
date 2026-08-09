@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.4.2.0
-  description: Controlled WordPress, Elementor, Pixfort, visual editing, and guarded page lifecycle actions for Elementize.
+  version: 0.5.0.0
+  description: Controlled WordPress, Elementor, Pixfort, visual editing, page layout, and guarded lifecycle actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
     description: Current Cloudflare quick tunnel. Replace if the quick tunnel changes.
+
 paths:
   /wp-json/elementize/v1/status:
     get:
@@ -23,8 +24,6 @@ paths:
                   visual_settings_write_types:
                     type: array
                     items: { type: string }
-                  visual_color_active_state: { type: boolean }
-                  visual_css_regeneration: { type: string }
                   visual_settings_filters:
                     type: array
                     items: { type: string }
@@ -36,6 +35,12 @@ paths:
                     type: array
                     items: { type: string }
                   hard_delete_available: { type: boolean }
+                  page_layout_management: { type: boolean }
+                  page_layout_modes:
+                    type: array
+                    items: { type: string }
+                  page_layout_write_managed_pages_only: { type: boolean }
+                  page_layout_write_draft_only: { type: boolean }
                 additionalProperties: true
 
   /wp-json/elementize/v1/pixfort/templates:
@@ -199,10 +204,7 @@ paths:
       operationId: insertPixfortTemplate
       summary: Insert a Pixfort template into an Elementor page
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -215,9 +217,7 @@ paths:
                 content_hash: { type: string }
                 template_id: { type: string }
                 position: { type: string, enum: [start, end, before, after], default: end }
-                target_element_id:
-                  type: string
-                  description: Required for before or after positioning.
+                target_element_id: { type: string }
       responses:
         '200':
           description: Pixfort insertion result
@@ -243,10 +243,7 @@ paths:
       operationId: getElementorPageText
       summary: Read editable Elementor text and current content hash
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       responses:
         '200':
           description: Editable Elementor text
@@ -273,10 +270,7 @@ paths:
       operationId: updateElementorPageText
       summary: Update recognized Elementor copy with stale-value protection
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -322,31 +316,24 @@ paths:
     get:
       operationId: getElementorVisualSettings
       summary: Read compact filtered Elementor visual settings
-      description: For normal editing use compact=true, active=true, writable=true, and limit=20. Paginate with next_offset when needed. Add kind to target only colors, icons, or media.
+      description: Use compact=true, active=true, writable=true, and limit=20. Paginate with next_offset. Add kind when targeting only colors, icons, or media.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
         - name: kind
           in: query
           required: false
-          description: Optional visual kind filter.
           schema: { type: string, enum: [all, color, icon, media, global, dynamic] }
         - name: active
           in: query
           required: false
-          description: Use true for safe editing reads.
           schema: { type: boolean, default: true }
         - name: writable
           in: query
           required: false
-          description: Use true for safe editing reads.
           schema: { type: boolean, default: true }
         - name: compact
           in: query
           required: false
-          description: Use true for Custom GPT reads to minimize response size.
           schema: { type: boolean, default: true }
         - name: element_id
           in: query
@@ -359,7 +346,6 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Use 20 for compact Custom GPT reads. Maximum 200.
           schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
       responses:
         '200':
@@ -383,17 +369,6 @@ paths:
                       media: { type: integer }
                       global: { type: integer }
                       dynamic: { type: integer }
-                    additionalProperties: true
-                  visual_filters:
-                    type: object
-                    properties:
-                      kind: { type: [string, 'null'] }
-                      active: { type: [boolean, 'null'] }
-                      writable: { type: [boolean, 'null'] }
-                      compact: { type: [boolean, 'null'] }
-                      element_id: { type: [string, 'null'] }
-                      offset: { type: integer }
-                      limit: { type: [integer, 'null'] }
                     additionalProperties: true
                   visual_items:
                     type: array
@@ -424,12 +399,9 @@ paths:
     post:
       operationId: updateElementorVisualSettings
       summary: Guardedly update active colors, Pixfort icons, or image attachments
-      description: Read visual settings immediately before writing. Use the fresh content_hash and exact expected values or attachment IDs from writable targets.
+      description: Read visual settings immediately before writing and use the fresh content_hash plus exact expected values or attachment IDs.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -474,35 +446,90 @@ paths:
                   revision_id: { type: integer }
                   content_hash: { type: string }
                   css_regenerated: { type: boolean }
-                  css_regeneration_error: { type: string }
                 additionalProperties: true
         '409':
-          description: Page or target changed after the fresh read
+          $ref: '#/components/responses/Conflict'
+
+  /wp-json/elementize/v1/pages/{id}/layout:
+    get:
+      operationId: getElementizePageLayout
+      summary: Read current guarded page layout mode
+      description: Read immediately before a layout change. Site keeps theme chrome; standalone uses Elementor Canvas with no theme header or footer.
+      parameters:
+        - $ref: '#/components/parameters/PageId'
+      responses:
+        '200':
+          description: Current page layout state
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  code: { type: string }
-                  message: { type: string }
-                  data:
-                    type: object
-                    properties:
-                      status: { type: integer }
-                      content_hash: { type: string }
-                    additionalProperties: true
+                  page_id: { type: integer }
+                  title: { type: string }
+                  status: { type: string }
+                  elementize_managed: { type: boolean }
+                  mode: { type: string }
+                  elementor_template: { type: string }
+                  supported_modes:
+                    type: array
+                    items: { type: string }
+                  layout_token: { type: string }
+                  content_hash: { type: string }
+                  preview_url: { type: [string, 'null'] }
                 additionalProperties: true
+    post:
+      operationId: updateElementizePageLayout
+      summary: Change a managed draft between site and standalone layout
+      description: Managed draft pages only. Read layout immediately first and use its fresh title, status, mode, layout_token, and content_hash.
+      parameters:
+        - $ref: '#/components/parameters/PageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, expected_mode, layout_token, content_hash, mode, confirm_layout_change]
+              properties:
+                expected_status: { type: string, enum: [draft] }
+                expected_title: { type: string }
+                expected_mode: { type: string, enum: [default, site, standalone] }
+                layout_token: { type: string }
+                content_hash: { type: string }
+                mode: { type: string, enum: [site, standalone] }
+                confirm_layout_change: { type: boolean, enum: [true] }
+      responses:
+        '200':
+          description: Page layout update result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved: { type: boolean }
+                  changed: { type: boolean }
+                  page_id: { type: integer }
+                  previous_mode: { type: string }
+                  mode: { type: string }
+                  previous_elementor_template: { type: string }
+                  elementor_template: { type: string }
+                  revision_id: { type: [integer, 'null'] }
+                  content_hash: { type: string }
+                  layout_token: { type: string }
+                  preview_url: { type: [string, 'null'] }
+                additionalProperties: true
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /wp-json/elementize/v1/pages/{id}/lifecycle:
     get:
       operationId: getElementizePageLifecycle
       summary: Read guarded lifecycle state for a WordPress page
-      description: Call immediately before trash, restore, publish, or unpublish. Use returned title, status, lifecycle_token, content_hash, and allowed_actions without guessing.
+      description: Call immediately before trash, restore, publish, or unpublish. Use returned title, status, lifecycle_token, content_hash, and allowed_actions.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       responses:
         '200':
           description: Current page lifecycle snapshot
@@ -532,26 +559,15 @@ paths:
     post:
       operationId: trashElementizeManagedPage
       summary: Move a managed draft page to WordPress Trash
-      description: Reversible and never a hard delete. Use only after a fresh lifecycle read confirms managed draft state and allows trash.
+      description: Reversible, never hard delete. Use only after a fresh lifecycle read confirms the exact managed draft and allows trash.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_trash]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                lifecycle_token: { type: string }
-                content_hash: { type: string }
-                confirm_trash: { type: boolean, enum: [true] }
+              $ref: '#/components/schemas/TrashRequest'
       responses:
         '200':
           description: Page moved to Trash
@@ -567,36 +583,18 @@ paths:
                   hard_deleted: { type: boolean }
                   restore_available: { type: boolean }
                   lifecycle:
-                    type: object
-                    properties:
-                      lifecycle_token: { type: string }
-                      content_hash: { type: string }
-                      allowed_actions:
-                        type: array
-                        items: { type: string }
-                    additionalProperties: true
+                    $ref: '#/components/schemas/LifecycleResult'
                 additionalProperties: true
         '409':
-          description: Lifecycle or content changed after the fresh read
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code: { type: string }
-                  message: { type: string }
-                additionalProperties: true
+          $ref: '#/components/responses/Conflict'
 
   /wp-json/elementize/v1/pages/{id}/restore:
     post:
       operationId: restoreElementizeManagedPage
       summary: Restore a managed page from Trash to draft
-      description: Use only after a fresh lifecycle read confirms managed trash state and allows restore.
+      description: Use only after a fresh lifecycle read confirms the exact managed trash state and allows restore.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -623,50 +621,24 @@ paths:
                   previous_status: { type: string }
                   status: { type: string }
                   lifecycle:
-                    type: object
-                    properties:
-                      lifecycle_token: { type: string }
-                      content_hash: { type: string }
-                      allowed_actions:
-                        type: array
-                        items: { type: string }
-                    additionalProperties: true
+                    $ref: '#/components/schemas/LifecycleResult'
                 additionalProperties: true
         '409':
-          description: Lifecycle changed after the fresh read
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code: { type: string }
-                  message: { type: string }
-                additionalProperties: true
+          $ref: '#/components/responses/Conflict'
 
   /wp-json/elementize/v1/pages/{id}/publish:
     post:
       operationId: publishElementizeManagedPage
       summary: Publish a non-empty managed Elementor draft
-      description: High impact. Use only when explicitly requested and a fresh lifecycle read confirms managed draft state, non-empty content, and publish permission.
+      description: High impact. Use only when explicitly requested and a fresh lifecycle read confirms a managed non-empty draft with publish permission.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_publish]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                lifecycle_token: { type: string }
-                content_hash: { type: string }
-                confirm_publish: { type: boolean, enum: [true] }
+              $ref: '#/components/schemas/PublishRequest'
       responses:
         '200':
           description: Page published
@@ -682,46 +654,24 @@ paths:
                   revision_id: { type: [integer, 'null'] }
                   permalink: { type: string }
                   lifecycle:
-                    type: object
-                    properties:
-                      lifecycle_token: { type: string }
-                      content_hash: { type: string }
-                      allowed_actions:
-                        type: array
-                        items: { type: string }
-                    additionalProperties: true
+                    $ref: '#/components/schemas/LifecycleResult'
                 additionalProperties: true
         '400':
-          description: Publication refused, including empty-page protection
+          description: Publication refused
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  code: { type: string }
-                  message: { type: string }
-                additionalProperties: true
+                $ref: '#/components/schemas/Error'
         '409':
-          description: Lifecycle or content changed after the fresh read
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code: { type: string }
-                  message: { type: string }
-                additionalProperties: true
+          $ref: '#/components/responses/Conflict'
 
   /wp-json/elementize/v1/pages/{id}/unpublish:
     post:
       operationId: unpublishElementizeManagedPage
       summary: Return a published managed page to draft
-      description: Use only when explicitly requested and a fresh lifecycle read confirms managed published state and unpublish permission.
+      description: Use only when explicitly requested and a fresh lifecycle read confirms the managed published page allows unpublish.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -751,22 +701,63 @@ paths:
                   revision_id: { type: [integer, 'null'] }
                   preview_url: { type: string }
                   lifecycle:
-                    type: object
-                    properties:
-                      lifecycle_token: { type: string }
-                      content_hash: { type: string }
-                      allowed_actions:
-                        type: array
-                        items: { type: string }
-                    additionalProperties: true
+                    $ref: '#/components/schemas/LifecycleResult'
                 additionalProperties: true
         '409':
-          description: Lifecycle or content changed after the fresh read
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  code: { type: string }
-                  message: { type: string }
-                additionalProperties: true
+          $ref: '#/components/responses/Conflict'
+
+components:
+  parameters:
+    PageId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+      additionalProperties: true
+
+    LifecycleResult:
+      type: object
+      properties:
+        lifecycle_token: { type: string }
+        content_hash: { type: string }
+        allowed_actions:
+          type: array
+          items: { type: string }
+      additionalProperties: true
+
+    TrashRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_trash]
+      properties:
+        expected_status: { type: string, enum: [draft] }
+        expected_title: { type: string }
+        lifecycle_token: { type: string }
+        content_hash: { type: string }
+        confirm_trash: { type: boolean, enum: [true] }
+
+    PublishRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_publish]
+      properties:
+        expected_status: { type: string, enum: [draft] }
+        expected_title: { type: string }
+        lifecycle_token: { type: string }
+        content_hash: { type: string }
+        confirm_publish: { type: boolean, enum: [true] }
+
+  responses:
+    Conflict:
+      description: State changed after the fresh read
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
