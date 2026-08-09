@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.5.13.0
-  description: Controlled WordPress, Elementor, Pixfort, media-library, visual, layout, lifecycle, and page-owned embedded Pixfort copy actions for Elementize.
+  version: 0.5.14.0
+  description: Controlled WordPress, Elementor, Pixfort, Media Library, conversation-image import, visual, layout, lifecycle, and page-owned embedded Pixfort copy actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
     description: Current Cloudflare quick tunnel. Replace if the quick tunnel changes.
@@ -26,6 +26,38 @@ paths:
         - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         '200': { description: Matching image attachments }
+
+  /wp-json/elementize/v1/media/images/import-chat-file:
+    post:
+      operationId: importElementizeConversationImage
+      summary: Import one image attached in this ChatGPT conversation into WordPress Media Library
+      description: Use when the user supplied an image in the conversation and wants that exact image used on the WordPress page. Send exactly one conversation image through openaiFileIdRefs. The action imports it as a normal WordPress image attachment; use the returned attachment_id in a later guarded media write. JPG, PNG, WEBP, AVIF, and GIF are supported. Do not use for unrelated files.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [openaiFileIdRefs, confirm_import]
+              properties:
+                openaiFileIdRefs:
+                  type: array
+                  minItems: 1
+                  maxItems: 1
+                  description: Exactly one image file uploaded by the user in this conversation, or an image file created in this conversation, to import into WordPress.
+                  items: { type: string }
+                title:
+                  type: string
+                  description: Optional WordPress Media Library title for the image.
+                alt:
+                  type: string
+                  description: Optional concise alt text describing the image for the page context.
+                confirm_import: { type: boolean, enum: [true] }
+      responses:
+        '201': { description: Conversation image imported and verified as a WordPress image attachment }
+        '400': { description: Missing/invalid file reference, unsupported image, or confirmation missing }
+        '502': { description: Temporary OpenAI file URL could not be downloaded }
 
   /wp-json/elementize/v1/pixfort/templates:
     get:
