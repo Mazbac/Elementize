@@ -43,5 +43,4 @@ Elementize_Render_Cache_Audit::init();
 Elementize_Post_Identity::init();
 Elementize_Embedded_Safe::init();
 Elementize_Page_Quality::init();
-Elementize_Page_Quality_Hardening::init();
 Elementize_Admin_Display::init();
