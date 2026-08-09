@@ -114,16 +114,19 @@ Known limitation discovered during the 0.5.13 test: the embedded text reader can
 - Clone-and-relink is the safe page-specific strategy for embedded Pixfort copy: originals remain untouched and the managed draft receives owned clones.
 - WordPress may convert uploaded image formats, so attachment discovery should not assume the uploaded extension survives.
 
+## Autonomous GPT acceptance test — 2026-08-09
+
+A fresh Custom GPT conversation using the 0.5.13.0 schema and updated instructions autonomously built draft page 952013 (`Dishwasher Store`) from a natural-language request, visually compared Pixfort candidates, produced dishwasher-specific main copy, kept the page in site layout and draft status, and reported a clean final copy verification without user-supplied IDs/hashes.
+
+Result: copy/autonomy behavior is promising, but the overall acceptance test is NOT fully passed yet. Visual inspection showed clearly off-topic imported imagery remained: a generic software/UI mockup in the hero, fashion-model photography in the dishwasher category section, and a generic laptop/stock-person image in the closing CTA. This is a semantic visual-content failure even though the text was rewritten correctly. WP Builder must not call a build complete while it knowingly selected dominant imagery unrelated to the requested subject.
+
+Instruction hardening added after this test: topical media relevance is now a hard criterion during Pixfort visual comparison. Candidates with clearly unrelated dominant photos/mockups must be rejected unless a safe relevant WordPress Media Library replacement is already available; otherwise prefer neutral, icon/text-led, or topic-relevant alternatives. Whole-page verification now also forbids claiming completion when known selected imagery remains off-topic.
+
 ## Current objective
 
-Move the runtime-proven 0.5.13 embedded workflow into normal Custom GPT use and prove it autonomously on a fresh managed draft.
+Re-run the fresh autonomous Custom GPT acceptance test with the hardened visual-relevance instructions.
 
-Next acceptance test:
-1. Import/use the 0.5.13.0 schema and updated WP Builder instructions.
-2. Give WP Builder a broad natural-language page rewrite/build request that imports Pixfort content containing child documents.
-3. WP Builder must discover embedded documents itself, clone/relink only when required, rewrite only page-owned clones, avoid style/control tokens, verify both the main page and embedded text surfaces, keep the page draft unless explicitly told otherwise, and report completion only after both verification passes are clean.
-
-Acceptance condition: the user does not need to manually discover child template IDs or execute PowerShell. The Custom GPT performs the safe workflow through Elementize Actions and leaves no clearly unrelated Pixfort/demo copy in either editable copy surface.
+Acceptance condition: the user provides only the business/page request. WP Builder autonomously creates a managed draft, visually chooses Pixfort sections, rewrites main and embedded copy safely, verifies both copy surfaces, and does not leave clearly unrelated dominant imagery or fake proof in the selected sections. The user should not need to supply internal IDs/hashes or manually perform the embedded workflow.
 
 ## Later
 
