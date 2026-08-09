@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.5.2.0
-  description: Controlled WordPress, Elementor, Pixfort, media-library lookup, visual editing, page layout, and guarded lifecycle actions for Elementize.
+  version: 0.5.13.0
+  description: Controlled WordPress, Elementor, Pixfort, media-library, visual, layout, lifecycle, and page-owned embedded Pixfort copy actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
     description: Current Cloudflare quick tunnel. Replace if the quick tunnel changes.
@@ -13,126 +13,32 @@ paths:
       operationId: getElementizeStatus
       summary: Get Elementize status and capabilities
       responses:
-        '200':
-          description: Elementize status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  elementize_version: { type: string }
-                  lifecycle_management: { type: boolean }
-                  page_layout_management: { type: boolean }
-                  media_library_search: { type: boolean }
-                  hard_delete_available: { type: boolean }
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/media/images:
     get:
       operationId: searchElementizeMediaImages
-      summary: Search recent WordPress Media Library images
-      description: Resolve a real image attachment ID by title, original filename, stored filename, or recency. Filename lookup tolerates WordPress format conversion such as JPG to AVIF.
+      summary: Search WordPress Media Library images
       parameters:
-        - name: q
-          in: query
-          required: false
-          schema: { type: string }
-        - name: filename
-          in: query
-          required: false
-          schema: { type: string }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: filename, in: query, required: false, schema: { type: string } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
-        '200':
-          description: Matching WordPress image attachments
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  page: { type: integer }
-                  per_page: { type: integer }
-                  total: { type: integer }
-                  total_pages: { type: integer }
-                  image_count: { type: integer }
-                  search:
-                    type: object
-                    properties:
-                      q: { type: string }
-                      filename: { type: string }
-                      filename_match: { type: string }
-                    additionalProperties: true
-                  images:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        attachment_id: { type: integer }
-                        title: { type: string }
-                        filename: { type: string }
-                        mime_type: { type: string }
-                        url: { type: string }
-                        alt: { type: string }
-                        width: { type: integer }
-                        height: { type: integer }
-                        date_gmt: { type: string }
-                      additionalProperties: true
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pixfort/templates:
     get:
       operationId: searchPixfortPlannerCandidates
       summary: Search Pixfort template candidates
       parameters:
-        - name: type
-          in: query
-          required: false
-          schema: { type: string, enum: [section, page], default: section }
-        - name: q
-          in: query
-          required: false
-          schema: { type: string }
-        - name: category
-          in: query
-          required: false
-          schema: { type: string }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [section, page], default: section } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: category, in: query, required: false, schema: { type: string } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
       responses:
-        '200':
-          description: Pixfort catalogue results
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  total: { type: integer }
-                  page: { type: integer }
-                  per_page: { type: integer }
-                  templates:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id: { type: string }
-                        title: { type: string }
-                        thumbnail: { type: string }
-                        identity_hash: { type: string }
-                      additionalProperties: true
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pixfort/visual-probe:
     post:
@@ -153,32 +59,7 @@ paths:
                   maxItems: 4
                   items: { type: string }
       responses:
-        '200':
-          description: Pixfort visual proof
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  probe_count: { type: integer }
-                  mapping:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        template_id: { type: string }
-                        identity_hash: { type: string }
-                      additionalProperties: true
-                  openaiFileResponse:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name: { type: string }
-                        mime_type: { type: string }
-                        content: { type: string }
-                      additionalProperties: true
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/create:
     post:
@@ -197,45 +78,15 @@ paths:
                 title: { type: string }
                 slug: { type: string }
       responses:
-        '200':
-          description: Draft creation result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  created: { type: boolean }
-                  content_hash: { type: string }
-                  elementize_managed: { type: boolean }
-                  page:
-                    type: object
-                    properties:
-                      id: { type: integer }
-                      title: { type: string }
-                      status: { type: string }
-                      preview_url: { type: string }
-                    additionalProperties: true
-                additionalProperties: true
-        '201':
-          description: Draft creation result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  created: { type: boolean }
-                  content_hash: { type: string }
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '201': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/pixfort/insert:
     post:
       operationId: insertPixfortTemplate
       summary: Insert a Pixfort template into an Elementor page
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -250,64 +101,21 @@ paths:
                 position: { type: string, enum: [start, end, before, after], default: end }
                 target_element_id: { type: string }
       responses:
-        '200':
-          description: Pixfort insertion result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  saved: { type: boolean }
-                  page_id: { type: integer }
-                  inserted_top_level_count: { type: integer }
-                  inserted_top_level_ids:
-                    type: array
-                    items: { type: string }
-                  content_hash: { type: string }
-                  revision_id: { type: integer }
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/text:
     get:
       operationId: getElementorPageText
-      summary: Read editable Elementor text and current content hash
+      summary: Read editable main-page Elementor copy and current content hash
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       responses:
-        '200':
-          description: Editable Elementor text
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  content_hash: { type: string }
-                  text_items:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        element_id: { type: string }
-                        setting_path:
-                          type: array
-                          items:
-                            anyOf:
-                              - { type: string }
-                              - { type: integer }
-                        value: { type: string }
-                      additionalProperties: true
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
     post:
       operationId: updateElementorPageText
-      summary: Update recognized Elementor copy with stale-value protection
+      summary: Update recognized main-page Elementor copy with stale-value protection
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -327,126 +135,127 @@ paths:
                     required: [element_id, setting_path, value]
                     properties:
                       element_id: { type: string }
-                      setting_path:
-                        type: array
-                        minItems: 1
-                        items:
-                          anyOf:
-                            - { type: string }
-                            - { type: integer }
+                      setting_path: { $ref: '#/components/schemas/SettingPath' }
                       expected_value: { type: string }
                       value: { type: string }
       responses:
-        '200':
-          description: Text update result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  saved: { type: boolean }
-                  page_id: { type: integer }
-                  updated_count: { type: integer }
-                  revision_id: { type: integer }
-                  content_hash: { type: string }
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
+
+  /wp-json/elementize/v1/pages/{id}/embedded-documents:
+    get:
+      operationId: getElementizeEmbeddedDocuments
+      summary: Audit Pixfort child documents referenced by a page
+      description: Read-only. Use before any embedded Pixfort copy write. Original Pixfort templates must never be edited directly.
+      parameters:
+        - $ref: '#/components/parameters/PageId'
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+
+  /wp-json/elementize/v1/pages/{id}/embedded-documents/clone-relink:
+    post:
+      operationId: cloneRelinkElementizeEmbeddedDocuments
+      summary: Clone referenced Pixfort templates and relink only this managed draft page
+      description: Guarded isolation step. Never modifies the original Pixfort templates.
+      parameters:
+        - $ref: '#/components/parameters/PageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, content_hash, expected_documents, confirm_clone_and_relink]
+              properties:
+                expected_status: { type: string, enum: [draft] }
+                expected_title: { type: string }
+                content_hash: { type: string }
+                expected_documents:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [post_id, elementor_data_hash]
+                    properties:
+                      post_id: { type: integer, minimum: 1 }
+                      elementor_data_hash: { type: string }
+                      post_status: { type: string }
+                      post_title: { type: string }
+                confirm_clone_and_relink: { type: boolean, enum: [true] }
+      responses:
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
+
+  /wp-json/elementize/v1/pages/{id}/embedded-text:
+    get:
+      operationId: getElementizeEmbeddedText
+      summary: Read copy fields from Pixfort child documents referenced by a page
+      description: Check prepare_required, elementize_managed_clone, owner_page_id, document_writable, and fresh document hashes before writing.
+      parameters:
+        - $ref: '#/components/parameters/PageId'
+      responses:
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+    post:
+      operationId: updateElementizeEmbeddedText
+      summary: Update copy only inside Elementize-owned Pixfort clones
+      description: Direct writes to original Pixfort templates are blocked. Use only fresh page/document hashes and expected values.
+      parameters:
+        - $ref: '#/components/parameters/PageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, page_content_hash, updates, confirm_embedded_text_write]
+              properties:
+                expected_status: { type: string, enum: [draft] }
+                expected_title: { type: string }
+                page_content_hash: { type: string }
+                updates:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [document_id, document_hash, element_id, setting_path, expected_value, value]
+                    properties:
+                      document_id: { type: integer, minimum: 1 }
+                      document_hash: { type: string }
+                      element_id: { type: string }
+                      setting_path: { $ref: '#/components/schemas/SettingPath' }
+                      expected_value: { type: string }
+                      value: { type: string }
+                confirm_embedded_text_write: { type: boolean, enum: [true] }
+      responses:
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/visual-settings:
     get:
       operationId: getElementorVisualSettings
       summary: Read compact filtered Elementor visual settings
-      description: Use compact=true, active=true, writable=true, and limit=20. Paginate with next_offset.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
-        - name: kind
-          in: query
-          required: false
-          schema: { type: string, enum: [all, color, icon, media, global, dynamic] }
-        - name: active
-          in: query
-          required: false
-          schema: { type: boolean, default: true }
-        - name: writable
-          in: query
-          required: false
-          schema: { type: boolean, default: true }
-        - name: compact
-          in: query
-          required: false
-          schema: { type: boolean, default: true }
-        - name: element_id
-          in: query
-          required: false
-          schema: { type: string }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+        - $ref: '#/components/parameters/PageId'
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [all, color, icon, media, global, dynamic] } }
+        - { name: active, in: query, required: false, schema: { type: boolean, default: true } }
+        - { name: writable, in: query, required: false, schema: { type: boolean, default: true } }
+        - { name: compact, in: query, required: false, schema: { type: boolean, default: true } }
+        - { name: element_id, in: query, required: false, schema: { type: string } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 20 } }
       responses:
-        '200':
-          description: Compact visual settings result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  content_hash: { type: string }
-                  visual_item_total: { type: integer }
-                  visual_item_matched: { type: integer }
-                  visual_item_count: { type: integer }
-                  visual_items_truncated: { type: boolean }
-                  next_offset: { type: integer }
-                  returned_kind_counts:
-                    type: object
-                    properties:
-                      color: { type: integer }
-                      icon: { type: integer }
-                      media: { type: integer }
-                    additionalProperties: true
-                  visual_items:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        kind: { type: string }
-                        element_id: { type: string }
-                        widget_type: { type: string }
-                        setting_path:
-                          type: array
-                          items:
-                            anyOf:
-                              - { type: string }
-                              - { type: integer }
-                        value:
-                          anyOf:
-                            - { type: string }
-                            - type: object
-                              properties:
-                                id: { type: integer }
-                                url: { type: string }
-                                file: { type: string }
-                                source: { type: string }
-                              additionalProperties: true
-                        active: { type: boolean }
-                        writable: { type: boolean }
-                      additionalProperties: true
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
     post:
       operationId: updateElementorVisualSettings
       summary: Guardedly update active colors, Pixfort icons, or image attachments
-      description: Read visual settings immediately before writing and use the fresh content hash.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -468,75 +277,28 @@ paths:
                     properties:
                       kind: { type: string, enum: [color, icon, media] }
                       element_id: { type: string }
-                      setting_path:
-                        type: array
-                        minItems: 1
-                        items:
-                          anyOf:
-                            - { type: string }
-                            - { type: integer }
+                      setting_path: { $ref: '#/components/schemas/SettingPath' }
                       expected_value: { type: string }
                       value: { type: string }
                       expected_attachment_id: { type: integer, minimum: 1 }
                       attachment_id: { type: integer, minimum: 1 }
       responses:
-        '200':
-          description: Visual update result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  saved: { type: boolean }
-                  page_id: { type: integer }
-                  updated_count: { type: integer }
-                  revision_id: { type: integer }
-                  content_hash: { type: string }
-                  css_regenerated: { type: boolean }
-                additionalProperties: true
-        '409':
-          description: Page or visual target changed after the fresh read
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/layout:
     get:
       operationId: getElementizePageLayout
       summary: Read current guarded page layout mode
-      description: Site keeps theme chrome. Standalone uses Elementor Canvas with no theme header or footer.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       responses:
-        '200':
-          description: Current page layout state
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  page_id: { type: integer }
-                  title: { type: string }
-                  status: { type: string }
-                  elementize_managed: { type: boolean }
-                  mode: { type: string }
-                  elementor_template: { type: string }
-                  supported_modes:
-                    type: array
-                    items: { type: string }
-                  layout_token: { type: string }
-                  content_hash: { type: string }
-                  preview_url: { type: string }
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
     post:
       operationId: updateElementizePageLayout
       summary: Change a managed draft between site and standalone layout
-      description: Read layout immediately first and use its fresh state values.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -554,71 +316,24 @@ paths:
                 mode: { type: string, enum: [site, standalone] }
                 confirm_layout_change: { type: boolean, enum: [true] }
       responses:
-        '200':
-          description: Page layout update result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  saved: { type: boolean }
-                  changed: { type: boolean }
-                  page_id: { type: integer }
-                  previous_mode: { type: string }
-                  mode: { type: string }
-                  elementor_template: { type: string }
-                  revision_id: { type: integer }
-                  content_hash: { type: string }
-                  layout_token: { type: string }
-                  preview_url: { type: string }
-                additionalProperties: true
-        '409':
-          description: Page layout or content changed after the fresh read
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/lifecycle:
     get:
       operationId: getElementizePageLifecycle
       summary: Read guarded lifecycle state for a WordPress page
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       responses:
-        '200':
-          description: Current page lifecycle snapshot
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  page_id: { type: integer }
-                  exists: { type: boolean }
-                  title: { type: string }
-                  status: { type: string }
-                  elementize_managed: { type: boolean }
-                  managed_version: { type: string }
-                  lifecycle_token: { type: string }
-                  content_hash: { type: string }
-                  is_elementor: { type: boolean }
-                  top_level_count: { type: integer }
-                  preview_url: { type: string }
-                  permalink: { type: string }
-                  allowed_actions:
-                    type: array
-                    items: { type: string }
-                additionalProperties: true
+        '200': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/trash:
     post:
       operationId: trashElementizeManagedPage
       summary: Move a managed draft page to WordPress Trash
-      description: Reversible and never a hard delete. Read lifecycle first.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -634,32 +349,15 @@ paths:
                 content_hash: { type: string }
                 confirm_trash: { type: boolean, enum: [true] }
       responses:
-        '200':
-          description: Page moved to Trash
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  trashed: { type: boolean }
-                  page_id: { type: integer }
-                  status: { type: string }
-                  hard_deleted: { type: boolean }
-                  restore_available: { type: boolean }
-                additionalProperties: true
-        '409':
-          description: Lifecycle or content changed after the fresh read
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/restore:
     post:
       operationId: restoreElementizeManagedPage
       summary: Restore a managed page from Trash to draft
-      description: Read lifecycle first and use the fresh lifecycle token.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -674,30 +372,16 @@ paths:
                 lifecycle_token: { type: string }
                 confirm_restore: { type: boolean, enum: [true] }
       responses:
-        '200':
-          description: Page restored to draft
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  restored: { type: boolean }
-                  page_id: { type: integer }
-                  status: { type: string }
-                additionalProperties: true
-        '409':
-          description: Lifecycle changed after the fresh read
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/publish:
     post:
       operationId: publishElementizeManagedPage
       summary: Publish a non-empty managed Elementor draft
-      description: High impact. Use only when explicitly requested and after a fresh lifecycle read.
+      description: High impact. Use only when explicitly requested after a fresh lifecycle read.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -713,34 +397,16 @@ paths:
                 content_hash: { type: string }
                 confirm_publish: { type: boolean, enum: [true] }
       responses:
-        '200':
-          description: Page published
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  published: { type: boolean }
-                  page_id: { type: integer }
-                  status: { type: string }
-                  revision_id: { type: integer }
-                  permalink: { type: string }
-                additionalProperties: true
-        '400':
-          description: Publication refused
-        '409':
-          description: Lifecycle or content changed after the fresh read
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '400': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
 
   /wp-json/elementize/v1/pages/{id}/unpublish:
     post:
       operationId: unpublishElementizeManagedPage
       summary: Return a published managed page to draft
-      description: Use only when explicitly requested and after a fresh lifecycle read.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/PageId'
       requestBody:
         required: true
         content:
@@ -756,18 +422,29 @@ paths:
                 content_hash: { type: string }
                 confirm_unpublish: { type: boolean, enum: [true] }
       responses:
-        '200':
-          description: Page returned to draft
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  unpublished: { type: boolean }
-                  page_id: { type: integer }
-                  status: { type: string }
-                  revision_id: { type: integer }
-                  preview_url: { type: string }
-                additionalProperties: true
-        '409':
-          description: Lifecycle or content changed after the fresh read
+        '200': { $ref: '#/components/responses/ObjectResponse' }
+        '409': { $ref: '#/components/responses/ObjectResponse' }
+
+components:
+  parameters:
+    PageId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+  schemas:
+    SettingPath:
+      type: array
+      minItems: 1
+      items:
+        anyOf:
+          - { type: string }
+          - { type: integer }
+  responses:
+    ObjectResponse:
+      description: Elementize response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
