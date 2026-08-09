@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.5.12.1
+ * Version: 0.5.13
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -23,10 +23,7 @@ require_once __DIR__ . '/includes/elementize-render-audit.inc';
 require_once __DIR__ . '/includes/elementize-post-content-sync.inc';
 require_once __DIR__ . '/includes/elementize-render-cache-audit.inc';
 require_once __DIR__ . '/includes/elementize-post-identity.inc';
-/* 0.5.12.1 recovery hotfix: the new embedded-document write module is intentionally
- * not loaded while its PHP namespace escaping is repaired and linted. Keeping the
- * file unrequired restores the previously proven Elementize functionality without
- * touching any WordPress or Elementor page data. */
+require_once __DIR__ . '/includes/elementize-embedded-safe.inc';
 require_once __DIR__ . '/includes/elementize-admin-display.inc';
 
 Elementize_Visual_Writes::init();
@@ -40,4 +37,5 @@ Elementize_Render_Audit::init();
 Elementize_Post_Content_Sync::init();
 Elementize_Render_Cache_Audit::init();
 Elementize_Post_Identity::init();
+Elementize_Embedded_Safe::init();
 Elementize_Admin_Display::init();
