@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Design_Settings {
-    private const VERSION = '0.9.0';
+    private const VERSION = '0.9.1';
     private const NS = 'elementize/v1';
     private const DEFAULT_LIMIT = 100;
     private const MAX_LIMIT = 300;
@@ -14,7 +14,7 @@ final class Elementize_Design_Settings {
     }
 
     public static function routes(): void {
-        register_rest_route( self::NS, '/pages/(?P<id>\\d+)/design-settings', [
+        register_rest_route( self::NS, '/pages/(?P<id>\d+)/design-settings', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [ self::class, 'read' ],
             'permission_callback' => [ self::class, 'can_read' ],
@@ -58,11 +58,11 @@ final class Elementize_Design_Settings {
         $responsive_counts = [];
         $writer_candidates = 0;
         foreach ( $controls as $control ) {
-            $category = (string) ( $control['category'] ?? 'other' );
-            $source = (string) ( $control['source'] ?? 'explicit' );
+            $cat = (string) ( $control['category'] ?? 'other' );
+            $src = (string) ( $control['source'] ?? 'explicit' );
             $scope = (string) ( $control['responsive_scope'] ?? 'base' );
-            $category_counts[ $category ] = ( $category_counts[ $category ] ?? 0 ) + 1;
-            if ( isset( $source_counts[ $source ] ) ) $source_counts[ $source ]++;
+            $category_counts[ $cat ] = ( $category_counts[ $cat ] ?? 0 ) + 1;
+            if ( isset( $source_counts[ $src ] ) ) $source_counts[ $src ]++;
             $responsive_counts[ $scope ] = ( $responsive_counts[ $scope ] ?? 0 ) + 1;
             if ( ! empty( $control['writer_candidate'] ) ) $writer_candidates++;
         }
@@ -73,7 +73,6 @@ final class Elementize_Design_Settings {
         $element_id = trim( (string) $request->get_param( 'element_id' ) );
         $top_level_id = trim( (string) $request->get_param( 'top_level_id' ) );
         $responsive_scope = sanitize_key( (string) $request->get_param( 'responsive_scope' ) );
-
         $filtered = array_values( array_filter( $controls, static function( $control ) use ( $category, $element_id, $top_level_id, $responsive_scope ) {
             if ( '' !== $category && $category !== (string) ( $control['category'] ?? '' ) ) return false;
             if ( '' !== $element_id && $element_id !== (string) ( $control['element_id'] ?? '' ) ) return false;
@@ -86,6 +85,7 @@ final class Elementize_Design_Settings {
         $limit = absint( $request->get_param( 'limit' ) );
         if ( $limit < 1 ) $limit = self::DEFAULT_LIMIT;
         $limit = min( self::MAX_LIMIT, $limit );
+        $returned = array_slice( $filtered, $offset, $limit );
         $page = get_post( $page_id );
 
         return new WP_REST_Response( [
@@ -108,7 +108,7 @@ final class Elementize_Design_Settings {
             'summary' => [
                 'total_discovered_controls' => count( $controls ),
                 'filtered_control_count' => count( $filtered ),
-                'returned_control_count' => count( array_slice( $filtered, $offset, $limit ) ),
+                'returned_control_count' => count( $returned ),
                 'writer_candidate_count' => $writer_candidates,
                 'category_counts' => $category_counts,
                 'source_counts' => $source_counts,
@@ -122,7 +122,7 @@ final class Elementize_Design_Settings {
                 'offset' => $offset,
                 'limit' => $limit,
             ],
-            'controls' => array_slice( $filtered, $offset, $limit ),
+            'controls' => $returned,
             'next_offset' => ( $offset + $limit < count( $filtered ) ) ? $offset + $limit : null,
         ], 200 );
     }
@@ -136,20 +136,19 @@ final class Elementize_Design_Settings {
             $widget_type = strtolower( (string) ( $node['widgetType'] ?? '' ) );
             $globals = is_array( $settings['__globals__'] ?? null ) ? $settings['__globals__'] : [];
             $dynamic = is_array( $settings['__dynamic__'] ?? null ) ? $settings['__dynamic__'] : [];
-            self::scan_settings( $settings, [], $top_id, $element_id, $element_type, $widget_type, $globals, $dynamic, $controls );
+            self::scan( $settings, [], $top_id, $element_id, $element_type, $widget_type, $globals, $dynamic, $controls );
             $children = $node['elements'] ?? [];
             if ( is_array( $children ) && $children ) self::walk( $children, $top_id, $controls );
         }
     }
 
-    private static function scan_settings( array $settings, array $prefix, string $top_id, string $element_id, string $element_type, string $widget_type, array $globals, array $dynamic, array &$controls ): void {
+    private static function scan( array $settings, array $prefix, string $top_id, string $element_id, string $element_type, string $widget_type, array $globals, array $dynamic, array &$controls ): void {
         foreach ( $settings as $key => $value ) {
             $key_s = (string) $key;
             if ( in_array( $key_s, [ '__globals__', '__dynamic__' ], true ) ) continue;
             $path = array_merge( $prefix, [ $key_s ] );
             $path_text = strtolower( implode( '.', array_map( 'strval', $path ) ) );
-            $category = self::category( $path_text, $key_s, $value );
-
+            $category = self::category( $path_text, $key_s );
             if ( null !== $category && self::safe_value_shape( $value ) ) {
                 $source = self::source( $path, $globals, $dynamic );
                 $scope = self::responsive_scope( $key_s, $path_text );
@@ -171,17 +170,16 @@ final class Elementize_Design_Settings {
                     'value' => self::clean_value( $value ),
                     'writer_candidate' => $candidate,
                     'writable_now' => false,
-                    'writer_candidate_reason' => $candidate ? 'Explicit supported-looking design control observed; eligible for future guarded-writer mapping after runtime validation.' : self::non_candidate_reason( $source['type'], $category, $value, $path_text ),
+                    'writer_candidate_reason' => $candidate ? 'Explicit supported-looking design control observed; eligible for future guarded-writer mapping after runtime validation.' : self::non_candidate_reason( $source['type'], $value, $path_text ),
                     'control_fingerprint' => substr( hash( 'sha256', $element_id . '|' . wp_json_encode( $path ) . '|' . wp_json_encode( $value ) ), 0, 20 ),
                 ];
                 if ( is_array( $value ) && self::atomic_array_control( $category, $value ) ) continue;
             }
-
-            if ( is_array( $value ) ) self::scan_settings( $value, $path, $top_id, $element_id, $element_type, $widget_type, $globals, $dynamic, $controls );
+            if ( is_array( $value ) ) self::scan( $value, $path, $top_id, $element_id, $element_type, $widget_type, $globals, $dynamic, $controls );
         }
     }
 
-    private static function category( string $path, string $key, $value ): ?string {
+    private static function category( string $path, string $key ): ?string {
         $k = strtolower( $key );
         if ( preg_match( '/(?:^|[._-])(motion|animation|entrance|transition|transform|mask|css|class|id)(?:$|[._-])/', $path ) ) return null;
         if ( preg_match( '/(?:image|media|video|icon|url|link|href|content|description|title|text)(?:$|[._-])/', $k ) && ! preg_match( '/text[_-]?(?:color|shadow)|title[_-]?(?:color|shadow)/', $k ) ) return null;
@@ -211,22 +209,17 @@ final class Elementize_Design_Settings {
         return [ 'type' => 'explicit', 'reference' => null ];
     }
 
-    private static function reference_value( $value ) {
-        if ( is_scalar( $value ) ) return substr( (string) $value, 0, 200 );
-        return null;
-    }
+    private static function reference_value( $value ) { return is_scalar( $value ) ? substr( (string) $value, 0, 200 ) : null; }
 
     private static function responsive_scope( string $key, string $path ): string {
         $s = strtolower( $key . ' ' . $path );
         foreach ( [ 'mobile_extra', 'tablet_extra', 'widescreen', 'laptop', 'tablet', 'mobile' ] as $scope ) {
-            if ( preg_match( '/(?:_|-|\\.)' . preg_quote( $scope, '/' ) . '(?:$|_|-|\\.)/', $s ) ) return $scope;
+            if ( preg_match( '/(?:_|-|\.)' . preg_quote( $scope, '/' ) . '(?:$|_|-|\.)/', $s ) ) return $scope;
         }
         return 'base';
     }
 
-    private static function base_control_key( string $key ): string {
-        return (string) preg_replace( '/(?:_|-)(mobile_extra|tablet_extra|widescreen|laptop|tablet|mobile)$/i', '', $key );
-    }
+    private static function base_control_key( string $key ): string { return (string) preg_replace( '/(?:_|-)(mobile_extra|tablet_extra|widescreen|laptop|tablet|mobile)$/i', '', $key ); }
 
     private static function writer_candidate( string $category, $value, string $path ): bool {
         if ( preg_match( '/gradient|overlay|background[_-]?type/', $path ) ) return false;
@@ -236,18 +229,17 @@ final class Elementize_Design_Settings {
         return self::is_dimension_array( $value ) || self::is_box_array( $value ) || self::is_shadow_array( $value );
     }
 
-    private static function non_candidate_reason( string $source, string $category, $value, string $path ): string {
-        if ( 'global' === $source ) return 'Global style reference; keep read-only unless a future global-style workflow is explicitly designed.';
+    private static function non_candidate_reason( string $source, $value, string $path ): string {
+        if ( 'global' === $source ) return 'Global style reference; read-only.';
         if ( 'dynamic' === $source ) return 'Dynamic value; read-only.';
-        if ( preg_match( '/gradient|overlay|background[_-]?type/', $path ) ) return 'Complex/composited visual control; discovery-only until a typed safe writer exists.';
+        if ( preg_match( '/gradient|overlay|background[_-]?type/', $path ) ) return 'Complex/composited control; discovery-only.';
         if ( is_array( $value ) && ! self::is_dimension_array( $value ) && ! self::is_box_array( $value ) && ! self::is_shadow_array( $value ) ) return 'Complex control shape; discovery-only.';
         return 'Observed design control is not yet mapped to a guarded writer type.';
     }
 
     private static function safe_value_shape( $value ): bool {
         if ( is_scalar( $value ) ) return strlen( (string) $value ) <= 500;
-        if ( ! is_array( $value ) ) return false;
-        if ( count( $value ) > 20 ) return false;
+        if ( ! is_array( $value ) || count( $value ) > 20 ) return false;
         return self::array_depth( $value ) <= 3;
     }
 
@@ -255,20 +247,9 @@ final class Elementize_Design_Settings {
         return in_array( $category, [ 'typography', 'spacing', 'sizing', 'border_radius', 'border', 'shadow' ], true ) && ( self::is_dimension_array( $value ) || self::is_box_array( $value ) || self::is_shadow_array( $value ) );
     }
 
-    private static function is_dimension_array( array $value ): bool {
-        return array_key_exists( 'size', $value ) && ( isset( $value['unit'] ) || is_numeric( $value['size'] ) );
-    }
-
-    private static function is_box_array( array $value ): bool {
-        $hits = 0;
-        foreach ( [ 'top', 'right', 'bottom', 'left' ] as $key ) if ( array_key_exists( $key, $value ) ) $hits++;
-        return $hits >= 2;
-    }
-
-    private static function is_shadow_array( array $value ): bool {
-        $keys = array_map( 'strtolower', array_map( 'strval', array_keys( $value ) ) );
-        return (bool) array_intersect( $keys, [ 'horizontal', 'vertical', 'blur', 'spread', 'color' ] );
-    }
+    private static function is_dimension_array( array $value ): bool { return array_key_exists( 'size', $value ) && ( isset( $value['unit'] ) || is_numeric( $value['size'] ) ); }
+    private static function is_box_array( array $value ): bool { $hits = 0; foreach ( [ 'top', 'right', 'bottom', 'left' ] as $key ) if ( array_key_exists( $key, $value ) ) $hits++; return $hits >= 2; }
+    private static function is_shadow_array( array $value ): bool { $keys = array_map( 'strtolower', array_map( 'strval', array_keys( $value ) ) ); return (bool) array_intersect( $keys, [ 'horizontal', 'vertical', 'blur', 'spread', 'color' ] ); }
 
     private static function value_shape( $value ): string {
         if ( is_array( $value ) ) {
@@ -282,37 +263,23 @@ final class Elementize_Design_Settings {
         return 'string';
     }
 
-    private static function unit( $value ): ?string {
-        if ( is_array( $value ) && isset( $value['unit'] ) && is_scalar( $value['unit'] ) ) return (string) $value['unit'];
-        return null;
-    }
+    private static function unit( $value ): ?string { return is_array( $value ) && isset( $value['unit'] ) && is_scalar( $value['unit'] ) ? (string) $value['unit'] : null; }
 
     private static function clean_value( $value, int $depth = 0 ) {
         if ( $depth > 3 ) return null;
         if ( is_scalar( $value ) || null === $value ) return $value;
         if ( ! is_array( $value ) ) return null;
-        $out = [];
-        $count = 0;
-        foreach ( $value as $key => $child ) {
-            if ( $count++ >= 20 ) break;
-            $out[ $key ] = self::clean_value( $child, $depth + 1 );
-        }
+        $out = []; $count = 0;
+        foreach ( $value as $key => $child ) { if ( $count++ >= 20 ) break; $out[ $key ] = self::clean_value( $child, $depth + 1 ); }
         return $out;
     }
 
-    private static function array_depth( array $value, int $depth = 1 ): int {
-        $max = $depth;
-        foreach ( $value as $child ) if ( is_array( $child ) ) $max = max( $max, self::array_depth( $child, $depth + 1 ) );
-        return $max;
-    }
-
-    private static function hash( array $elements ): string {
-        return hash( 'sha256', (string) wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
-    }
+    private static function array_depth( array $value, int $depth = 1 ): int { $max = $depth; foreach ( $value as $child ) if ( is_array( $child ) ) $max = max( $max, self::array_depth( $child, $depth + 1 ) ); return $max; }
+    private static function hash( array $elements ): string { return hash( 'sha256', (string) wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); }
 
     private static function document( int $id ) {
-        if ( ! class_exists( '\\Elementor\\Plugin' ) ) return new WP_Error( 'elementize_elementor_missing', 'Elementor is not loaded.', [ 'status' => 503 ] );
-        try { $document = \\Elementor\\Plugin::$instance->documents->get( $id ); }
+        if ( ! class_exists( '\Elementor\Plugin' ) ) return new WP_Error( 'elementize_elementor_missing', 'Elementor is not loaded.', [ 'status' => 503 ] );
+        try { $document = \Elementor\Plugin::$instance->documents->get( $id ); }
         catch ( Throwable $e ) { return new WP_Error( 'elementize_document_unavailable', 'Elementor could not load this page document: ' . $e->getMessage(), [ 'status' => 500 ] ); }
         if ( ! $document ) return new WP_Error( 'elementize_document_unavailable', 'Elementor document is unavailable for this page.', [ 'status' => 404 ] );
         return $document;
@@ -329,6 +296,7 @@ final class Elementize_Design_Settings {
         $data['design_settings_global_dynamic_classification'] = true;
         $data['design_settings_responsive_classification'] = true;
         $data['design_settings_writer_candidates_advisory'] = true;
+        $data['design_settings_php_lint_hotfix'] = true;
         $response->set_data( $data );
         return $response;
     }
