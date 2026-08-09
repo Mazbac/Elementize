@@ -95,11 +95,27 @@
     get:
       operationId: getElementizePageDesignAudit
       summary: Audit measurable page-level design consistency and readability signals
-      description: Read-only. Reports conservative palette, typography, spacing, explicit contrast, CTA-style, and repeated-composition findings. Visual inspection remains necessary for rendered appearance.
+      description: Read-only. Reports conservative palette, typography, spacing, contrast, CTA-style, and composition findings. Rendered inspection remains necessary.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
-        '200': { description: Page design audit, section composition summaries, findings, and default design-pass state }
+        '200': { description: Page design audit, composition summaries, calibration findings, and default design-pass state }
+
+  /wp-json/elementize/v1/pages/{id}/design-settings:
+    get:
+      operationId: getElementizePageDesignSettings
+      summary: Discover real Elementor and Pixfort design controls on a page
+      description: Read-only. Use before broader design editing to inspect exact style-setting paths, explicit/global/dynamic sources, responsive scopes, and future writer candidates.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: category, in: query, required: false, schema: { type: string, enum: [typography, spacing, alignment, sizing, border_radius, border, shadow, background, color] } }
+        - { name: element_id, in: query, required: false, schema: { type: string } }
+        - { name: top_level_id, in: query, required: false, schema: { type: string } }
+        - { name: responsive_scope, in: query, required: false, schema: { type: string } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 300, default: 100 } }
+      responses:
+        '200': { description: Read-only discovered design controls with exact paths, values, sources, responsive scopes, and writer-candidate hints }
 
   /wp-json/elementize/v1/pixfort/catalogue-summary:
     get:
