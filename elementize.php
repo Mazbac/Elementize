@@ -33,6 +33,7 @@ require_once __DIR__ . '/includes/elementize-design-intelligence.inc';
 require_once __DIR__ . '/includes/elementize-template-structure.inc';
 require_once __DIR__ . '/includes/elementize-design-intelligence-hardening.inc';
 require_once __DIR__ . '/includes/elementize-design-audit.inc';
+require_once __DIR__ . '/includes/elementize-design-audit-hardening.inc';
 
 Elementize_Visual_Writes::init();
 Elementize_Visual_Rendering::init();
