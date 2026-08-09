@@ -1,0 +1,330 @@
+openapi: 3.1.0
+info:
+  title: Elementize Custom GPT Actions
+  version: 0.3.2
+  description: >-
+    Controlled WordPress, Elementor, and Pixfort actions for Elementize.
+    Authentication is configured separately in the Custom GPT Action settings.
+servers:
+  - url: https://permitted-tucson-invention-principles.trycloudflare.com
+    description: Current Cloudflare quick tunnel. Replace this URL if the quick tunnel changes.
+paths:
+  /wp-json/elementize/v1/status:
+    get:
+      operationId: getElementizeStatus
+      summary: Get Elementize status and capability information
+      responses:
+        '200':
+          description: Elementize status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /wp-json/elementize/v1/pixfort/templates:
+    get:
+      operationId: searchPixfortPlannerCandidates
+      summary: Search Pixfort template candidates
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [section, page]
+            default: section
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Pixfort template catalogue results
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /wp-json/elementize/v1/pixfort/visual-probe:
+    post:
+      operationId: getPixfortVisualProbe
+      summary: Retrieve visual proof images for up to four Pixfort templates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [template_ids]
+              properties:
+                template_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 4
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Visual probe payload
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /wp-json/elementize/v1/pages/create:
+    post:
+      operationId: createElementorDraft
+      summary: Create a new Elementor draft page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title]
+              properties:
+                title:
+                  type: string
+                slug:
+                  type: string
+                  description: Optional page slug. Omit to let WordPress determine it.
+      responses:
+        '200':
+          description: Created Elementor draft
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /wp-json/elementize/v1/pages/{id}/pixfort/insert:
+    post:
+      operationId: insertPixfortTemplate
+      summary: Insert a Pixfort template into an Elementor page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [content_hash, template_id]
+              properties:
+                content_hash:
+                  type: string
+                  description: Fresh content hash obtained from an Elementize page read.
+                template_id:
+                  type: string
+                position:
+                  type: string
+                  enum: [start, end, before, after]
+                  default: end
+                target_element_id:
+                  type: string
+                  description: Required when position is before or after.
+      responses:
+        '200':
+          description: Pixfort insertion result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /wp-json/elementize/v1/pages/{id}/text:
+    get:
+      operationId: getElementorPageText
+      summary: Read editable Elementor text and the current content hash
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Editable Elementor text items
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: updateElementorPageText
+      summary: Update recognized Elementor copy fields with stale-value protection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [content_hash, updates]
+              properties:
+                content_hash:
+                  type: string
+                updates:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [element_id, setting_path, value]
+                    properties:
+                      element_id:
+                        type: string
+                      setting_path:
+                        type: array
+                        minItems: 1
+                        items:
+                          anyOf:
+                            - type: string
+                            - type: integer
+                      expected_value:
+                        type: string
+                        description: Strongly recommended. The write is rejected if the current value differs.
+                      value:
+                        type: string
+      responses:
+        '200':
+          description: Text update result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /wp-json/elementize/v1/pages/{id}/visual-settings:
+    get:
+      operationId: getElementorVisualSettings
+      summary: Inspect Elementor media, colors, icons, active state, writability, and content hash
+      description: >-
+        Read this immediately before any visual write. Prefer items where active=true and writable=true.
+        Global references and inactive visual settings are not writable.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Visual settings inventory
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: updateElementorVisualSettings
+      summary: Guardedly update active Elementor colors, Pixfort icons, or WordPress image attachments
+      description: >-
+        Always call getElementorVisualSettings immediately before this action and use its fresh content_hash.
+        Only mutate targets returned as writable=true. For color and icon updates include the exact expected_value.
+        For media include the exact expected_attachment_id and a WordPress image attachment_id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [content_hash, updates]
+              properties:
+                content_hash:
+                  type: string
+                  description: Fresh hash from getElementorVisualSettings.
+                updates:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [kind, element_id, setting_path]
+                    properties:
+                      kind:
+                        type: string
+                        enum: [color, icon, media]
+                      element_id:
+                        type: string
+                      setting_path:
+                        type: array
+                        minItems: 1
+                        items:
+                          anyOf:
+                            - type: string
+                            - type: integer
+                      expected_value:
+                        type: string
+                        description: Required by Elementize when kind is color or icon.
+                      value:
+                        type: string
+                        description: Required by Elementize when kind is color or icon.
+                      expected_attachment_id:
+                        type: integer
+                        minimum: 1
+                        description: Required by Elementize when kind is media.
+                      attachment_id:
+                        type: integer
+                        minimum: 1
+                        description: Required by Elementize when kind is media. Must be an existing WordPress image attachment.
+      responses:
+        '200':
+          description: Visual update result, including revision, new content hash, and CSS regeneration state
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '409':
+          description: The page or target value changed after it was read
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
