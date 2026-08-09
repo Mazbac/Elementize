@@ -30,6 +30,7 @@ require_once __DIR__ . '/includes/elementize-page-quality-hardening.inc';
 require_once __DIR__ . '/includes/elementize-admin-display.inc';
 require_once __DIR__ . '/includes/elementize-onboarding.inc';
 require_once __DIR__ . '/includes/elementize-design-intelligence.inc';
+require_once __DIR__ . '/includes/elementize-template-structure.inc';
 
 Elementize_Visual_Writes::init();
 Elementize_Visual_Rendering::init();
@@ -48,3 +49,4 @@ Elementize_Page_Quality::init();
 Elementize_Admin_Display::init();
 Elementize_Onboarding::init();
 Elementize_Design_Intelligence::init();
+Elementize_Template_Structure::init();
