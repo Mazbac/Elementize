@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Media_Library {
-    private const VERSION = '0.5.1';
+    private const VERSION = '0.5.2';
     private const NS = 'elementize/v1';
     private const MAX_PER_PAGE = 50;
 
@@ -80,11 +80,15 @@ final class Elementize_Media_Library {
             'no_found_rows' => false,
         ];
 
+        $filename_match = '';
         if ( '' !== $filename ) {
+            $basename = wp_basename( $filename );
+            $filename_match = pathinfo( $basename, PATHINFO_FILENAME );
+            if ( '' === $filename_match ) $filename_match = $basename;
             $args['meta_query'] = [
                 [
                     'key' => '_wp_attached_file',
-                    'value' => $filename,
+                    'value' => $filename_match,
                     'compare' => 'LIKE',
                 ],
             ];
@@ -109,6 +113,7 @@ final class Elementize_Media_Library {
             'search' => [
                 'q' => $q,
                 'filename' => $filename,
+                'filename_match' => $filename_match,
             ],
             'images' => $images,
         ], 200 );
@@ -122,6 +127,7 @@ final class Elementize_Media_Library {
         $data['elementize_version'] = self::VERSION;
         $data['media_library_search'] = true;
         $data['media_library_images_only'] = true;
+        $data['media_library_filename_extension_tolerant'] = true;
         $data['media_library_max_per_page'] = self::MAX_PER_PAGE;
         $response->set_data( $data );
         return $response;
