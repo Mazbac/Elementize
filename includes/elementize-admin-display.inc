@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Lifecycle', false ) ) return;
 
 final class Elementize_Admin_Display {
-    private const VERSION = '0.5.16';
+    private const VERSION = '0.6.0';
 
     public static function init(): void {
         remove_action( 'admin_menu', [ Elementize_Lifecycle::class, 'menu' ] );
@@ -19,7 +19,9 @@ final class Elementize_Admin_Display {
         Elementize_Lifecycle::admin();
         $html = (string) ob_get_clean();
         $html = preg_replace( '/Version 0\.4\.0/', 'Version ' . self::VERSION, $html, 1 );
-        $html = str_replace( '0.4.0 marks newly created Elementize drafts as managed', '0.5.16 keeps newly created Elementize drafts managed', $html );
+        $html = str_replace( '0.4.0 marks newly created Elementize drafts as managed', '0.6.0 keeps newly created Elementize drafts managed', $html );
+        $setup_url = admin_url( 'admin.php?page=elementize-setup' );
+        $setup = '<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">WP Builder setup</h2><p>0.6.0 adds a guided onboarding screen with prerequisite checks, a public API origin setting, one-click Connection Key generation, copy-ready GPT Instructions and Actions schema, and a saved WP Builder shortcut.</p><p><a class="button button-primary" href="' . esc_url( $setup_url ) . '">Set up WP Builder</a></p></div>';
         $layout = '<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Page layout control</h2><p>0.5.0 adds guarded draft-only page layout control for Elementize-managed pages. Site mode uses the active theme layout; standalone mode uses Elementor Canvas so the page renders without the global theme header and footer.</p></div>';
         $media = '<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Media Library lookup</h2><p>0.5.2 adds authenticated image-only Media Library search and makes filename lookup tolerant of WordPress image-format conversion, so an uploaded JPG can still be found when WordPress stores it as AVIF or another image extension.</p></div>';
         $chat_media = '<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Conversation image import</h2><p>0.5.14 adds a guarded image-only import endpoint for ChatGPT Action file references. It accepts exactly one user-supplied conversation image, downloads only from HTTPS OpenAI file hosts, verifies the real image type, byte size and dimensions, then creates a normal editable WordPress Media Library attachment for use by existing guarded media writes.</p></div>';
@@ -31,7 +33,7 @@ final class Elementize_Admin_Display {
         $identity = '<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Read-only post identity diagnostic</h2><p>0.5.9 resolves any WordPress post ID directly, including revisions and custom post types, and reports Elementor metadata plus optional query counts.</p></div>';
         $embedded = '<div class="card" style="max-width:1000px;margin-top:20px;padding:20px;"><h2 style="margin-top:0">Embedded Pixfort document control</h2><p>0.5.13 uses a freshly rebuilt, PHP-linted module. Direct writes to original Pixfort templates remain blocked. Managed draft pages can clone and relink embedded Pixfort templates into page-owned copies, then read and update recognized copy fields only inside those owned clones using fresh hashes and expected values.</p></div>';
         $last = strrpos( $html, '</div>' );
-        if ( false !== $last ) $html = substr( $html, 0, $last ) . $layout . $media . $chat_media . $quality . $audit . $render_audit . $post_content . $cache_audit . $identity . $embedded . substr( $html, $last );
+        if ( false !== $last ) $html = substr( $html, 0, $last ) . $setup . $layout . $media . $chat_media . $quality . $audit . $render_audit . $post_content . $cache_audit . $identity . $embedded . substr( $html, $last );
         echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
     }
 }
