@@ -1,0 +1,92 @@
+  /wp-json/elementize/v1/pages:
+    get:
+      operationId: listElementizePages
+      summary: List editable WordPress pages and their Elementor status
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Editable WordPress pages }
+
+  /wp-json/elementize/v1/pages/{id}/elements/remove:
+    post:
+      operationId: removeElementizeTopLevelSection
+      summary: Remove one top-level Elementor section or container
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [content_hash, element_id]
+              properties:
+                content_hash: { type: string }
+                element_id: { type: string }
+      responses:
+        '200': { description: Top-level section removal result }
+        '409': { description: Page content or target changed after the fresh read }
+
+  /wp-json/elementize/v1/pages/{id}/links:
+    get:
+      operationId: getElementizePageLinks
+      summary: Read recognized main-page Elementor link destinations
+      description: Use for CTA and link verification. Dynamic link values are read-only.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: Recognized page links and fresh content hash }
+    post:
+      operationId: updateElementizePageLinks
+      summary: Guardedly update recognized main-page Elementor link destinations
+      description: Use only fresh page identity, content hash, exact setting paths, and expected values.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, content_hash, updates, confirm_link_write]
+              properties:
+                expected_status: { type: string }
+                expected_title: { type: string }
+                content_hash: { type: string }
+                updates:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [element_id, setting_path, expected_value, value]
+                    properties:
+                      element_id: { type: string }
+                      setting_path:
+                        type: array
+                        minItems: 1
+                        items:
+                          anyOf:
+                            - { type: string }
+                            - { type: integer }
+                      expected_value: { type: string }
+                      value: { type: string }
+                confirm_link_write: { type: boolean, enum: [true] }
+      responses:
+        '200': { description: Guarded link update result }
+        '400': { description: Invalid or unsupported destination }
+        '409': { description: Page identity, content, or expected link value changed }
+
+  /wp-json/elementize/v1/pages/{id}/quality-audit:
+    get:
+      operationId: getElementizePageQualityAudit
+      summary: Audit page proof patterns, CTA destinations, dependencies, and render errors
+      description: Read-only completion gate. Proof-like findings block by default unless the user supplied or verified the proof.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: Page quality findings and default completion-pass state }
