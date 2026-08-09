@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.5.6
+ * Version: 0.5.7
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -20,6 +20,7 @@ require_once __DIR__ . '/includes/elementize-page-layout.inc';
 require_once __DIR__ . '/includes/elementize-media-library.inc';
 require_once __DIR__ . '/includes/elementize-text-audit.inc';
 require_once __DIR__ . '/includes/elementize-render-audit.inc';
+require_once __DIR__ . '/includes/elementize-post-content-sync.inc';
 require_once __DIR__ . '/includes/elementize-admin-display.inc';
 
 Elementize_Visual_Writes::init();
@@ -30,4 +31,5 @@ Elementize_Page_Layout::init();
 Elementize_Media_Library::init();
 Elementize_Text_Audit::init();
 Elementize_Render_Audit::init();
+Elementize_Post_Content_Sync::init();
 Elementize_Admin_Display::init();
