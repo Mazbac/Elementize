@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.4.1.0
+  version: 0.4.2.0
   description: Controlled WordPress, Elementor, Pixfort, visual editing, and guarded page lifecycle actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
@@ -29,6 +29,7 @@ paths:
                     type: array
                     items: { type: string }
                   visual_settings_filter_max_limit: { type: integer }
+                  visual_settings_compact_default_limit: { type: integer }
                   lifecycle_management: { type: boolean }
                   lifecycle_managed_pages_only: { type: boolean }
                   lifecycle_actions:
@@ -105,7 +106,7 @@ paths:
                   items: { type: string }
       responses:
         '200':
-          description: Visual probe payload
+          description: Pixfort visual proof
           content:
             application/json:
               schema:
@@ -320,8 +321,8 @@ paths:
   /wp-json/elementize/v1/pages/{id}/visual-settings:
     get:
       operationId: getElementorVisualSettings
-      summary: Read filtered Elementor visual settings and content hash
-      description: For normal editing use active=true, writable=true, and limit=50. Add kind when targeting colors, icons, or media. Use next_offset only when more matched items remain.
+      summary: Read compact filtered Elementor visual settings
+      description: For normal editing use compact=true, active=true, writable=true, and limit=20. Paginate with next_offset when needed. Add kind to target only colors, icons, or media.
       parameters:
         - name: id
           in: path
@@ -335,12 +336,17 @@ paths:
         - name: active
           in: query
           required: false
-          description: Prefer true for safe editing reads.
+          description: Use true for safe editing reads.
           schema: { type: boolean, default: true }
         - name: writable
           in: query
           required: false
-          description: Prefer true for safe editing reads.
+          description: Use true for safe editing reads.
+          schema: { type: boolean, default: true }
+        - name: compact
+          in: query
+          required: false
+          description: Use true for Custom GPT reads to minimize response size.
           schema: { type: boolean, default: true }
         - name: element_id
           in: query
@@ -353,11 +359,11 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Keep responses compact. Maximum 200.
-          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+          description: Use 20 for compact Custom GPT reads. Maximum 200.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
       responses:
         '200':
-          description: Filtered visual settings inventory
+          description: Compact filtered visual settings inventory
           content:
             application/json:
               schema:
@@ -369,12 +375,22 @@ paths:
                   visual_item_count: { type: integer }
                   visual_items_truncated: { type: boolean }
                   next_offset: { type: [integer, 'null'] }
+                  returned_kind_counts:
+                    type: object
+                    properties:
+                      color: { type: integer }
+                      icon: { type: integer }
+                      media: { type: integer }
+                      global: { type: integer }
+                      dynamic: { type: integer }
+                    additionalProperties: true
                   visual_filters:
                     type: object
                     properties:
                       kind: { type: [string, 'null'] }
                       active: { type: [boolean, 'null'] }
                       writable: { type: [boolean, 'null'] }
+                      compact: { type: [boolean, 'null'] }
                       element_id: { type: [string, 'null'] }
                       offset: { type: integer }
                       limit: { type: [integer, 'null'] }
@@ -386,9 +402,7 @@ paths:
                       properties:
                         kind: { type: string }
                         element_id: { type: string }
-                        element_type: { type: [string, 'null'] }
                         widget_type: { type: [string, 'null'] }
-                        setting_key: { type: string }
                         setting_path:
                           type: array
                           items:
@@ -400,12 +414,12 @@ paths:
                               properties:
                                 id:
                                   anyOf: [{ type: integer }, { type: string }]
-                                url: { type: string }
+                                file: { type: string }
+                                source: { type: string }
                               additionalProperties: true
                         active: { type: boolean }
                         writable: { type: boolean }
                       additionalProperties: true
-                  css_regeneration_after_visual_write: { type: boolean }
                 additionalProperties: true
     post:
       operationId: updateElementorVisualSettings
