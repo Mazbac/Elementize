@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Text_Audit {
-    private const VERSION = '0.5.3';
+    private const VERSION = '0.5.4';
     private const NS = 'elementize/v1';
     private const MAX_MATCHES = 50;
     private const MAX_DEPTH = 3;
@@ -47,11 +47,15 @@ final class Elementize_Text_Audit {
         $page_matches = [];
         self::scan_strings( $elements, $q, [], $page_matches, self::MAX_MATCHES );
 
-        $template_refs = [];
-        self::collect_template_refs( $elements, $template_refs );
+        $named_template_refs = [];
+        self::collect_named_template_refs( $elements, $named_template_refs );
+
+        $all_template_refs = [];
+        self::collect_any_elementor_library_refs( $elements, $all_template_refs );
+
         $template_matches = [];
         $visited = [];
-        foreach ( array_keys( $template_refs ) as $template_id ) {
+        foreach ( array_keys( $all_template_refs ) as $template_id ) {
             self::scan_template_chain( absint( $template_id ), $q, 1, $visited, $template_matches );
             if ( count( $template_matches ) >= self::MAX_MATCHES ) break;
         }
@@ -61,11 +65,14 @@ final class Elementize_Text_Audit {
             'query' => $q,
             'page_match_count' => count( $page_matches ),
             'page_matches' => $page_matches,
-            'referenced_template_count' => count( $template_refs ),
-            'referenced_template_ids' => array_map( 'absint', array_keys( $template_refs ) ),
+            'named_template_ref_count' => count( $named_template_refs ),
+            'named_template_ref_ids' => array_map( 'absint', array_keys( $named_template_refs ) ),
+            'all_elementor_library_ref_count' => count( $all_template_refs ),
+            'all_elementor_library_ref_ids' => array_map( 'absint', array_keys( $all_template_refs ) ),
+            'elementor_library_ref_sources' => self::ref_sources( $all_template_refs ),
             'template_match_count' => count( $template_matches ),
             'template_matches' => $template_matches,
-            'diagnosis' => self::diagnosis( $page_matches, $template_matches, $template_refs ),
+            'diagnosis' => self::diagnosis( $page_matches, $template_matches, $all_template_refs ),
             'read_only' => true,
         ], 200 );
     }
@@ -78,6 +85,7 @@ final class Elementize_Text_Audit {
         $data['elementize_version'] = self::VERSION;
         $data['text_source_audit'] = true;
         $data['text_source_audit_read_only'] = true;
+        $data['text_source_audit_broad_template_refs'] = true;
         $response->set_data( $data );
         return $response;
     }
@@ -118,25 +126,69 @@ final class Elementize_Text_Audit {
         ];
     }
 
-    private static function collect_template_refs( $value, array &$refs, array $path = [] ): void {
+    private static function collect_named_template_refs( $value, array &$refs, array $path = [] ): void {
         if ( ! is_array( $value ) ) return;
         foreach ( $value as $key => $next ) {
             $next_path = array_merge( $path, [ $key ] );
             if ( is_string( $key ) && str_contains( strtolower( $key ), 'template' ) ) {
-                self::add_template_ids_from_value( $next, $refs );
+                self::add_template_ids_from_value( $next, $refs, $next_path, 'template_key' );
             }
-            if ( is_array( $next ) ) self::collect_template_refs( $next, $refs, $next_path );
+            if ( is_array( $next ) ) self::collect_named_template_refs( $next, $refs, $next_path );
         }
     }
 
-    private static function add_template_ids_from_value( $value, array &$refs ): void {
+    private static function collect_any_elementor_library_refs( $value, array &$refs, array $path = [] ): void {
+        if ( is_array( $value ) ) {
+            foreach ( $value as $key => $next ) {
+                self::collect_any_elementor_library_refs( $next, $refs, array_merge( $path, [ $key ] ) );
+            }
+            return;
+        }
+
         if ( is_numeric( $value ) ) {
-            $id = absint( $value );
-            if ( $id > 0 && 'elementor_library' === get_post_type( $id ) ) $refs[ $id ] = true;
+            self::add_candidate_id( absint( $value ), $refs, $path, 'numeric_scalar' );
+            return;
+        }
+
+        if ( ! is_string( $value ) || '' === trim( $value ) ) return;
+        if ( preg_match_all( '/(?<!\\d)([1-9][0-9]{1,9})(?!\\d)/', $value, $matches ) ) {
+            foreach ( array_unique( $matches[1] ) as $candidate ) {
+                self::add_candidate_id( absint( $candidate ), $refs, $path, 'embedded_numeric_string' );
+            }
+        }
+    }
+
+    private static function add_template_ids_from_value( $value, array &$refs, array $path, string $source ): void {
+        if ( is_numeric( $value ) ) {
+            self::add_candidate_id( absint( $value ), $refs, $path, $source );
             return;
         }
         if ( ! is_array( $value ) ) return;
-        foreach ( $value as $next ) self::add_template_ids_from_value( $next, $refs );
+        foreach ( $value as $key => $next ) {
+            self::add_template_ids_from_value( $next, $refs, array_merge( $path, [ $key ] ), $source );
+        }
+    }
+
+    private static function add_candidate_id( int $id, array &$refs, array $path, string $source ): void {
+        if ( $id < 1 || 'elementor_library' !== get_post_type( $id ) ) return;
+        if ( ! isset( $refs[ $id ] ) ) $refs[ $id ] = [];
+        $signature = wp_json_encode( [ $source, array_values( $path ) ] );
+        foreach ( $refs[ $id ] as $existing ) {
+            if ( wp_json_encode( [ $existing['source'] ?? '', $existing['path'] ?? [] ] ) === $signature ) return;
+        }
+        $refs[ $id ][] = [ 'source' => $source, 'path' => array_values( $path ) ];
+    }
+
+    private static function ref_sources( array $refs ): array {
+        $out = [];
+        foreach ( $refs as $id => $sources ) {
+            $out[] = [
+                'template_id' => absint( $id ),
+                'template_title' => get_the_title( absint( $id ) ),
+                'sources' => array_values( is_array( $sources ) ? $sources : [] ),
+            ];
+        }
+        return $out;
     }
 
     private static function scan_template_chain( int $template_id, string $q, int $depth, array &$visited, array &$matches ): void {
@@ -157,7 +209,7 @@ final class Elementize_Text_Audit {
         }
 
         $refs = [];
-        self::collect_template_refs( $elements, $refs );
+        self::collect_any_elementor_library_refs( $elements, $refs );
         foreach ( array_keys( $refs ) as $child_id ) {
             self::scan_template_chain( absint( $child_id ), $q, $depth + 1, $visited, $matches );
             if ( count( $matches ) >= self::MAX_MATCHES ) return;
@@ -167,8 +219,8 @@ final class Elementize_Text_Audit {
     private static function diagnosis( array $page_matches, array $template_matches, array $template_refs ): string {
         if ( $page_matches ) return 'query_found_in_page_elementor_data';
         if ( $template_matches ) return 'query_found_in_referenced_elementor_template';
-        if ( $template_refs ) return 'query_not_found_in_page_or_referenced_templates';
-        return 'query_not_found_in_page_elementor_data_and_no_template_refs_detected';
+        if ( $template_refs ) return 'query_not_found_but_elementor_library_refs_detected';
+        return 'query_not_found_in_page_elementor_data_and_no_elementor_library_refs_detected';
     }
 
     private static function last_string_key( array $path ): string {
