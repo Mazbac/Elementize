@@ -90,3 +90,11 @@
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
         '200': { description: Page quality findings and default completion-pass state }
+
+  /wp-json/elementize/v1/pixfort/catalogue-summary:
+    get:
+      operationId: getElementizePixfortCatalogueSummary
+      summary: Summarize the available Pixfort catalogue and Design Intelligence reuse signals
+      description: Read before substantial new-page template selection to understand catalogue breadth, template families, recent reuse, and recent visual inspections.
+      responses:
+        '200': { description: Catalogue totals, categories, subtypes, template-family counts, reuse history, and inspection history }
