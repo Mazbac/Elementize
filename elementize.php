@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.7.0
+ * Version: 0.7.1
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -31,6 +31,7 @@ require_once __DIR__ . '/includes/elementize-admin-display.inc';
 require_once __DIR__ . '/includes/elementize-onboarding.inc';
 require_once __DIR__ . '/includes/elementize-design-intelligence.inc';
 require_once __DIR__ . '/includes/elementize-template-structure.inc';
+require_once __DIR__ . '/includes/elementize-design-intelligence-hardening.inc';
 
 Elementize_Visual_Writes::init();
 Elementize_Visual_Rendering::init();
