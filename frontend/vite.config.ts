@@ -7,6 +7,9 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   build: {
     target: 'es2020',
     outDir: resolve(root, '../assets/admin'),
