@@ -32,9 +32,9 @@ jobs:
           fi
 
           operation_count=$(grep -c 'operationId:' /tmp/elementize-generated-schema.yaml || true)
-          echo "Generated GPT Action operations: ${operation_count}/24 target (30 platform max)"
-          if [ "$operation_count" -gt 24 ]; then
-            echo "Generated GPT Actions schema exceeds Elementize's 24-operation control-plane budget."
+          echo "Generated GPT Action operations: ${operation_count}/25 target (30 platform max)"
+          if [ "$operation_count" -gt 25 ]; then
+            echo "Generated GPT Actions schema exceeds Elementize's 25-operation control-plane budget."
             exit 1
           fi
 
@@ -44,6 +44,7 @@ jobs:
             updateElementizePageState
             getElementizePageCompletionAudit
             getElementizePageDesignSettings
+            updateElementizePageDesignSettings
             getElementizePixfortCatalogueSummary
             inspectElementizePixfortTemplateStructure
           )
