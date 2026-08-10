@@ -135,14 +135,16 @@ Write-Host "Site: $base"
 Write-Host "Page: $PageId"
 Write-Host "Target marker: $target"
 Write-Host "Shortlist limit: $ShortlistLimit"
-Write-Host 'Policy: read-only catalogue discovery, real template-structure inspection, and visual ranking. No insert/write endpoint is called.'
+Write-Host 'Policy: read-only catalogue discovery, real template-structure inspection, deterministic plateau hardening, and visual ranking. No insert/write endpoint is called.'
 Write-Host ''
 
 $status = Invoke-ElementizeCurl -Method GET -Uri $statusUri -Authorization $auth
 Write-Host ("[PASS] Plugin status reachable: {0}" -f $status.elementize_version) -ForegroundColor Green
 Write-Host ("[INFO] Semantic shortlist: {0}; structure-grounded: {1}; metadata discovery only: {2}; max candidates: {3}; automatic writes: {4}" -f $status.aesthetic_semantic_shortlist_version, $status.aesthetic_semantic_shortlist_structure_grounded, $status.aesthetic_semantic_shortlist_metadata_discovery_only, $status.aesthetic_semantic_shortlist_max_candidates, $status.aesthetic_semantic_shortlist_automatic_write_allowed)
-Write-Host ("[INFO] Independent visual scoring: {0}; calibration: {1}" -f $status.aesthetic_ab_independent_scoring_version, $status.aesthetic_ab_judgment_calibration_version)
+Write-Host ("[INFO] Independent visual scoring: {0}; anchored discrimination: {1}; calibration: {2}" -f $status.aesthetic_ab_independent_scoring_version, $status.aesthetic_ab_independent_discrimination_version, $status.aesthetic_ab_judgment_calibration_version)
+Write-Host ("[INFO] Intensity plateau hardening: {0}; deterministic: {1}; pairwise comparison: {2}; automatic writes: {3}" -f $status.aesthetic_ab_intensity_plateau_hardening_version, $status.aesthetic_ab_intensity_plateau_hardening_deterministic, $status.aesthetic_ab_intensity_plateau_hardening_pairwise_comparison, $status.aesthetic_ab_intensity_plateau_hardening_automatic_write_allowed)
 if (-not $status.aesthetic_semantic_shortlist) { throw 'Semantic shortlist capability is not active in plugin status.' }
+if (-not $status.aesthetic_ab_intensity_plateau_hardening) { throw 'Deterministic intensity plateau hardening is not active in plugin status.' }
 
 Write-Host '[STEP] Refreshing exact-state grounded context...' -ForegroundColor DarkCyan
 $auditStarted = Get-Date
@@ -190,6 +192,8 @@ $rankSeconds = [Math]::Round(((Get-Date) - $rankStarted).TotalSeconds, 2)
 $comparison = $probe.aesthetic_comparison
 if ($null -eq $comparison) { throw 'Visual probe did not return aesthetic_comparison.' }
 $independent = $comparison.independent_candidate_scoring
+$discrimination = $comparison.independent_discrimination
+$plateau = $comparison.intensity_plateau_hardening
 $calibration = $comparison.judgment_calibration
 $complete = [bool]$comparison.available -and [bool]$comparison.assessment_complete -and [bool]$comparison.exact_candidate_coverage -and
     $null -ne $independent -and [bool]$independent.applied -and $null -ne $calibration -and [bool]$calibration.applied -and
@@ -199,6 +203,24 @@ if ([string]$comparison.page_state_hash -ne $stateHash) { throw 'Visual ranking 
 if ([int]$comparison.candidate_count -ne $templateIds.Count) { throw 'Visual ranking candidate count does not match semantic shortlist count.' }
 
 Write-Host ("[PASS] Visual ranking complete in {0}s across {1} semantic candidates." -f $rankSeconds, $templateIds.Count) -ForegroundColor Green
+if ($null -ne $discrimination) {
+    Write-Host ("[INFO] Anchored discrimination: attempted={0}; applied={1}; trigger={2}; top={3}; runner={4}; tied={5}" -f $discrimination.attempted, $discrimination.applied, $discrimination.trigger, $discrimination.top_score, $discrimination.runner_up_score, $discrimination.tied_top_score)
+    if (-not [bool]$discrimination.applied -and -not [string]::IsNullOrWhiteSpace([string]$discrimination.reason)) {
+        Write-Host ("[WARN] Anchored discrimination reason: {0}" -f $discrimination.reason) -ForegroundColor Yellow
+    }
+}
+if ($null -ne $plateau) {
+    Write-Host ("[INFO] Intensity plateau hardening: attempted={0}; applied={1}; trigger={2}; top={3}; runner={4}; tied={5}" -f $plateau.attempted, $plateau.applied, $plateau.trigger, $plateau.top_score, $plateau.runner_up_score, $plateau.tied_top_score)
+    if (-not [bool]$plateau.applied -and -not [string]::IsNullOrWhiteSpace([string]$plateau.reason)) {
+        Write-Host ("[WARN] Plateau hardening reason: {0}" -f $plateau.reason) -ForegroundColor Yellow
+    }
+    if ([bool]$plateau.applied) {
+        Write-Host ''
+        Write-Host '--- Deterministic intensity plateau measurements ---' -ForegroundColor Cyan
+        @($plateau.candidate_measurements) | Select-Object template_id, model_estimated_visual_intensity, measured_visual_intensity_proxy, target_visual_intensity, measured_intensity_delta, model_intensity_penalty, measured_intensity_penalty, raw_axis_score_preserved, adjusted_float_score, effective_score | Format-Table -AutoSize
+    }
+}
+
 Write-Host ''
 Write-Host '--- Calibrated visual ranking ---' -ForegroundColor Cyan
 @($comparison.candidate_judgments) | Sort-Object score -Descending | Select-Object slot, template_id, score, overall_fit, design_dna_fit, rhythm_fit, hierarchy_fit, conversion_fit, strength, risk | Format-Table -AutoSize
@@ -214,6 +236,10 @@ $winnerInShortlist = [string]::IsNullOrWhiteSpace($winner) -or $winner -eq 'none
     SemanticShortlistUsableForVisualRanking = [bool]$shortlist.usable_for_visual_ranking
     VisualComparisonComplete = $complete
     IndependentScoringApplied = [bool]$independent.applied
+    AnchoredDiscriminationAttempted = $null -ne $discrimination -and [bool]$discrimination.attempted
+    AnchoredDiscriminationApplied = $null -ne $discrimination -and [bool]$discrimination.applied
+    IntensityPlateauHardeningAttempted = $null -ne $plateau -and [bool]$plateau.attempted
+    IntensityPlateauHardeningApplied = $null -ne $plateau -and [bool]$plateau.applied
     JudgmentCalibrationApplied = [bool]$calibration.applied
     WinnerTemplateId = $winner
     WinnerScore = [int]$calibration.winner_score
