@@ -54,10 +54,11 @@ final class Elementize_Core {
         $theme = wp_get_theme();
         $elementor_loaded = class_exists( '\\Elementor\\Plugin' );
         $pixfort_loaded = ! empty( $pixfort['active'] );
+        $revisions_enabled = self::page_revisions_available();
         return new WP_REST_Response( [
             'elementize_version' => defined( 'ELEMENTIZE_VERSION' ) ? ELEMENTIZE_VERSION : 'unknown',
             'scope' => 'elementor_pixfort_content_only',
-            'ready' => $elementor_loaded && $pixfort_loaded,
+            'ready' => $elementor_loaded && $pixfort_loaded && $revisions_enabled,
             'wordpress_version' => get_bloginfo( 'version' ),
             'theme' => $theme->get( 'Name' ),
             'theme_version' => $theme->get( 'Version' ),
@@ -66,6 +67,7 @@ final class Elementize_Core {
             'pixfort_loaded' => $pixfort_loaded,
             'pixfort_name' => $pixfort_loaded ? $pixfort['name'] : null,
             'pixfort_version' => $pixfort_loaded ? $pixfort['version'] : null,
+            'page_revisions_enabled' => $revisions_enabled,
             'supported_content_types' => [ 'text', 'link', 'media', 'pixfort_icon' ],
             'media_library_search' => true,
             'conversation_image_import' => true,
@@ -170,6 +172,11 @@ final class Elementize_Core {
     public static function hash_elements( array $elements ): string {
         $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
         return hash( 'sha256', false === $json ? '' : $json );
+    }
+
+    public static function page_revisions_available(): bool {
+        if ( ! post_type_supports( 'page', 'revisions' ) ) return false;
+        return ! defined( 'WP_POST_REVISIONS' ) || false !== WP_POST_REVISIONS;
     }
 
     public static function save_revision( int $id ) {
