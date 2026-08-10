@@ -4,105 +4,84 @@
 
 `fastbuild/design-intelligence`
 
-Current hardening line: `0.20.1`.
+Current hardening line: `0.21.0`.
 
 ## Runtime-proven foundation
 
 - 0.7.x catalogue breadth, visual-probe tracking, template-structure inspection, and structural hardening
-- 0.8.x page-level design audit plus calibration for palette usage, typography coverage, spacing rhythm, CTA style tokens, inherited-solid contrast attempts, and composition rhythm
-- 0.9.x read-only real design-control discovery for typography, spacing, alignment, sizing, borders/radius, shadows, backgrounds, colors, responsive scopes, and explicit/global/dynamic classification
-- 0.10.x compact GPT control plane plus GPT-safe design-settings response budgeting
-- 0.11.1 guarded typed design writer is runtime-proven for an exact reversible spacing write on managed draft page 952239
-- 0.12.1 short-lived signed remote rendering is runtime-proven on page 952239
-- 0.14.4 free local screenshot capture + local Ollama visual critique are runtime-proven on page 952239
-- 0.15.x annotated localization + consistency hardening are runtime-proven on page 952239
-- 0.16.x read-only repair discovery + semantic actionability hardening are runtime-proven on page 952239
-- 0.18.2 local Chrome DevTools Protocol rendered metrics are runtime-proven on page 952239
-- 0.19.x rendered repair correlation + measurement-accuracy hardening are runtime-proven on page 952239
-- PHP syntax lint gate is active
-- GPT Builder contract guard enforces <=8000 instruction characters and the compact Action budget
+- 0.8.x page-level design audit plus calibration
+- 0.9.x real design-control discovery
+- 0.10.x compact GPT control plane
+- 0.11.1 guarded typed design writer runtime-proven
+- 0.12.1 signed remote draft rendering runtime-proven
+- 0.14.4 local Chrome screenshot + local Ollama critique runtime-proven
+- 0.15.x annotated localization + consistency hardening runtime-proven
+- 0.16.x repair discovery + semantic actionability hardening runtime-proven
+- 0.18.2 local Chrome DevTools Protocol rendered metrics runtime-proven
+- 0.19.x rendered repair correlation + measurement hardening runtime-proven
+- 0.20.1 bounded planning diagnostics runtime-proven
+- PHP syntax lint and GPT Builder contract gates active
 
 ## Hard project constraint: no paid dependencies
 
-Elementize must not require paid screenshot, browser-rendering, vision, or AI APIs. Core visual QA may use free/open local software only. Cloudflare Quick Tunnel may be used only as a free public transport path for local development; paid Cloudflare Browser Rendering/Workers AI remain superseded and forbidden for core operation.
+Core visual QA must not require paid screenshot, browser-rendering, vision, or AI APIs. Free/open local software is acceptable. Paid Cloudflare Browser Rendering/Workers AI remain superseded and forbidden for core operation.
+
+## Runtime diagnosis on page 952239
+
+The 0.20.1 runtime result resolved the empty-plan question without weakening any safety gate:
+
+- `planning_version=0.20.1`
+- `available=true`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`
+- `correlation_available=true`
+- `correlation_planning_ready_count_reported=0`
+- 8 candidates seen
+- 0 correlation-ready candidates
+- 0 candidates passed core planning gates
+- 0 candidates passed proposal preconditions
+- `primary_diagnosis=fresh_correlation_has_no_planning_ready_candidate`
+
+The fresh run contained only hierarchy/supporting controls and a weak CTA-spacing target. The exact S1 padding remained measured but was only `context_only` for hierarchy. Therefore the planner was correct to return no proposal. The prior fresh run that had a `whitespacemanagement` finding and a direct S1 padding candidate demonstrates visual/localization variability rather than a deterministic planner bug.
 
 ## Current visual QA architecture
 
-signed managed draft preview → local Chrome screenshot → local Ollama critique → annotated internal screenshot → consistency-hardened section localization → read-only exact-target repair discovery → semantic candidate grading → loopback-only Chrome DevTools Protocol rendered measurements → exact rendered repair correlation → bounded value planning.
+signed preview → local Chrome screenshot → local Ollama critique → annotated localization → repair discovery → semantic grading → local CDP measurements → rendered correlation → bounded planning diagnostics → deterministic rendered observations.
 
-Screenshots are not persisted or exposed. Raw DOM, DevTools endpoints, and signed preview URLs remain internal. All repair planning remains advisory/read-only unless and until a separate guarded experiment is explicitly implemented and runtime-proven.
+Screenshots are not persisted or exposed. Raw DOM, signed preview URLs, and CDP endpoints remain internal. All observation/correlation/planning layers remain read-only and advisory.
 
-## Runtime evidence on page 952239
+## 0.20.x — bounded repair planning
 
-- clean screenshot capture: 1280×9000, local Chrome, bounded timeout, no paid service
-- local `gemma3:4b` critique surfaced weak hierarchy, excessive/inconsistent whitespace, small body text, irrelevant imagery, CTA clarity issues, and disconnected section flow
-- localization created 10 markers mapped to exact top-level Elementor IDs
-- 0.18.2 returned stable CDP measurements for all 10 top-level sections
-- deterministic evidence showed inter-section gaps of 0, substantial internal section padding, CTA style divergence across the page, and visible 12px microcopy in S8
-- 0.19.1 correctly reports exact top-level S1 padding 80/0/0/0 as measured and the S1 background as `rgb(255, 255, 255)` while preserving semantic gating
-- one fresh 0.19.1 run produced a direct S1 whitespace candidate with `causal_support=supported` and `bounded_value_planning_ready=true`
-- a later 0.20.0 completion-audit run returned `available=true`, matching content hash, but `eligible_candidate_count=0`, `planned_change_count=0`, and no plan; no write occurred
-- because the fresh visual/localization chain can vary between runs, the empty 0.20.0 plan must not be treated as proof of a planner bug without seeing which exact gate rejected the fresh candidates
+0.20.0 safely returned no plan on its first runtime acceptance run. 0.20.1 added diagnostics and proved that the fresh correlation itself had no planning-ready candidate. No planner gate should be weakened to force a result.
 
-## 0.17.x — dump-dom rendered metrics attempt
-
-Runtime-tested and superseded. 0.17.0–0.17.2 stayed read-only but could not reliably return the internal metrics payload. CDP is the proven replacement.
-
-## 0.18.x — Chrome DevTools Protocol rendered metrics
-
-Runtime-proven at 0.18.2. It uses isolated local Chrome plus loopback-only CDP `Runtime.evaluate` to return bounded section/text/CTA/media measurements mapped to exact Elementor IDs. Raw DOM, signed preview URLs, and the CDP endpoint are not exposed.
-
-## 0.19.x — rendered repair evidence correlation
-
-Runtime-proven through 0.19.1. Exact rendered measurement is kept separate from semantic causal support. Supporting/weak controls stay blocked even when measured exactly. Only semantically direct, exactly measured, base-scope reversible spacing/typography controls can become planning-ready. Automatic writes remain disabled.
-
-## 0.20.0 — bounded repair value planning
-
-Runtime-tested, read-only, but the first acceptance run returned no plan.
-
-Expected behavior remains conservative: at most one spacing/typography plan; exact hash/fingerprint/value preserved; spacing delta capped at 12px; font delta capped at 2px; no write.
-
-Observed runtime result on page 952239:
-
-- `planning_version=0.20.0`
-- `available=true`
-- `read_only=true`
-- `writes_performed=false`
-- `automatic_write_allowed=false`
-- `correlation_hash_matches_current=true`
-- `eligible_candidate_count=0`
-- `planned_change_count=0`
-
-This is safe behavior, but the response did not explain whether the fresh correlation had no planning-ready candidate or whether a later proposal precondition rejected it.
-
-## 0.20.1 — bounded planning diagnostics
+## 0.21.0 — deterministic rendered observations
 
 Implemented; runtime acceptance pending.
 
-Goal: make an empty bounded plan diagnosable without weakening any gate or performing a write.
+Goal: surface stable page-wide measured signals even when a fresh vision/localization run changes categories, without declaring those measurements to be defects and without creating write authority.
 
 - no new GPT Action and no schema/instruction change
-- completion audit keeps `visual.repair_plan` and upgrades its `planning_version` to `0.20.1`
-- adds `planning_diagnostics`
-- counts candidates seen, correlation-ready candidates, candidates passing core safety gates, and candidates passing value-proposal preconditions
-- returns bounded rejection records with exact finding category, top-level ID, element ID, category/control, actionability, measurement/support state, stage, and machine-readable reason codes
-- distinguishes three main empty-plan causes: fresh correlation had no planning-ready candidate; a candidate failed a later core planning gate; or a candidate passed core gates but failed conservative proposal preconditions
-- spacing diagnostics explicitly check finding semantics, px box shape, rendered box availability, large-internal-padding signal, inter-section-gap signal, and whether a >=60px current side matches the rendered box
-- typography diagnostics explicitly check typography-like finding semantics, exact font-size property, and a measured small font-size sample
-- diagnostics are read-only and keep `automatic_write_allowed=false`
+- completion audit adds `visual.render_observations`
+- read-only, `writes_performed=false`, `automatic_write_allowed=false`
+- consumes the already-proven `visual.render_metrics` payload rather than relying on localization to notice every issue
+- records visible text samples at or below 13px with exact top-level and element IDs
+- records factual CTA style divergence when multiple rendered CTA signatures exist, including exact CTA element IDs and computed font/background/text/radius/padding tokens
+- records top-level internal padding sides at or above 60px separately from inter-section gaps
+- cross-checks each deterministic observation against the independent local visual critique and returns only a `visual_convergence` boolean
+- explicitly returns `defects_asserted=false` and `direct_repair_candidates_created=false`; measurements alone are not defects and do not create repair candidates
+- observation samples are bounded; no raw DOM, screenshot, signed URL, or CDP endpoint is exposed
+- action-slot cost remains zero
 
-### 0.20.1 runtime acceptance gate
+### 0.21.0 runtime acceptance gate
 
-On page 952239, call the completion audit with `include_visual=true` and inspect only `visual.repair_plan`.
+On page 952239, call the completion audit with `include_visual=true` and inspect only `visual.render_observations`.
 
 Acceptance requires:
 
-1. `planning_version=0.20.1`, `available=true`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`.
-2. `planning_diagnostics.enabled=true`.
-3. If `plans=[]`, `planning_diagnostics.primary_diagnosis` must explain whether the fresh correlation itself had zero ready candidates or which later planner/proposal gate rejected the candidate.
-4. Rejection records must remain bounded and must not expose secrets, signed preview URLs, raw DOM, or any write authority.
+1. `observation_version=0.21.0`, `available=true`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`.
+2. `deterministic_measurements_only=true`, `defects_asserted=false`, `direct_repair_candidates_created=false`.
+3. The known rendered 12px text, CTA style divergence, and >=60px internal padding should be surfaced if they are present in the fresh CDP metrics.
+4. `visual_convergence` may vary with the fresh Ollama critique, but deterministic measured observations should not disappear merely because localization selected different findings.
 5. No mutation occurs.
 
 ## Next phase
 
-Use the 0.20.1 diagnostic result to decide the next implementation. If the fresh correlation simply varies and often produces zero planning-ready candidates, add a deterministic rendered-observation/convergence layer rather than weakening the semantic gates. If a genuine planner precondition bug is identified, fix only that precondition. Do not perform the first actual repair experiment until bounded planning is stable and reproducible across fresh audits.
+If 0.21.0 is stable, add a separate convergence-to-control layer. It may promote an observation only when: the deterministic rendered measurement is present, the visual critique independently supports the same issue, and an exact guarded Elementor control maps to the same element/property. Promotion must remain read-only at first. The first actual repair experiment remains blocked until one exact target is reproducibly supported across fresh audits.
