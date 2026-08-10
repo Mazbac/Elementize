@@ -4,7 +4,7 @@
 
 `fastbuild/design-intelligence`
 
-Current hardening line: `0.22.1`.
+Current hardening line: `0.22.2`.
 
 ## Runtime-proven foundation
 
@@ -30,7 +30,7 @@ Core visual QA must not require paid screenshot, browser-rendering, vision, or A
 
 ## Current visual QA architecture
 
-signed preview → local Chrome screenshot → local Ollama critique → consistency-hardened annotated localization → repair discovery → semantic grading → local CDP measurements → deterministic observations → exact observation/control matching → section-specific semantic convergence hardening.
+signed preview → local Chrome screenshot → local Ollama critique → consistency-hardened annotated localization → repair discovery → semantic grading → local CDP measurements → deterministic observations → exact observation/control matching → section-specific semantic convergence hardening → dependency diagnostics.
 
 Screenshots are not persisted or exposed. Raw DOM, signed preview URLs, and CDP endpoints remain internal. All observation/correlation/planning/convergence layers remain read-only and advisory.
 
@@ -60,42 +60,57 @@ The exact control bridge worked mechanically:
 - CTA style divergence remained blocked with `requires_reference_style=true`
 - 8 exact control matches were found and the first six were promoted due the target budget
 
-However, this exposed an important safety weakness: `visual_convergence=true` belonged to the page-wide deterministic observation, not to each padding sample. Because of that, every exact large-padding sample inherited the same positive visual signal. Exact measurement + exact control mapping proves what a value is, but does not prove that every such value causes the visually criticized spacing problem. Do not feed all six 0.22.0 targets directly into bounded planning.
+However, `visual_convergence=true` belonged to the page-wide deterministic observation, not to each padding sample. Exact measurement + exact control mapping proves what a value is, but does not prove that every such value causes the visually criticized spacing problem. Do not feed all six 0.22.0 targets directly into bounded planning.
 
 ## 0.22.1 — section-specific semantic convergence hardening
 
+Implemented and loaded, but the first runtime acceptance call did not reach the section-hardening decision because the fresh `render_observations` dependency was unavailable in that run.
+
+Observed output:
+
+- installed status confirmed `elementize_version=0.22.1` and all section-hardening capability flags
+- `visual.repair_convergence` returned the base `convergence_version=0.22.0`
+- `available=false`
+- `promoted_targets=[]`
+- reason: `Fresh rendered observations are required before convergence-to-control mapping.`
+
+The hardening layer intentionally only post-processes an available base convergence object, so this response does not mean section-specific support failed. It means the upstream fresh rendered-observation dependency did not become available in this particular completion-audit run. No mutation occurred.
+
+## 0.22.2 — convergence dependency diagnostics
+
 Implemented; runtime acceptance pending.
 
-Goal: prevent page-wide visual agreement from promoting every matching rendered sample.
+Goal: make an unavailable convergence object explain the exact upstream rendered-observation/CDP dependency state without launching a duplicate expensive retry and without weakening section-specific semantic gates.
 
 - no new GPT Action and no schema/instruction change
-- post-processes `visual.repair_convergence`
-- keeps the original exact rendered measurement, fresh hash, exact same-property control match, writability, and fingerprint requirements
-- additionally requires a medium/high-confidence consistency-hardened localization record for the same top-level section
-- that localized finding must also be semantically direct for the rendered observation type
-- large internal padding requires a localized issue class containing whitespace, spacing, rhythm, balance, or flow
-- hierarchy by itself does not directly authorize a spacing change; such a target is demoted even when the exact padding is measured
-- microtext requires a localized typography/readability/legibility issue in the same section
-- global `visual_convergence=true` alone is explicitly insufficient
-- promoted targets become `promotion_status=promoted_read_only_section_verified`
-- demoted exact matches are returned as bounded `blocked_targets` with machine-readable reason codes
-- CTA reference-style block is preserved
-- `defects_asserted=false` and `automatic_write_allowed=false`
+- post-processes `visual.repair_convergence` whether it is available or unavailable
+- upgrades `convergence_version` to `0.22.2`
+- adds bounded `render_observations_dependency`
+- reports observation presence/availability/version/reason, observation dependency failure stage, observation counts, and the already-bounded nested rendered-metrics dependency summary
+- propagates a top-level `dependency_failure_stage`
+- distinguishes missing observations from present-but-unavailable observations
+- does not start another Chrome or Ollama pass in the same request (`dependency_retry_performed=false`) because the full visual audit is already expensive and can approach response/time limits
+- signed preview URL, CDP endpoint, raw DOM, screenshots, and secrets remain excluded
+- preserves 0.22.1 section-specific semantic hardening whenever the upstream dependency succeeds
+- `writes_performed=false`, `automatic_write_allowed=false`
 
-### 0.22.1 runtime acceptance gate
+### 0.22.2 runtime acceptance gate
 
 On page 952239, call the completion audit with `include_visual=true` and inspect only `visual.repair_convergence`.
 
-Acceptance requires:
+If upstream observations succeed:
 
-1. `convergence_version=0.22.1`, `available=true`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`.
-2. `section_specific_visual_support_required=true`, `semantic_localized_support_required=true`, and `global_visual_convergence_alone_is_insufficient=true`.
-3. `pre_hardening_promoted_target_count` should show the broad 0.22.0 matches from the same run, while `promoted_target_count` may be lower after section-specific semantic filtering.
-4. Any surviving target must have `section_specific_visual_support=true`, `semantic_localized_support=true`, a bounded `localized_support` record, and `promotion_status=promoted_read_only_section_verified`.
-5. Exact controls whose section is only localized for hierarchy or another indirect issue must move to `blocked_targets`, not remain promoted merely because they are large padding values.
-6. CTA divergence stays blocked pending a reference style.
-7. No mutation occurs.
+1. `convergence_version=0.22.2`, `available=true`.
+2. The 0.22.1 section-specific fields remain present.
+3. Broad 0.22.0 exact matches are filtered through same-section semantic localization before remaining promoted.
+
+If upstream observations fail again:
+
+1. `convergence_version=0.22.2`, `available=false`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`.
+2. `dependency_failure_stage` is populated.
+3. `render_observations_dependency` explains whether observations were missing or unavailable and carries the bounded rendered-metrics failure stage/reason when present.
+4. No retry/mutation occurs.
 
 ## Next phase
 
-If 0.22.1 reproducibly leaves one or a small number of section-verified targets, build a new read-only bounded planner that consumes only those hardened promoted targets and deterministically ranks at most one reversible spacing/typography experiment. If 0.22.1 commonly leaves zero because the general localization categories remain too variable, do not weaken this gate; instead add a focused local visual-verification pass for the deterministic observation samples so the model is asked directly which measured sections visibly exhibit the spacing/typography problem. The first real write remains blocked until one exact target is reproducibly supported.
+If 0.22.2 succeeds and 0.22.1 reproducibly leaves one or a small number of section-verified targets, build a new read-only bounded planner that consumes only those hardened promoted targets. If the upstream visual/CDP chain remains intermittently unavailable, harden only the exact dependency stage reported by 0.22.2 rather than adding blind retries or weakening semantic gates. The first real write remains blocked until one exact target is reproducibly supported.
