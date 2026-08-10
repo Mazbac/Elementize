@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.24.4
+ * Version: 0.24.5
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -61,6 +61,7 @@ require_once __DIR__ . '/includes/elementize-rendered-observation-convergence.in
 require_once __DIR__ . '/includes/elementize-convergence-exact-element-recovery.inc';
 require_once __DIR__ . '/includes/elementize-focused-candidate-diversity.inc';
 require_once __DIR__ . '/includes/elementize-focused-visual-verification.inc';
+require_once __DIR__ . '/includes/elementize-focused-incomplete-recovery.inc';
 require_once __DIR__ . '/includes/elementize-rendered-observation-convergence-hardening.inc';
 require_once __DIR__ . '/includes/elementize-rendered-observation-convergence-diagnostics.inc';
 require_once __DIR__ . '/includes/elementize-focused-visual-verification-hardening.inc';
@@ -115,6 +116,7 @@ Elementize_Rendered_Observation_Convergence::init();
 Elementize_Convergence_Exact_Element_Recovery::init();
 Elementize_Focused_Candidate_Diversity::init();
 Elementize_Focused_Visual_Verification::init();
+Elementize_Focused_Incomplete_Recovery::init();
 Elementize_Rendered_Observation_Convergence_Hardening::init();
 Elementize_Rendered_Observation_Convergence_Diagnostics::init();
 Elementize_Focused_Visual_Verification_Hardening::init();
