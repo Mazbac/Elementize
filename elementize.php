@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.26.5
+ * Version: 0.27.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -76,6 +76,7 @@ require_once __DIR__ . '/includes/elementize-aesthetic-judgment-calibration.inc'
 require_once __DIR__ . '/includes/elementize-aesthetic-semantic-grounding.inc';
 require_once __DIR__ . '/includes/elementize-aesthetic-grounded-reassessment.inc';
 require_once __DIR__ . '/includes/elementize-aesthetic-grounded-reassessment-hardening.inc';
+require_once __DIR__ . '/includes/elementize-aesthetic-ab-judgment.inc';
 require_once __DIR__ . '/includes/elementize-status-version.inc';
 
 Elementize_Visual_Writes::init();
@@ -138,4 +139,5 @@ Elementize_Aesthetic_Judgment_Calibration::init();
 Elementize_Aesthetic_Semantic_Grounding::init();
 Elementize_Aesthetic_Grounded_Reassessment::init();
 Elementize_Aesthetic_Grounded_Reassessment_Hardening::init();
+Elementize_Aesthetic_AB_Judgment::init();
 Elementize_Status_Version::init();
