@@ -2,8 +2,6 @@ name: PHP syntax lint
 
 on:
   push:
-    branches:
-      - fastbuild/design-intelligence
   pull_request:
 
 jobs:

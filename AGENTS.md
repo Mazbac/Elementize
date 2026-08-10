@@ -4,14 +4,14 @@
 
 Build the smallest genuinely useful version of this project as quickly as practical without losing correctness, reversibility, or control.
 
-Always follow `FAST_BUILD_OS.md`.
+Always follow `docs/process/fast-build-os.md`.
 
 ## Before meaningful work
 
 Read, in this order:
 1. `PROJECT.md`
 2. `DISCOVERY.md`
-3. `FAST_BUILD_OS.md`
+3. `docs/process/fast-build-os.md`
 4. this file
 5. relevant current code, tests, and recent related changes
 
