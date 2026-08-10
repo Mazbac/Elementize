@@ -1,20 +1,48 @@
-name: GPT Builder contract
+name: Elementize contract
 
 on:
   push:
   pull_request:
 
 jobs:
-  validate-gpt-materials:
+  validate-contract:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate minimal GPT contract
+
+      - name: Validate minimal runtime and GPT contract
         shell: bash
         run: |
           set -euo pipefail
+
           instructions="config/gpt/wp-builder-instructions.md"
           schema="config/gpt/actions.openapi.yaml"
+
+          expected_runtime=$(cat <<'EOF'
+          includes/elementize-bootstrap.inc
+          includes/elementize-chat-media.inc
+          includes/elementize-content.inc
+          includes/elementize-core.inc
+          includes/elementize-media-library.inc
+          includes/elementize-onboarding.inc
+          EOF
+          )
+          actual_runtime=$(find includes -maxdepth 1 -type f -print | sort)
+          if [ "$actual_runtime" != "$expected_runtime" ]; then
+            echo "Runtime file set changed unexpectedly."
+            printf 'Expected:\n%s\nActual:\n%s\n' "$expected_runtime" "$actual_runtime"
+            exit 1
+          fi
+
+          require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
+          init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
+          echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
+          test "$require_count" -eq 5
+          test "$init_count" -eq 5
+
+          for module in core content media-library chat-media onboarding; do
+            grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
+          done
 
           instruction_chars=$(wc -m < "$instructions" | tr -d ' ')
           echo "GPT instruction characters: ${instruction_chars}/8000"
@@ -42,12 +70,25 @@ jobs:
             insertPixfortTemplate
             getPixfortVisualProbe
             createElementorDraft
+            aesthetic
+            ollama
           )
           for term in "${forbidden_terms[@]}"; do
-            if grep -q "$term" "$schema"; then
+            if grep -qi "$term" "$schema"; then
               echo "Removed capability still present in GPT schema: $term"
               exit 1
             fi
           done
 
           grep -q 'url: https://example.invalid' "$schema" || { echo 'Committed schema must keep the neutral placeholder server URL.'; exit 1; }
+          grep -q 'openaiFileIdRefs:' "$schema" || { echo 'Conversation-image file parameter is missing.'; exit 1; }
+
+          header_version=$(sed -n 's/^ \* Version: //p' elementize.php | head -1)
+          constant_version=$(sed -n "s/^define( 'ELEMENTIZE_VERSION', '\([^']*\)' );/\1/p" elementize.php | head -1)
+          schema_version=$(sed -n 's/^  version: //p' "$schema" | head -1)
+          echo "Versions: header=${header_version} constant=${constant_version} schema=${schema_version}"
+          test -n "$header_version"
+          test "$header_version" = "$constant_version"
+          test "$header_version" = "$schema_version"
+
+          ruby -e "require 'yaml'; YAML.load_file('$schema')" >/dev/null

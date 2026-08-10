@@ -46,6 +46,7 @@ final class Elementize_Media_Library {
             'order' => 'DESC',
             'fields' => 'ids',
             'no_found_rows' => false,
+            'update_post_term_cache' => false,
         ];
 
         $filename_match = '';
@@ -85,7 +86,6 @@ final class Elementize_Media_Library {
         $file = get_attached_file( $attachment_id );
         $meta = wp_get_attachment_metadata( $attachment_id );
         if ( ! is_array( $meta ) ) $meta = [];
-
         return [
             'attachment_id' => $attachment_id,
             'title' => $post ? (string) $post->post_title : '',

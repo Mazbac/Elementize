@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Content Actions
-  version: 0.30.0
+  version: 0.31.0
   description: Guarded content editing for existing Elementor and Pixfort pages.
 servers:
   - url: https://example.invalid
@@ -107,13 +107,14 @@ paths:
                     required: [kind, element_id, setting_path]
                     properties:
                       kind: { type: string, enum: [text, link, media, pixfort_icon] }
-                      element_id: { type: string }
+                      element_id: { type: string, maxLength: 100 }
                       setting_path:
                         type: array
                         minItems: 1
+                        maxItems: 30
                         items:
                           anyOf:
-                            - { type: string }
+                            - { type: string, maxLength: 200 }
                             - { type: integer }
                       expected_value: { type: string }
                       value: { type: string }
@@ -121,11 +122,11 @@ paths:
                       attachment_id: { type: integer, minimum: 1 }
       responses:
         '200':
-          description: Content changes saved and verified
+          description: Content changes saved and verified in persisted Elementor data
         '400':
           description: Unsupported content field/value or missing confirmation
         '409':
-          description: Page or target changed after the fresh read
+          description: Page, revision capability, or target changed after the fresh read
 
   /wp-json/elementize/v1/media/images:
     get:
@@ -170,6 +171,7 @@ paths:
                   type: array
                   minItems: 1
                   maxItems: 1
+                  description: Exactly one image from the current ChatGPT conversation. At runtime ChatGPT expands the file reference into file metadata for Elementize.
                   items: { type: string }
                 title: { type: string }
                 alt: { type: string }

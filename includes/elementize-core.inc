@@ -14,50 +14,38 @@ final class Elementize_Core {
             'callback' => [ self::class, 'status' ],
             'permission_callback' => [ self::class, 'can_access' ],
         ] );
-
         register_rest_route( self::NS, '/pages', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [ self::class, 'pages' ],
             'permission_callback' => [ self::class, 'can_access' ],
             'args' => [
-                'q' => [ 'type' => 'string', 'required' => false, 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
-                'page' => [ 'type' => 'integer', 'required' => false, 'default' => 1, 'minimum' => 1, 'sanitize_callback' => 'absint' ],
-                'per_page' => [ 'type' => 'integer', 'required' => false, 'default' => 30, 'minimum' => 1, 'maximum' => 100, 'sanitize_callback' => 'absint' ],
+                'q' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
+                'page' => [ 'type' => 'integer', 'default' => 1, 'minimum' => 1, 'sanitize_callback' => 'absint' ],
+                'per_page' => [ 'type' => 'integer', 'default' => 30, 'minimum' => 1, 'maximum' => 100, 'sanitize_callback' => 'absint' ],
             ],
         ] );
     }
 
     public static function can_access() {
-        if ( ! is_user_logged_in() ) {
-            return new WP_Error( 'elementize_auth_required', 'Authentication is required.', [ 'status' => 401 ] );
-        }
-        if ( ! current_user_can( 'edit_pages' ) ) {
-            return new WP_Error( 'elementize_forbidden', 'The authenticated WordPress user cannot edit pages.', [ 'status' => 403 ] );
-        }
+        if ( ! is_user_logged_in() ) return new WP_Error( 'elementize_auth_required', 'Authentication is required.', [ 'status' => 401 ] );
+        if ( ! current_user_can( 'edit_pages' ) ) return new WP_Error( 'elementize_forbidden', 'The authenticated WordPress user cannot edit pages.', [ 'status' => 403 ] );
         return true;
     }
 
     public static function can_edit_page( WP_REST_Request $request ) {
         $access = self::can_access();
         if ( is_wp_error( $access ) ) return $access;
-
         $id = absint( $request['id'] );
         $post = get_post( $id );
-        if ( ! $post || 'page' !== $post->post_type ) {
-            return new WP_Error( 'elementize_page_not_found', 'Page not found.', [ 'status' => 404 ] );
-        }
-        if ( ! current_user_can( 'edit_post', $id ) ) {
-            return new WP_Error( 'elementize_forbidden', 'The authenticated WordPress user cannot edit this page.', [ 'status' => 403 ] );
-        }
+        if ( ! $post || 'page' !== $post->post_type ) return new WP_Error( 'elementize_page_not_found', 'Page not found.', [ 'status' => 404 ] );
+        if ( ! current_user_can( 'edit_post', $id ) ) return new WP_Error( 'elementize_forbidden', 'The authenticated WordPress user cannot edit this page.', [ 'status' => 403 ] );
         return true;
     }
 
     public static function can_write_page( WP_REST_Request $request ) {
         $access = self::can_edit_page( $request );
         if ( is_wp_error( $access ) ) return $access;
-        if ( ! current_user_can( 'manage_options' ) ) {
-            return new WP_Error( 'elementize_write_forbidden', 'Elementize content writes require an administrator.', [ 'status' => 403 ] );
-        }
+        if ( ! current_user_can( 'manage_options' ) ) return new WP_Error( 'elementize_write_forbidden', 'Elementize content writes require an administrator.', [ 'status' => 403 ] );
         return true;
     }
 
@@ -66,7 +54,6 @@ final class Elementize_Core {
         $theme = wp_get_theme();
         $elementor_loaded = class_exists( '\\Elementor\\Plugin' );
         $pixfort_loaded = ! empty( $pixfort['active'] );
-
         return new WP_REST_Response( [
             'elementize_version' => defined( 'ELEMENTIZE_VERSION' ) ? ELEMENTIZE_VERSION : 'unknown',
             'scope' => 'elementor_pixfort_content_only',
@@ -96,8 +83,9 @@ final class Elementize_Core {
                 'expected_page_status' => true,
                 'expected_page_title' => true,
                 'expected_field_value' => true,
-                'pre_change_revision' => true,
-                'post_save_verification' => true,
+                'pre_change_revision_required' => true,
+                'persisted_post_save_verification' => true,
+                'rollback_verification' => true,
                 'published_page_confirmation' => true,
             ],
             'setup_url' => admin_url( 'admin.php?page=elementize' ),
@@ -106,20 +94,11 @@ final class Elementize_Core {
 
     public static function pages( WP_REST_Request $request ): WP_REST_Response {
         if ( ! class_exists( '\\Elementor\\Plugin' ) ) {
-            return new WP_REST_Response( [
-                'page' => 1,
-                'per_page' => 0,
-                'total' => 0,
-                'total_pages' => 0,
-                'pages' => [],
-                'warning' => 'Elementor is not active.',
-            ], 200 );
+            return new WP_REST_Response( [ 'q' => '', 'page' => 1, 'per_page' => 0, 'total' => 0, 'total_pages' => 0, 'pages' => [], 'warning' => 'Elementor is not active.' ], 200 );
         }
-
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
         $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
         $search = trim( (string) $request->get_param( 'q' ) );
-
         $args = [
             'post_type' => 'page',
             'post_status' => array_keys( get_post_stati( [ 'internal' => false ] ) ),
@@ -128,16 +107,9 @@ final class Elementize_Core {
             'paged' => $page,
             'orderby' => 'modified',
             'order' => 'DESC',
-            'meta_query' => [
-                [
-                    'key' => '_elementor_edit_mode',
-                    'value' => 'builder',
-                    'compare' => '=',
-                ],
-            ],
+            'meta_query' => [ [ 'key' => '_elementor_edit_mode', 'value' => 'builder', 'compare' => '=' ] ],
         ];
         if ( '' !== $search ) $args['s'] = $search;
-
         $query = new WP_Query( $args );
         $items = [];
         foreach ( $query->posts as $post ) {
@@ -146,21 +118,12 @@ final class Elementize_Core {
             if ( ! $document || ! $document->is_built_with_elementor() ) continue;
             $items[] = self::page_identity( $post->ID, $document );
         }
-
-        return new WP_REST_Response( [
-            'q' => $search,
-            'page' => $page,
-            'per_page' => $per_page,
-            'total' => (int) $query->found_posts,
-            'total_pages' => (int) $query->max_num_pages,
-            'pages' => $items,
-        ], 200 );
+        return new WP_REST_Response( [ 'q' => $search, 'page' => $page, 'per_page' => $per_page, 'total' => (int) $query->found_posts, 'total_pages' => (int) $query->max_num_pages, 'pages' => $items ], 200 );
     }
 
     public static function page_identity( int $id, $document = null ): array {
         $post = get_post( $id );
         if ( ! $document ) $document = self::document( $id );
-
         return [
             'id' => $id,
             'title' => $post ? (string) $post->post_title : '',
@@ -174,24 +137,15 @@ final class Elementize_Core {
 
     public static function document( int $id ) {
         if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->documents ) ) return null;
-        try {
-            return \Elementor\Plugin::$instance->documents->get( $id );
-        } catch ( Throwable $e ) {
-            return null;
-        }
+        try { return \Elementor\Plugin::$instance->documents->get( $id ); }
+        catch ( Throwable $e ) { return null; }
     }
 
     public static function need_document( int $id ) {
-        if ( ! class_exists( '\\Elementor\\Plugin' ) ) {
-            return new WP_Error( 'elementize_elementor_required', 'Elementor must be installed and active.', [ 'status' => 503 ] );
-        }
+        if ( ! class_exists( '\\Elementor\\Plugin' ) ) return new WP_Error( 'elementize_elementor_required', 'Elementor must be installed and active.', [ 'status' => 503 ] );
         $document = self::document( $id );
-        if ( ! $document ) {
-            return new WP_Error( 'elementize_elementor_document_not_found', 'Elementor could not load this page as a document.', [ 'status' => 404 ] );
-        }
-        if ( ! $document->is_built_with_elementor() ) {
-            return new WP_Error( 'elementize_not_elementor_page', 'This page is not currently built with Elementor.', [ 'status' => 400 ] );
-        }
+        if ( ! $document ) return new WP_Error( 'elementize_elementor_document_not_found', 'Elementor could not load this page as a document.', [ 'status' => 404 ] );
+        if ( ! $document->is_built_with_elementor() ) return new WP_Error( 'elementize_not_elementor_page', 'This page is not currently built with Elementor.', [ 'status' => 400 ] );
         return $document;
     }
 
@@ -199,10 +153,18 @@ final class Elementize_Core {
         $document = self::need_document( $id );
         if ( is_wp_error( $document ) ) return $document;
         $elements = $document->get_elements_data();
-        if ( ! is_array( $elements ) ) {
-            return new WP_Error( 'elementize_invalid_elementor_data', 'Elementor returned invalid page data.', [ 'status' => 500 ] );
-        }
+        if ( ! is_array( $elements ) ) return new WP_Error( 'elementize_invalid_elementor_data', 'Elementor returned invalid page data.', [ 'status' => 500 ] );
         return [ 'document' => $document, 'elements' => $elements ];
+    }
+
+    public static function persisted_elements( int $id ) {
+        clean_post_cache( $id );
+        $raw = get_post_meta( $id, '_elementor_data', true );
+        if ( is_array( $raw ) ) return $raw;
+        if ( ! is_string( $raw ) || '' === trim( $raw ) ) return new WP_Error( 'elementize_persisted_data_unavailable', 'Persisted Elementor data could not be read after save.', [ 'status' => 500 ] );
+        $decoded = json_decode( $raw, true );
+        if ( ! is_array( $decoded ) || JSON_ERROR_NONE !== json_last_error() ) return new WP_Error( 'elementize_persisted_data_invalid', 'Persisted Elementor data is not valid JSON after save.', [ 'status' => 500 ] );
+        return $decoded;
     }
 
     public static function hash_elements( array $elements ): string {
@@ -212,17 +174,12 @@ final class Elementize_Core {
 
     public static function save_revision( int $id ) {
         $post = get_post( $id );
-        if ( ! $post || ! post_type_supports( $post->post_type, 'revisions' ) || ! wp_revisions_enabled( $post ) ) return null;
-
+        if ( ! $post ) return new WP_Error( 'elementize_revision_failed', 'The page no longer exists, so no content was modified.', [ 'status' => 409 ] );
+        if ( ! post_type_supports( $post->post_type, 'revisions' ) || ! wp_revisions_enabled( $post ) ) return new WP_Error( 'elementize_revisions_required', 'Elementize requires WordPress revisions for guarded content writes. Enable revisions before trying again.', [ 'status' => 409 ] );
         add_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
-        try {
-            $revision = wp_save_post_revision( $id );
-        } finally {
-            remove_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX );
-        }
-
-        if ( is_int( $revision ) && $revision > 0 ) return $revision;
-        return new WP_Error( 'elementize_revision_failed', 'Elementize could not create a pre-change revision, so the page was not modified.', [ 'status' => 500 ] );
+        try { $revision = wp_save_post_revision( $id ); }
+        finally { remove_filter( 'wp_save_post_revision_check_for_changes', '__return_false', PHP_INT_MAX ); }
+        return is_int( $revision ) && $revision > 0 ? $revision : new WP_Error( 'elementize_revision_failed', 'Elementize could not create a pre-change revision, so the page was not modified.', [ 'status' => 500 ] );
     }
 
     public static function regenerate_css( int $id ): void {
@@ -231,26 +188,19 @@ final class Elementize_Core {
                 $css = new \Elementor\Core\Files\CSS\Post( $id );
                 $css->update();
             }
-        } catch ( Throwable $ignored ) {
-        }
+        } catch ( Throwable $ignored ) {}
     }
 
     public static function pixfort_info(): array {
         if ( ! function_exists( 'get_plugins' ) ) require_once ABSPATH . 'wp-admin/includes/plugin.php';
         $active = (array) get_option( 'active_plugins', [] );
-        if ( is_multisite() ) {
-            $active = array_merge( $active, array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) ) );
-        }
+        if ( is_multisite() ) $active = array_merge( $active, array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) ) );
         $plugins = get_plugins();
         foreach ( array_unique( $active ) as $file ) {
             $data = $plugins[ $file ] ?? [];
             $name = (string) ( $data['Name'] ?? '' );
             if ( false === stripos( $file, 'pixfort-core' ) && false === stripos( $name, 'pixfort core' ) ) continue;
-            return [
-                'active' => true,
-                'name' => '' !== $name ? $name : 'Pixfort Core',
-                'version' => (string) ( $data['Version'] ?? '' ),
-            ];
+            return [ 'active' => true, 'name' => '' !== $name ? $name : 'Pixfort Core', 'version' => (string) ( $data['Version'] ?? '' ) ];
         }
         return [ 'active' => false, 'name' => '', 'version' => '' ];
     }

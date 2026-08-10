@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 final class Elementize_Chat_Media {
     private const MAX_IMAGE_BYTES = 10485760;
     private const MAX_IMAGE_PIXELS = 60000000;
+    private const MAX_SOURCE_ID = 512;
+    private const MAX_DOWNLOAD_URL = 8192;
     private const ALLOWED_MIMES = [
         'image/jpeg' => 'jpg',
         'image/png' => 'png',
@@ -48,6 +50,7 @@ final class Elementize_Chat_Media {
         $source_mime = strtolower( trim( (string) ( $ref['mime_type'] ?? '' ) ) );
         $download_link = trim( (string) ( $ref['download_link'] ?? '' ) );
         if ( '' === $source_name || '' === $source_id || '' === $source_mime || '' === $download_link ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The conversation file reference is missing name, id, mime_type, or download_link.', [ 'status' => 400 ] );
+        if ( strlen( $source_id ) > self::MAX_SOURCE_ID || strlen( $download_link ) > self::MAX_DOWNLOAD_URL ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The conversation file reference exceeds Elementize safety limits.', [ 'status' => 400 ] );
         if ( ! str_starts_with( $source_mime, 'image/' ) ) return new WP_Error( 'elementize_chat_media_not_image', 'The supplied conversation file is not an image.', [ 'status' => 400 ] );
         if ( ! self::allowed_source_url( $download_link ) ) return new WP_Error( 'elementize_chat_media_source_forbidden', 'The conversation image URL is not on an allowed OpenAI file host.', [ 'status' => 400 ] );
 
@@ -57,7 +60,14 @@ final class Elementize_Chat_Media {
         $tmp = wp_tempnam( $source_name );
         if ( ! is_string( $tmp ) || '' === $tmp ) return new WP_Error( 'elementize_chat_media_temp_failed', 'WordPress could not create a temporary file.', [ 'status' => 500 ] );
 
-        $remote = wp_safe_remote_get( $download_link, [ 'timeout' => 20, 'redirection' => 2, 'stream' => true, 'filename' => $tmp, 'limit_response_size' => self::MAX_IMAGE_BYTES + 1, 'headers' => [ 'Accept' => 'image/*' ] ] );
+        $remote = wp_safe_remote_get( $download_link, [
+            'timeout' => 20,
+            'redirection' => 2,
+            'stream' => true,
+            'filename' => $tmp,
+            'limit_response_size' => self::MAX_IMAGE_BYTES + 1,
+            'headers' => [ 'Accept' => 'image/*' ],
+        ] );
         if ( is_wp_error( $remote ) ) { @unlink( $tmp ); return new WP_Error( 'elementize_chat_media_download_failed', 'WordPress could not download the conversation image: ' . $remote->get_error_message(), [ 'status' => 502 ] ); }
         $status = (int) wp_remote_retrieve_response_code( $remote );
         if ( 200 !== $status ) { @unlink( $tmp ); return new WP_Error( 'elementize_chat_media_download_failed', 'The conversation image download returned HTTP ' . $status . '.', [ 'status' => 502 ] ); }
@@ -67,6 +77,7 @@ final class Elementize_Chat_Media {
         if ( $bytes < 1 || $bytes > self::MAX_IMAGE_BYTES ) { @unlink( $tmp ); return new WP_Error( 'elementize_chat_media_size_invalid', 'The conversation image must be between 1 byte and 10 MiB.', [ 'status' => 400 ] ); }
         $actual_mime = function_exists( 'wp_get_image_mime' ) ? (string) wp_get_image_mime( $tmp ) : '';
         if ( ! isset( self::ALLOWED_MIMES[ $actual_mime ] ) ) { @unlink( $tmp ); return new WP_Error( 'elementize_chat_media_mime_invalid', 'The downloaded file is not a supported JPG, PNG, WEBP, AVIF, or GIF image.', [ 'status' => 400 ] ); }
+
         $dimensions = @getimagesize( $tmp );
         $width = is_array( $dimensions ) && isset( $dimensions[0] ) ? absint( $dimensions[0] ) : 0;
         $height = is_array( $dimensions ) && isset( $dimensions[1] ) ? absint( $dimensions[1] ) : 0;
@@ -86,6 +97,7 @@ final class Elementize_Chat_Media {
             if ( $attachment_id > 0 ) wp_delete_attachment( $attachment_id, true );
             return new WP_Error( 'elementize_chat_media_verification_failed', 'The imported Media Library item could not be verified as an editable image attachment.', [ 'status' => 500 ] );
         }
+
         if ( '' !== $alt ) update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
         update_post_meta( $attachment_id, '_elementize_chat_file_id', $source_id );
         update_post_meta( $attachment_id, '_elementize_chat_file_name', $source_name );
@@ -96,6 +108,8 @@ final class Elementize_Chat_Media {
             'imported' => true,
             'source_file_id' => $source_id,
             'source_name' => $source_name,
+            'source_mime_type' => $source_mime,
+            'detected_mime_type' => $actual_mime,
             'bytes_downloaded' => $bytes,
             'sha256' => is_string( $sha256 ) ? $sha256 : '',
             'image' => Elementize_Media_Library::snapshot( $attachment_id ),
