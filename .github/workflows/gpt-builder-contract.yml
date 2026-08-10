@@ -1,0 +1,78 @@
+name: GPT Builder contract
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-gpt-builder-materials:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Enforce GPT Builder limits and required actions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          instructions="config/gpt/wp-builder-instructions.md"
+          schema="config/gpt/actions.openapi.yaml"
+          append_schema="config/gpt/actions-append.openapi.yaml"
+
+          instruction_chars=$(wc -m < "$instructions" | tr -d ' ')
+          echo "WP Builder instruction characters: ${instruction_chars}/8000"
+          if [ "$instruction_chars" -gt 8000 ]; then
+            echo "$instructions exceeds ChatGPT's 8000-character instruction limit."
+            exit 1
+          fi
+
+          cp "$schema" /tmp/elementize-generated-schema.yaml
+          if ! grep -q 'operationId: getElementizePageCompletionAudit' "$schema"; then
+            printf '\n' >> /tmp/elementize-generated-schema.yaml
+            cat "$append_schema" >> /tmp/elementize-generated-schema.yaml
+          fi
+
+          operation_count=$(grep -c 'operationId:' /tmp/elementize-generated-schema.yaml || true)
+          echo "Generated GPT Action operations: ${operation_count}/25 target (30 platform max)"
+          if [ "$operation_count" -gt 25 ]; then
+            echo "Generated GPT Actions schema exceeds Elementize's 25-operation control-plane budget."
+            exit 1
+          fi
+
+          required_operations=(
+            getElementizeStatus
+            getElementizePageState
+            updateElementizePageState
+            getElementizePageCompletionAudit
+            getElementizePageDesignSettings
+            updateElementizePageDesignSettings
+            getElementizePixfortCatalogueSummary
+            inspectElementizePixfortTemplateStructure
+          )
+
+          forbidden_operations=(
+            getElementizePageLayout
+            updateElementizePageLayout
+            getElementizePageLifecycle
+            trashElementizeManagedPage
+            restoreElementizeManagedPage
+            publishElementizeManagedPage
+            unpublishElementizeManagedPage
+            getElementizePageQualityAudit
+            getElementizePageDesignAudit
+          )
+
+          for operation in "${required_operations[@]}"; do
+            if ! grep -q "operationId: ${operation}" /tmp/elementize-generated-schema.yaml; then
+              echo "Required GPT operation is missing: ${operation}"
+              exit 1
+            fi
+          done
+
+          for operation in "${forbidden_operations[@]}"; do
+            if grep -q "operationId: ${operation}" /tmp/elementize-generated-schema.yaml; then
+              echo "Legacy operation should not consume a GPT Action slot: ${operation}"
+              exit 1
+            fi
+          done

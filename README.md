@@ -1,73 +1,38 @@
-# Fast Build OS Template
+# Elementize
 
-A lightweight template for building small, useful AI-assisted software products quickly.
+Elementize is a guarded WordPress/Elementor/Pixfort design and page-building engine intended to be used by AI agents without exposing unrestricted Elementor JSON or unsafe page mutations.
 
-## Goal
+## Repository layout
 
-Get to a genuinely useful V0.1 as fast as practical without letting AI drift into unnecessary scope, speculative debugging, or large rewrites.
+- `elementize.php` — WordPress plugin entry point.
+- `includes/` — runtime PHP modules. This will be the next cleanup target after local smoke verification.
+- `config/` — non-runtime configuration and agent integration material.
+- `tools/` — local diagnostics, visual, repair, and acceptance harnesses.
+- `docs/` — active project notes, architecture, process, history, and archives.
+- `AGENTS.md` — repository operating rules for AI-assisted development.
 
-## Included files
+## Development principles
 
-- `FAST_BUILD_OS.md` — the development process and stop-loss rules.
-- `AGENTS.md` — operating instructions for coding agents such as Codex.
-- `PROJECT.md` — the current project's outcome, V0.1 scope, backlog, and working state.
-- `DISCOVERY.md` — verified technical knowledge, evidence, unknowns, and validated decisions.
+- Treat `main` as accepted/known-good state.
+- Use focused branches for meaningful work.
+- Keep page mutation guarded, reversible, and stale-state protected.
+- Keep page creation draft-only unless publishing is explicitly requested.
+- Never commit credentials, cookies, nonces, purchase keys, HAR captures, proprietary Pixfort/Essentials source, or local audit artifacts.
+- Core visual QA must remain usable with free/local software.
 
-## Starting a new project
+## Validation
 
-1. Create a new repository from this GitHub template.
-2. Open/use the new repository with ChatGPT/Codex.
-3. Start with:
+GitHub Actions run PHP/INC syntax linting and the GPT Builder contract on every branch push and pull request.
 
-   `Start Fast Build: I want [desired outcome].`
+Local harnesses are grouped under `tools/` by purpose.
 
-4. Let the AI update `PROJECT.md` as the outcome and V0.1 are clarified.
-5. If the implementation path is uncertain, let the AI research first and update `DISCOVERY.md`.
-6. Provide screenshots, logs, sanitized network traces, or other real-world evidence only when requested and useful.
-7. Let Codex implement the smallest end-to-end vertical slice.
-8. Test the real result and report what happened.
-9. Once V0.1 is useful, use it before expanding the scope.
+## Start here
 
-## Typical conversation
+1. `docs/project/status.md`
+2. `docs/project/discovery.md`
+3. `docs/architecture/design-intelligence.md`
+4. `docs/process/fast-build-os.md`
+5. `AGENTS.md`
 
-**You:** `Start Fast Build: I want a tool that ...`
-
-**AI:** Defines the smallest useful outcome, checks whether the technical path is known, researches or asks for targeted evidence if necessary, then scopes the implementation.
-
-**You:** `Here is the evidence you asked for.`
-
-**AI:** Analyzes it, records durable findings, validates the critical path, and proceeds when the approach is sufficiently established.
-
-**You:** `I tested it. This happened ...`
-
-**AI:** Reproduces/diagnoses from evidence and makes a focused fix. After two failed speculative fixes, it stops coding and investigates instead of thrashing.
-
-**You:** `New idea: ...`
-
-**AI:** Adds it to the backlog unless it is required for the current useful outcome.
-
-## Human role
-
-You do not need to be the developer. Your main responsibilities are:
-- describe what you want to achieve;
-- provide access/context about the real environment;
-- perform simple evidence-gathering steps when useful;
-- test the resulting product;
-- report what actually happened.
-
-## AI role
-
-The AI should:
-- research before guessing;
-- prefer proven/supported paths;
-- keep V0.1 small;
-- prove dangerous assumptions early;
-- implement in small vertical slices;
-- preserve known-good states;
-- diagnose with evidence;
-- prevent unrelated ideas from hijacking the build;
-- keep `PROJECT.md` and `DISCOVERY.md` current.
-
-## Core principle
-
-> The fastest responsible path to a genuinely useful working product.
+Custom GPT configuration lives under `config/gpt/`.
+Historical status snapshots and superseded setup notes live under `docs/history/` and must not be treated as current runtime truth.

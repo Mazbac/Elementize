@@ -1,0 +1,9 @@
+.elementize-dev/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
