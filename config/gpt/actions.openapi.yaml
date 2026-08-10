@@ -1,37 +1,162 @@
 openapi: 3.1.0
 info:
-  title: Elementize Custom GPT Actions
-  version: 0.11.0
-  description: Guarded WordPress, Elementor, Pixfort, media, copy, and visual actions for Elementize.
+  title: Elementize Content Actions
+  version: 0.30.0
+  description: Guarded content editing for existing Elementor and Pixfort pages.
 servers:
-  - url: https://permitted-tucson-invention-principles.trycloudflare.com
-    description: Elementize public WordPress API origin.
+  - url: https://example.invalid
+    description: Replaced automatically by the Elementize setup screen.
 
 paths:
   /wp-json/elementize/v1/status:
     get:
       operationId: getElementizeStatus
-      summary: Get Elementize status and capabilities
+      summary: Check Elementize, Elementor, and Pixfort readiness
       responses:
-        '200': { description: Elementize status }
+        '200':
+          description: Elementize status and supported content-editing scope
+
+  /wp-json/elementize/v1/pages:
+    get:
+      operationId: listElementizePages
+      summary: List editable Elementor pages
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: Editable Elementor pages
+
+  /wp-json/elementize/v1/pages/{id}/content:
+    get:
+      operationId: getElementizePageContent
+      summary: Read editable copy, links, images, and Pixfort icons from one Elementor page
+      description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash. Dynamic/global values and shared template documents are not writable.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [all, text, link, media, pixfort_icon], default: all }
+        - name: element_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: top_level_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: Fresh editable page-content snapshot
+    post:
+      operationId: updateElementizePageContent
+      summary: Guardedly update copy, links, images, or Pixfort icons
+      description: Always read the page immediately before writing. Requires the fresh page status/title/hash and exact setting values. Live published pages require a second explicit confirmation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, content_hash, updates, confirm_content_write]
+              properties:
+                expected_status: { type: string }
+                expected_title: { type: string }
+                content_hash: { type: string }
+                confirm_content_write: { type: boolean, enum: [true] }
+                confirm_published_page: { type: boolean, default: false }
+                updates:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [kind, element_id, setting_path]
+                    properties:
+                      kind: { type: string, enum: [text, link, media, pixfort_icon] }
+                      element_id: { type: string }
+                      setting_path:
+                        type: array
+                        minItems: 1
+                        items:
+                          anyOf:
+                            - { type: string }
+                            - { type: integer }
+                      expected_value: { type: string }
+                      value: { type: string }
+                      expected_attachment_id: { type: integer, minimum: 0 }
+                      attachment_id: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Content changes saved and verified
+        '400':
+          description: Unsupported content field/value or missing confirmation
+        '409':
+          description: Page or target changed after the fresh read
 
   /wp-json/elementize/v1/media/images:
     get:
       operationId: searchElementizeMediaImages
       summary: Search WordPress Media Library images
       parameters:
-        - { name: q, in: query, required: false, schema: { type: string } }
-        - { name: filename, in: query, required: false, schema: { type: string } }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+        - name: filename
+          in: query
+          required: false
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
-        '200': { description: Matching image attachments }
+        '200':
+          description: Matching WordPress image attachments
 
   /wp-json/elementize/v1/media/images/import-chat-file:
     post:
       operationId: importElementizeConversationImage
-      summary: Import one conversation image into WordPress Media Library
-      description: Import exactly one image attached in this ChatGPT conversation and return its attachment_id for a later guarded media write.
+      summary: Import one image attached in this ChatGPT conversation
+      description: Use only when the user wants an image from the current ChatGPT conversation placed on the WordPress page. Returns a WordPress attachment_id for a later guarded media update.
       requestBody:
         required: true
         content:
@@ -50,280 +175,7 @@ paths:
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201': { description: Conversation image imported and verified }
-        '400': { description: Invalid file reference, unsupported image, or confirmation missing }
-        '502': { description: Temporary conversation file could not be downloaded }
-
-  /wp-json/elementize/v1/pixfort/templates:
-    get:
-      operationId: searchPixfortPlannerCandidates
-      summary: Search Pixfort template candidates
-      parameters:
-        - { name: type, in: query, required: false, schema: { type: string, enum: [section, page], default: section } }
-        - { name: q, in: query, required: false, schema: { type: string } }
-        - { name: category, in: query, required: false, schema: { type: string } }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
-      responses:
-        '200': { description: Pixfort catalogue results }
-
-  /wp-json/elementize/v1/pixfort/visual-probe:
-    post:
-      operationId: getPixfortVisualProbe
-      summary: Retrieve visual proof for up to four Pixfort templates
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [template_ids]
-              properties:
-                template_ids:
-                  type: array
-                  minItems: 1
-                  maxItems: 4
-                  items: { type: string }
-      responses:
-        '200': { description: Pixfort visual proof }
-
-  /wp-json/elementize/v1/pages/create:
-    post:
-      operationId: createElementorDraft
-      summary: Create a new Elementize-managed Elementor draft
-      description: Creates a draft only and never publishes.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [title]
-              properties:
-                title: { type: string }
-                slug: { type: string }
-      responses:
-        '200': { description: Draft creation result }
-        '201': { description: Draft creation result }
-
-  /wp-json/elementize/v1/pages/{id}/pixfort/insert:
-    post:
-      operationId: insertPixfortTemplate
-      summary: Insert a Pixfort template into an Elementor page
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [content_hash, template_id]
-              properties:
-                content_hash: { type: string }
-                template_id: { type: string }
-                position: { type: string, enum: [start, end, before, after], default: end }
-                target_element_id: { type: string }
-      responses:
-        '200': { description: Pixfort insertion result }
-
-  /wp-json/elementize/v1/pages/{id}/text:
-    get:
-      operationId: getElementorPageText
-      summary: Read editable main-page Elementor copy and current content hash
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: Editable main-page Elementor copy }
-    post:
-      operationId: updateElementorPageText
-      summary: Update recognized main-page Elementor copy with stale-value protection
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [content_hash, updates]
-              properties:
-                content_hash: { type: string }
-                updates:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: object
-                    additionalProperties: false
-                    required: [element_id, setting_path, value]
-                    properties:
-                      element_id: { type: string }
-                      setting_path:
-                        type: array
-                        minItems: 1
-                        items:
-                          anyOf:
-                            - { type: string }
-                            - { type: integer }
-                      expected_value: { type: string }
-                      value: { type: string }
-      responses:
-        '200': { description: Main-page text update result }
-        '409': { description: Main-page content changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/embedded-documents:
-    get:
-      operationId: getElementizeEmbeddedDocuments
-      summary: Audit Pixfort child documents referenced by a page
-      description: Read-only. Original/shared Pixfort templates must never be edited directly.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-        - { name: q, in: query, required: false, schema: { type: string } }
-      responses:
-        '200': { description: Embedded-document graph and fresh hashes }
-
-  /wp-json/elementize/v1/pages/{id}/embedded-documents/clone-relink:
-    post:
-      operationId: cloneRelinkElementizeEmbeddedDocuments
-      summary: Clone referenced Pixfort templates and relink only this managed draft
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, content_hash, expected_documents, confirm_clone_and_relink]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                content_hash: { type: string }
-                expected_documents:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: object
-                    additionalProperties: false
-                    required: [post_id, elementor_data_hash]
-                    properties:
-                      post_id: { type: integer, minimum: 1 }
-                      elementor_data_hash: { type: string }
-                      post_status: { type: string }
-                      post_title: { type: string }
-                confirm_clone_and_relink: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Clone-and-relink result }
-        '409': { description: Page or embedded-document state changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/embedded-text:
-    get:
-      operationId: getElementizeEmbeddedText
-      summary: Read copy fields from Pixfort child documents referenced by a page
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: Embedded Pixfort copy and fresh hashes }
-    post:
-      operationId: updateElementizeEmbeddedText
-      summary: Update copy only inside Elementize-owned Pixfort clones
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, page_content_hash, updates, confirm_embedded_text_write]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                page_content_hash: { type: string }
-                updates:
-                  type: array
-                  minItems: 1
-                  maxItems: 100
-                  items:
-                    type: object
-                    additionalProperties: false
-                    required: [document_id, document_hash, element_id, setting_path, expected_value, value]
-                    properties:
-                      document_id: { type: integer, minimum: 1 }
-                      document_hash: { type: string }
-                      element_id: { type: string }
-                      setting_path:
-                        type: array
-                        minItems: 1
-                        items:
-                          anyOf:
-                            - { type: string }
-                            - { type: integer }
-                      expected_value: { type: string }
-                      value: { type: string }
-                confirm_embedded_text_write: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Embedded text update result }
-        '409': { description: Page, document, or expected value changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/visual-settings:
-    get:
-      operationId: getElementorVisualSettings
-      summary: Read compact filtered Elementor visual settings
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-        - { name: kind, in: query, required: false, schema: { type: string, enum: [all, color, icon, media, global, dynamic] } }
-        - { name: active, in: query, required: false, schema: { type: boolean, default: true } }
-        - { name: writable, in: query, required: false, schema: { type: boolean, default: true } }
-        - { name: compact, in: query, required: false, schema: { type: boolean, default: true } }
-        - { name: element_id, in: query, required: false, schema: { type: string } }
-        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 20 } }
-      responses:
-        '200': { description: Visual settings result }
-    post:
-      operationId: updateElementorVisualSettings
-      summary: Guardedly update active colors, Pixfort icons, or image attachments
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [content_hash, updates]
-              properties:
-                content_hash: { type: string }
-                updates:
-                  type: array
-                  minItems: 1
-                  maxItems: 20
-                  items:
-                    type: object
-                    additionalProperties: false
-                    required: [kind, element_id, setting_path]
-                    properties:
-                      kind: { type: string, enum: [color, icon, media] }
-                      element_id: { type: string }
-                      setting_path:
-                        type: array
-                        minItems: 1
-                        items:
-                          anyOf:
-                            - { type: string }
-                            - { type: integer }
-                      expected_value: { type: string }
-                      value: { type: string }
-                      expected_attachment_id: { type: integer, minimum: 1 }
-                      attachment_id: { type: integer, minimum: 1 }
-      responses:
-        '200': { description: Visual update result }
-        '409': { description: Page or visual target changed after the fresh read }
+        '201':
+          description: Conversation image imported and verified
+        '400':
+          description: Invalid file, unsupported image, or confirmation missing

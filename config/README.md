@@ -1,11 +1,8 @@
-# Configuration
+# Elementize configuration
 
-Non-runtime configuration for external agents and integration surfaces lives here.
+`gpt/` contains the two files used by the WordPress setup screen:
 
-## `gpt/`
+- `wp-builder-instructions.md` — Custom GPT operating instructions.
+- `actions.openapi.yaml` — the small Custom GPT Action schema.
 
-- `wp-builder-instructions.md` — active Custom GPT operating instructions.
-- `actions.openapi.yaml` — active GPT Actions schema.
-- `actions-append.openapi.yaml` — schema extension consumed by the GPT Builder contract when required.
-
-These files are configuration inputs, not WordPress runtime PHP.
+The setup screen replaces the placeholder server URL in the schema with the site's configured public HTTPS origin before copying it.
