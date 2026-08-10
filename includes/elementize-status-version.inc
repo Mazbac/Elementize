@@ -7,6 +7,7 @@ require_once __DIR__ . '/elementize-aesthetic-ab-context-hardening.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-context-source-stabilizer.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-context-cache-stability.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-independent-scoring.inc';
+require_once __DIR__ . '/elementize-aesthetic-ab-independent-discrimination.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-judgment-calibration.inc';
 
 final class Elementize_Status_Version {
@@ -19,6 +20,7 @@ final class Elementize_Status_Version {
         if ( class_exists( 'Elementize_Aesthetic_AB_Context_Source_Stabilizer', false ) ) Elementize_Aesthetic_AB_Context_Source_Stabilizer::init();
         if ( class_exists( 'Elementize_Aesthetic_AB_Context_Cache_Stability', false ) ) Elementize_Aesthetic_AB_Context_Cache_Stability::init();
         if ( class_exists( 'Elementize_Aesthetic_AB_Independent_Scoring', false ) ) Elementize_Aesthetic_AB_Independent_Scoring::init();
+        if ( class_exists( 'Elementize_Aesthetic_AB_Independent_Discrimination', false ) ) Elementize_Aesthetic_AB_Independent_Discrimination::init();
         if ( class_exists( 'Elementize_Aesthetic_AB_Judgment_Calibration', false ) ) Elementize_Aesthetic_AB_Judgment_Calibration::init();
         // Run after all feature status decorators so older module version constants
         // cannot overwrite the actual installed plugin version.
