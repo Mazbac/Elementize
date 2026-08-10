@@ -1,23 +1,13 @@
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  Code,
-  CopyButton,
-  Grid,
-  Group,
-  Paper,
-  ScrollArea,
-  SimpleGrid,
-  Stack,
-  Stepper,
-  Text,
-  ThemeIcon,
-  Title,
-} from '@mantine/core';
+import { Check, Copy, ExternalLink, KeyRound } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import { generateConnectionKey } from '../lib/actions';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { copyText, generateConnectionKey } from '../lib/actions';
 import type { ElementizeAdminConfig, PageKey } from '../types';
 
 type Props = {
@@ -25,47 +15,38 @@ type Props = {
   onNavigate: (page: PageKey) => void;
 };
 
+type StepKey = 'website' | 'chatgpt' | 'test';
+
 function RequirementCard({ label, ready, detail }: { label: string; ready: boolean; detail: string }) {
   return (
-    <Card bg="brand.0" radius="lg" p="lg" withBorder>
-      <Group align="flex-start" wrap="nowrap">
-        <ThemeIcon color="brand" variant="filled" radius="xl" size="lg">
-          {ready ? '✓' : '!'}
-        </ThemeIcon>
-        <Box>
-          <Text fw={700} c="gray.9">{label}</Text>
-          <Text size="sm" c="gray.5" mt={4}>{detail}</Text>
-        </Box>
-      </Group>
+    <Card>
+      <CardContent className="flex items-start gap-3 pt-5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary text-primary">
+          {ready ? <Check className="h-4 w-4" /> : <span className="text-xs font-semibold">!</span>}
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium">{label}</p>
+            <Badge variant={ready ? 'outline' : 'secondary'}>{ready ? 'Ready' : 'Needs attention'}</Badge>
+          </div>
+          <p className="mt-1 break-words text-sm text-muted-foreground">{detail}</p>
+        </div>
+      </CardContent>
     </Card>
   );
 }
 
-function SetupAction({
-  number,
-  title,
-  description,
-  action,
-}: {
-  number: number;
-  title: string;
-  description: string;
-  action: ReactNode;
-}) {
+function SetupAction({ number, title, description, action }: { number: number; title: string; description: string; action: ReactNode }) {
   return (
-    <Card bg="brand.0" radius="lg" p="lg" withBorder>
-      <Grid align="center" gap="md">
-        <Grid.Col span={{ base: 12, sm: 1 }}>
-          <ThemeIcon color="brand" variant="filled" radius="lg" size="lg">{number}</ThemeIcon>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 7 }}>
-          <Text fw={800} c="gray.9">{title}</Text>
-          <Text size="sm" c="gray.5" mt={4}>{description}</Text>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 4 }}>
-          <Group justify="flex-end">{action}</Group>
-        </Grid.Col>
-      </Grid>
+    <Card>
+      <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">{number}</div>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="shrink-0">{action}</div>
+      </CardContent>
     </Card>
   );
 }
@@ -79,22 +60,29 @@ export function SetupPage({ config, onNavigate }: Props) {
     config.environment.connectionReady &&
     config.materialsReady;
 
-  const [active, setActive] = useState(websiteReady ? 1 : 0);
+  const [step, setStep] = useState<StepKey>(websiteReady ? 'chatgpt' : 'website');
   const [connectionKey, setConnectionKey] = useState('');
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState('');
+  const [copied, setCopied] = useState('');
 
   const requirements = useMemo(
     () => [
       ['Elementor', config.requirements.elementor, config.requirements.elementorDetail],
       ['Pixfort Core', config.requirements.pixfort, config.requirements.pixfortDetail],
-      ['Safe revisions', config.requirements.revisions, config.requirements.revisions ? 'Enabled' : 'Enable page revisions first'],
-      ['Secure login', config.requirements.applicationPasswords, config.requirements.applicationPasswords ? 'Available' : 'Application Passwords are unavailable'],
-      ['Secure website address', config.environment.connectionReady, config.environment.connectionReady ? config.environment.effectiveOrigin : 'Needs a public HTTPS address'],
-      ['GPT setup materials', config.materialsReady, config.materialsReady ? 'Available' : 'Plugin setup files could not be loaded'],
+      ['WordPress revisions', config.requirements.revisions, config.requirements.revisions ? 'Enabled' : 'Enable revisions before editing'],
+      ['Secure login', config.requirements.applicationPasswords, config.requirements.applicationPasswords ? 'Application Passwords available' : 'Application Passwords unavailable'],
+      ['Public HTTPS address', config.environment.connectionReady, config.environment.connectionReady ? config.environment.effectiveOrigin : 'A public HTTPS address is required'],
+      ['GPT setup materials', config.materialsReady, config.materialsReady ? 'Instructions and Action schema available' : 'Setup files could not be loaded'],
     ] as const,
     [config]
   );
+
+  async function handleCopy(value: string, key: string) {
+    await copyText(value);
+    setCopied(key);
+    window.setTimeout(() => setCopied(''), 1500);
+  }
 
   async function handleGenerateKey() {
     setKeyBusy(true);
@@ -108,168 +96,146 @@ export function SetupPage({ config, onNavigate }: Props) {
     }
   }
 
-  return (
-    <Stack gap="xl">
-      <Box>
-        <Text size="xs" fw={800} tt="uppercase" c="brand.6">Setup</Text>
-        <Title order={1} c="gray.9">Connect Elementize in three clear steps.</Title>
-        <Text c="gray.5" mt="xs" maw={720} lh={1.6}>
-          The technical pieces stay underneath. You only need to check your website, connect the GPT once and run one test.
-        </Text>
-      </Box>
+  const progress = step === 'website' ? 33 : step === 'chatgpt' ? 66 : 100;
 
-      <Paper bg="brand.0" radius="xl" p={{ base: 'lg', md: 'xl' }} withBorder>
-        <Stepper active={active} onStepClick={setActive} allowNextStepsSelect={websiteReady} color="brand">
-          <Stepper.Step label="Website" description="Check compatibility">
-            <Stack gap="lg" mt="xl">
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold">Setup</h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Check WordPress, connect your Custom GPT once, then confirm the connection.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Connect Elementize</CardTitle>
+              <CardDescription className="mt-1">Three short steps. Technical details stay out of the way.</CardDescription>
+            </div>
+            <Badge variant="outline">{progress}%</Badge>
+          </div>
+          <Progress value={progress} className="mt-3" />
+        </CardHeader>
+        <CardContent>
+          <Tabs value={step} onValueChange={(value) => setStep(value as StepKey)}>
+            <TabsList className="grid h-auto w-full grid-cols-3 bg-secondary/60">
+              <TabsTrigger value="website">1. Website</TabsTrigger>
+              <TabsTrigger value="chatgpt" disabled={!websiteReady}>2. ChatGPT</TabsTrigger>
+              <TabsTrigger value="test" disabled={!websiteReady}>3. Test</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="website" className="space-y-4 pt-2">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {requirements.map(([label, ready, detail]) => (
                   <RequirementCard key={label} label={label} ready={ready} detail={detail} />
                 ))}
-              </SimpleGrid>
+              </div>
 
-              <Alert color="brand" variant="filled" radius="lg" title={websiteReady ? 'Your WordPress site is ready.' : 'Setup needs attention.'}>
-                {websiteReady
-                  ? 'Continue to connect your Custom GPT.'
-                  : 'Resolve the checks above before connecting ChatGPT.'}
+              <Alert variant={websiteReady ? 'accent' : 'default'}>
+                <AlertTitle>{websiteReady ? 'Your WordPress site is ready.' : 'Some checks still need attention.'}</AlertTitle>
+                <AlertDescription>
+                  {websiteReady ? 'Continue to connect your Custom GPT.' : 'Resolve the items above before continuing.'}
+                </AlertDescription>
               </Alert>
 
-              <Group justify="flex-end">
+              <div className="flex flex-wrap justify-end gap-2">
                 {!config.environment.connectionReady && (
-                  <Button variant="default" onClick={() => onNavigate('connection')}>Set secure address</Button>
+                  <Button variant="outline" onClick={() => onNavigate('connection')}>Set public address</Button>
                 )}
-                <Button color="brand" variant="filled" disabled={!websiteReady} onClick={() => setActive(1)}>
-                  Continue to ChatGPT
-                </Button>
-              </Group>
-            </Stack>
-          </Stepper.Step>
+                <Button disabled={!websiteReady} onClick={() => setStep('chatgpt')}>Continue</Button>
+              </div>
+            </TabsContent>
 
-          <Stepper.Step label="ChatGPT" description="Connect once">
-            <Stack gap="md" mt="xl">
+            <TabsContent value="chatgpt" className="space-y-3 pt-2">
               <SetupAction
                 number={1}
-                title="Open your Custom GPT"
-                description="Open GPT Builder in a new tab and keep this page open beside it."
+                title="Open GPT Builder"
+                description="Keep this WordPress page open beside your Custom GPT configuration."
                 action={
-                  <Button component="a" href={config.urls.gptBuilder} target="_blank" rel="noreferrer" variant="default">
-                    Open GPT Builder
+                  <Button asChild variant="outline" size="sm">
+                    <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink className="h-4 w-4" /></a>
                   </Button>
                 }
               />
-
               <SetupAction
                 number={2}
                 title="Add Elementize instructions"
-                description="Paste these into the GPT Instructions field."
-                action={
-                  <CopyButton value={config.instructions} timeout={1500}>
-                    {({ copied, copy }) => (
-                      <Button color="brand" variant="filled" disabled={!config.instructions} onClick={copy}>
-                        {copied ? 'Copied' : 'Copy instructions'}
-                      </Button>
-                    )}
-                  </CopyButton>
-                }
+                description="Paste the Elementize instructions into the GPT Instructions field."
+                action={<Button size="sm" disabled={!config.instructions} onClick={() => handleCopy(config.instructions, 'instructions')}>{copied === 'instructions' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied === 'instructions' ? 'Copied' : 'Copy instructions'}</Button>}
               />
-
               <SetupAction
                 number={3}
-                title="Add one Elementize Action"
-                description="Create one Action in GPT Builder and paste this schema."
-                action={
-                  <CopyButton value={config.schema} timeout={1500}>
-                    {({ copied, copy }) => (
-                      <Button color="brand" variant="filled" disabled={!config.schema} onClick={copy}>
-                        {copied ? 'Copied' : 'Copy Action schema'}
-                      </Button>
-                    )}
-                  </CopyButton>
-                }
+                title="Add one Action"
+                description="Create one Action in GPT Builder and paste the Elementize schema."
+                action={<Button size="sm" disabled={!config.schema} onClick={() => handleCopy(config.schema, 'schema')}>{copied === 'schema' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied === 'schema' ? 'Copied' : 'Copy Action schema'}</Button>}
               />
-
               <SetupAction
                 number={4}
                 title="Connect securely"
-                description="In Action authentication choose API Key → Basic, then paste the one-time connection key."
-                action={
-                  <Button color="brand" variant="filled" loading={keyBusy} onClick={handleGenerateKey}>
-                    Generate connection key
-                  </Button>
-                }
+                description="Choose API Key → Basic in Action authentication, then paste the one-time key."
+                action={<Button size="sm" disabled={keyBusy} onClick={handleGenerateKey}><KeyRound className="h-4 w-4" />{keyBusy ? 'Generating…' : 'Generate key'}</Button>}
               />
 
               {connectionKey && (
-                <Paper bg="brand.1" radius="lg" p="lg" withBorder>
-                  <Stack gap="sm">
-                    <Box>
-                      <Text fw={800} c="gray.9">Connection key</Text>
-                      <Text size="sm" c="gray.5" mt={4}>Shown once. Treat it like a password and paste it directly into GPT Builder.</Text>
-                    </Box>
-                    <ScrollArea type="auto">
-                      <Code block bg="gray.8" c="brand.0">{connectionKey}</Code>
-                    </ScrollArea>
-                    <CopyButton value={connectionKey} timeout={1500}>
-                      {({ copied, copy }) => (
-                        <Button variant="default" onClick={copy} w="fit-content">
-                          {copied ? 'Copied' : 'Copy connection key'}
-                        </Button>
-                      )}
-                    </CopyButton>
-                  </Stack>
-                </Paper>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Connection key</CardTitle>
+                    <CardDescription>Shown once. Treat it like a password and paste it directly into GPT Builder.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Textarea readOnly value={connectionKey} className="min-h-20 resize-none font-mono text-xs" />
+                    <Button variant="outline" size="sm" onClick={() => handleCopy(connectionKey, 'key')}>
+                      {copied === 'key' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copied === 'key' ? 'Copied' : 'Copy connection key'}
+                    </Button>
+                  </CardContent>
+                </Card>
               )}
 
               {keyError && (
-                <Alert color="brand" variant="filled" radius="lg" title="Could not generate the key">
-                  {keyError}
+                <Alert>
+                  <AlertTitle>Could not generate the key</AlertTitle>
+                  <AlertDescription>{keyError}</AlertDescription>
                 </Alert>
               )}
 
-              <Group justify="space-between" mt="sm">
-                <Button variant="default" onClick={() => setActive(0)}>Back</Button>
-                <Button color="brand" variant="filled" onClick={() => setActive(2)}>Continue to test</Button>
-              </Group>
-            </Stack>
-          </Stepper.Step>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button variant="outline" onClick={() => setStep('website')}>Back</Button>
+                <Button onClick={() => setStep('test')}>Continue to test</Button>
+              </div>
+            </TabsContent>
 
-          <Stepper.Step label="Test" description="Confirm it works">
-            <Stack gap="lg" mt="xl">
-              <Paper bg="brand.0" radius="lg" p="xl" withBorder>
-                <Stack gap="md">
-                  <Box>
-                    <Text size="xs" fw={800} tt="uppercase" c="brand.6">Final check</Text>
-                    <Title order={3} c="gray.9">Send one test message to your GPT.</Title>
-                    <Text c="gray.5" mt="xs" maw={680} lh={1.6}>
-                      Elementize cannot inspect your Custom GPT configuration directly. This message confirms the Action can reach WordPress.
-                    </Text>
-                  </Box>
-                  <ScrollArea type="auto">
-                    <Code block bg="gray.8" c="brand.0">{config.testPrompt}</Code>
-                  </ScrollArea>
-                  <Group gap="sm">
-                    <CopyButton value={config.testPrompt} timeout={1500}>
-                      {({ copied, copy }) => (
-                        <Button color="brand" variant="filled" onClick={copy}>
-                          {copied ? 'Copied' : 'Copy test message'}
-                        </Button>
-                      )}
-                    </CopyButton>
-                    <Button component="a" href={config.urls.gptBuilder} target="_blank" rel="noreferrer" variant="default">
-                      Open GPT Builder
+            <TabsContent value="test" className="space-y-4 pt-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Send one test message</CardTitle>
+                  <CardDescription>
+                    Elementize cannot inspect your Custom GPT configuration directly. This confirms the Action can reach WordPress.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Textarea readOnly value={config.testPrompt} className="min-h-28 resize-none font-mono text-xs" />
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => handleCopy(config.testPrompt, 'test')}>
+                      {copied === 'test' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copied === 'test' ? 'Copied' : 'Copy test message'}
                     </Button>
-                  </Group>
-                </Stack>
-              </Paper>
-
-              <Group justify="space-between">
-                <Button variant="default" onClick={() => setActive(1)}>Back</Button>
-                <Button variant="default" onClick={() => onNavigate('home')}>Return home</Button>
-              </Group>
-            </Stack>
-          </Stepper.Step>
-        </Stepper>
-      </Paper>
-    </Stack>
+                    <Button asChild variant="outline">
+                      <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink className="h-4 w-4" /></a>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <div className="flex items-center justify-between gap-2">
+                <Button variant="outline" onClick={() => setStep('chatgpt')}>Back</Button>
+                <Button variant="outline" onClick={() => onNavigate('home')}>Return home</Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
