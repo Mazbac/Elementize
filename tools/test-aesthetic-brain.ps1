@@ -107,7 +107,7 @@ Write-Host ''
 
 $status = Invoke-ElementizeCurlGet -Uri $statusUri -Authorization $auth
 Write-Host ("[PASS] Plugin status reachable: {0}" -f $status.elementize_version) -ForegroundColor Green
-Write-Host ("[INFO] Aesthetic Brain: {0}; coverage recovery: {1}; hardening: {2}; calibration: {3}" -f $status.aesthetic_brain_version, $status.aesthetic_coverage_recovery_version, $status.aesthetic_brain_hardening_version, $status.aesthetic_judgment_calibration_version)
+Write-Host ("[INFO] Aesthetic Brain: {0}; coverage recovery: {1}; hardening: {2}; calibration: {3}; semantic grounding: {4}" -f $status.aesthetic_brain_version, $status.aesthetic_coverage_recovery_version, $status.aesthetic_brain_hardening_version, $status.aesthetic_judgment_calibration_version, $status.aesthetic_semantic_grounding_version)
 
 $started = Get-Date
 $audit = Invoke-ElementizeCurlGet -Uri $auditUri -Authorization $auth
@@ -145,12 +145,17 @@ Write-Host '--- visual.aesthetic_judgment_calibration ---' -ForegroundColor Cyan
 $visual.aesthetic_judgment_calibration | ConvertTo-Json -Depth 100
 
 Write-Host ''
+Write-Host '--- visual.aesthetic_semantic_grounding ---' -ForegroundColor Cyan
+$visual.aesthetic_semantic_grounding | ConvertTo-Json -Depth 100
+
+Write-Host ''
 Write-Host '--- Compact aesthetic health ---' -ForegroundColor Cyan
 $art = $visual.page_art_direction
 $coherence = $visual.section_coherence
 $dna = $visual.design_dna
 $recovery = $visual.aesthetic_coverage_recovery
 $calibration = $visual.aesthetic_judgment_calibration
+$grounding = $visual.aesthetic_semantic_grounding
 
 [pscustomobject]@{
     AestheticBrainAvailable = [bool]$audit.summary.aesthetic_brain_available
@@ -159,7 +164,9 @@ $calibration = $visual.aesthetic_judgment_calibration
     SectionCoherenceAvailable = [bool]$coherence.available
     ModelProfessionalApproval = [string]$art.model_professional_approval
     EffectiveProfessionalApproval = [string]$art.effective_professional_approval
+    GroundedProfessionalApproval = [string]$art.grounded_effective_professional_approval
     ApprovalUsable = [bool]$art.approval_usable
+    ApprovalGroundingComplete = [bool]$art.approval_grounding_complete
     RawAestheticScore = $art.aesthetic_score
     CalibratedAestheticScore = $art.calibrated_aesthetic_score
     RawCoherenceScore = $art.coherence_score
@@ -175,9 +182,14 @@ $calibration = $visual.aesthetic_judgment_calibration
     CoveredSections = $coherence.covered_section_count
     SectionCoverageRatio = $coherence.section_coverage_ratio
     IssueBearingSections = $art.issue_bearing_section_count
-    IssueBearingSectionRatio = $art.issue_bearing_section_ratio
     HighSeverityIssues = $art.high_severity_issue_count
-    MediumSeverityIssues = $art.medium_severity_issue_count
+    GroundedIssues = $art.grounded_issue_count
+    GroundedHighSeverityIssues = $art.grounded_high_severity_issue_count
+    SemanticGroundingAvailable = [bool]$grounding.available
+    SemanticConflicts = $grounding.semantic_conflict_count
+    MaterialSemanticConflicts = $grounding.material_semantic_conflict_count
+    TransitionContractValid = [bool]$grounding.transition_contract_valid
+    RhythmJudgmentUsable = [bool]$grounding.rhythm_judgment_usable
     CoverageRecoveryAvailable = [bool]$recovery.available
     CoverageRecoveryApproval = [string]$recovery.overall_approval
     CrossCheckRevisionRequired = [bool]$art.revision_required_by_cross_checks
@@ -188,20 +200,30 @@ $calibration = $visual.aesthetic_judgment_calibration
 } | Format-List
 
 Write-Host ''
-Write-Host '--- Calibrated interventions ---' -ForegroundColor Cyan
-$calibratedIssues = @($art.calibrated_issues)
-if ($calibratedIssues.Count -eq 0) {
-    Write-Host '[INFO] No calibrated aesthetic issues returned.' -ForegroundColor DarkGray
+Write-Host '--- Grounded interventions ---' -ForegroundColor Cyan
+$groundedIssues = @($art.grounded_issues)
+if ($groundedIssues.Count -eq 0) {
+    Write-Host '[INFO] No grounded aesthetic issues returned.' -ForegroundColor DarkGray
 }
 else {
-    $calibratedIssues | Select-Object category, severity, @{N='sections';E={@($_.section_markers) -join ','}}, model_intervention_level, calibrated_intervention_level | Format-Table -AutoSize
+    $groundedIssues | Select-Object category, severity, @{N='sections';E={@($_.section_markers) -join ','}}, semantic_grounded, evidence_usable, grounded_intervention_level | Format-Table -AutoSize
 }
 
-if ($art.available -and $art.approval_usable -and $calibration.available) {
-    Write-Host '[PASS] Aesthetic Brain produced a complete, evidence-covered, calibrated page-level judgment.' -ForegroundColor Green
+Write-Host ''
+Write-Host '--- Material semantic conflicts ---' -ForegroundColor Cyan
+$material = @($grounding.material_semantic_conflicts)
+if ($material.Count -eq 0) {
+    Write-Host '[PASS] No medium/high aesthetic issue depends on a contradicted semantic claim.' -ForegroundColor Green
+}
+else {
+    $material | Select-Object marker, severity, category, @{N='conflicts';E={@($_.conflicts) -join ' | '}} | Format-Table -Wrap -AutoSize
+}
+
+if ($art.available -and $art.approval_usable -and $calibration.available -and $grounding.available) {
+    Write-Host '[PASS] Aesthetic Brain produced a complete, evidence-covered, calibrated and semantically grounded page-level judgment.' -ForegroundColor Green
 }
 elseif ($art.available) {
-    Write-Host '[WARN] Aesthetic Brain returned model output, but the effective calibrated professional judgment is not yet usable.' -ForegroundColor Yellow
+    Write-Host '[WARN] Aesthetic Brain returned model output, but the professional judgment is not yet fully grounded/usable.' -ForegroundColor Yellow
 }
 else {
     Write-Host ("[FAIL] Aesthetic Brain unavailable: {0}" -f $art.reason) -ForegroundColor Red
