@@ -19,7 +19,7 @@ final class Elementize_Converged_Bounded_Repair_Planning {
         if ( is_wp_error( $response ) || ! $response instanceof WP_REST_Response ) return $response;
         $route = $request->get_route();
         if ( '/' . self::NS . '/status' === $route ) return self::status( $response );
-        if ( 'GET' !== strtoupper( $request->get_method() ) || ! preg_match( '#^/' . preg_quote( self::NS, '#' ) . '/pages/(\\d+)/completion-audit$#', $route, $m ) ) return $response;
+        if ( 'GET' !== strtoupper( $request->get_method() ) || ! preg_match( '#^/' . preg_quote( self::NS, '#' ) . '/pages/(\d+)/completion-audit$#', $route, $m ) ) return $response;
         if ( $response->get_status() >= 400 || ! self::truthy( $request->get_param( 'include_visual' ) ) ) return $response;
 
         $data = $response->get_data();
@@ -54,10 +54,7 @@ final class Elementize_Converged_Bounded_Repair_Planning {
         ];
 
         if ( $id < 1 ) { $base['reason'] = 'A valid page ID is required.'; return $base; }
-        if ( empty( $convergence['available'] ) ) {
-            $base['reason'] = 'Final repair convergence is unavailable.';
-            return $base;
-        }
+        if ( empty( $convergence['available'] ) ) { $base['reason'] = 'Final repair convergence is unavailable.'; return $base; }
 
         $source_hash = trim( (string) ( $convergence['page_content_hash'] ?? '' ) );
         $current_hash = self::content_hash( $id );
@@ -75,24 +72,19 @@ final class Elementize_Converged_Bounded_Repair_Planning {
             if ( empty( $target['eligible_for_bounded_planning_review'] ) ) continue;
             if ( 'promoted_read_only_section_verified' !== (string) ( $target['promotion_status'] ?? '' ) ) continue;
             if ( 'base' !== strtolower( (string) ( $target['responsive_scope'] ?? 'base' ) ) ) continue;
-            if ( '' === trim( (string) ( $target['control_fingerprint'] ?? '' ) ) continue;
+            if ( '' === trim( (string) ( $target['control_fingerprint'] ?? '' ) ) ) continue;
             if ( 'spacing' !== strtolower( (string) ( $target['category'] ?? '' ) ) ) continue;
             if ( 'large_internal_padding_present' !== (string) ( $target['observation_type'] ?? '' ) ) continue;
             if ( 'padding' !== (string) ( $target['rendered_property'] ?? '' ) ) continue;
 
             $proposal = self::spacing_proposal( $target );
             if ( ! is_array( $proposal ) ) continue;
-            $eligible[] = [
-                'target' => $target,
-                'proposal' => $proposal,
-                'rank' => self::rank( $target ),
-            ];
+            $eligible[] = [ 'target' => $target, 'proposal' => $proposal, 'rank' => self::rank( $target ) ];
         }
 
         usort( $eligible, static function ( array $a, array $b ): int {
             $rank = (int) ( $b['rank'] ?? 0 ) <=> (int) ( $a['rank'] ?? 0 );
-            if ( 0 !== $rank ) return $rank;
-            return strcmp( (string) ( $a['target']['target_id'] ?? '' ), (string) ( $b['target']['target_id'] ?? '' ) );
+            return 0 !== $rank ? $rank : strcmp( (string) ( $a['target']['target_id'] ?? '' ), (string) ( $b['target']['target_id'] ?? '' ) );
         } );
 
         foreach ( array_slice( $eligible, 0, self::MAX_PLANS ) as $entry ) {
