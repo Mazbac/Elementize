@@ -1,3 +1,41 @@
+  /wp-json/elementize/v1/pages/{id}/state:
+    get:
+      operationId: getElementizePageState
+      summary: Read page layout and lifecycle state together
+      description: Read before any layout, publish, unpublish, trash, or restore change. Returns fresh layout/lifecycle guards and content hashes.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: Combined page layout and lifecycle state }
+    post:
+      operationId: updateElementizePageState
+      summary: Guardedly change page layout or lifecycle state
+      description: One compact mutation action for set_layout, trash, restore, publish, or unpublish. Requires fresh guards from getElementizePageState and explicit confirmation.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, expected_status, expected_title, confirm_state_change]
+              properties:
+                action: { type: string, enum: [set_layout, trash, restore, publish, unpublish] }
+                expected_status: { type: string }
+                expected_title: { type: string }
+                content_hash: { type: string }
+                lifecycle_token: { type: string }
+                expected_mode: { type: string, enum: [default, site, standalone] }
+                layout_token: { type: string }
+                mode: { type: string, enum: [site, standalone] }
+                confirm_state_change: { type: boolean, enum: [true] }
+      responses:
+        '200': { description: Guarded state-change result }
+        '400': { description: Missing action-specific guard or confirmation }
+        '409': { description: Page state, layout, title, status, or content changed after the fresh read }
+
   /wp-json/elementize/v1/pages/{id}/elements/remove:
     post:
       operationId: removeElementizeTopLevelSection
@@ -71,25 +109,15 @@
         '400': { description: Invalid or unsupported destination }
         '409': { description: Page identity, content, or expected link value changed }
 
-  /wp-json/elementize/v1/pages/{id}/quality-audit:
+  /wp-json/elementize/v1/pages/{id}/completion-audit:
     get:
-      operationId: getElementizePageQualityAudit
-      summary: Audit page proof patterns, CTA destinations, dependencies, and render errors
-      description: Read-only completion gate. Proof-like findings block by default unless the user supplied or verified the proof.
+      operationId: getElementizePageCompletionAudit
+      summary: Run content, technical, link, proof, and design completion audits together
+      description: Read-only compact GPT-facing completion gate. Preserves the full underlying quality and calibrated design-audit payloads; rendered visual inspection is still required.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
-        '200': { description: Page quality findings and default completion-pass state }
-
-  /wp-json/elementize/v1/pages/{id}/design-audit:
-    get:
-      operationId: getElementizePageDesignAudit
-      summary: Audit measurable page-level design consistency and readability signals
-      description: Read-only. Reports conservative palette, typography, spacing, contrast, CTA-style, and composition findings. Rendered inspection remains necessary.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: Page design audit, composition summaries, calibration findings, and default design-pass state }
+        '200': { description: Combined quality and design audits with default completion summary }
 
   /wp-json/elementize/v1/pages/{id}/design-settings:
     get:
