@@ -1,10 +1,13 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+require_once __DIR__ . '/elementize-aesthetic-ab-transport-hardening.inc';
+
 final class Elementize_Status_Version {
     private const NS = 'elementize/v1';
 
     public static function init(): void {
+        if ( class_exists( 'Elementize_Aesthetic_AB_Transport_Hardening', false ) ) Elementize_Aesthetic_AB_Transport_Hardening::init();
         // Run after all feature status decorators so older module version constants
         // cannot overwrite the actual installed plugin version.
         add_filter( 'rest_request_after_callbacks', [ self::class, 'after_rest' ], 1000, 3 );
