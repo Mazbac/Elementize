@@ -32,8 +32,23 @@ if ($null -eq $file) { throw 'Integrated semantic shortlist audit was not found 
 
 $j = Get-Content $file.FullName -Raw | ConvertFrom-Json
 $c = $j.aesthetic_comparison
+$m = $c.multisample_consensus
 $r = $c.semantic_visual_tie_resolution
 $cal = $c.judgment_calibration
+
+Write-Host ''
+Write-Host '--- Ambiguous anchored multi-sample consensus ---' -ForegroundColor Cyan
+if ($null -eq $m) {
+    Write-Host '[INFO] Multi-sample consensus was not required for this run.' -ForegroundColor DarkGray
+} else {
+    Write-Host ("[INFO] Consensus: attempted={0}; applied={1}; trigger={2}; samples={3}; top={4}; runner={5}; tied={6}" -f $m.attempted, $m.applied, $m.trigger, $m.samples_per_candidate, $m.top_score, $m.runner_up_score, $m.tied_top_score)
+    if (-not [bool]$m.applied -and -not [string]::IsNullOrWhiteSpace([string]$m.reason)) {
+        Write-Host ("[WARN] Consensus reason: {0}" -f $m.reason) -ForegroundColor Yellow
+    }
+    if ([bool]$m.applied) {
+        @($m.candidate_results) | Select-Object template_id, median_dimension_sum, model_visual_intensity_median, measured_visual_intensity_proxy, target_visual_intensity, median_mismatch_severity, confidence_ceiling, raw_axis_score, intensity_penalty, mismatch_penalty, derived_score | Format-Table -AutoSize
+    }
+}
 
 Write-Host ''
 Write-Host '--- Final semantic + visual selection resolution ---' -ForegroundColor Cyan
@@ -46,7 +61,20 @@ if ($null -eq $r) {
     }
 }
 
+$effectiveScore = if ($null -ne $c.effective_selection_score -and [int]$c.effective_selection_score -gt 0) { [int]$c.effective_selection_score } else { [int]$cal.winner_score }
+$selectionBasis = if (-not [string]::IsNullOrWhiteSpace([string]$c.selection_basis)) {
+    [string]$c.selection_basis
+} elseif ([bool]$c.usable_for_selection) {
+    'calibrated_visual_winner'
+} elseif (-not [string]::IsNullOrWhiteSpace([string]$c.winner_template_id) -and [string]$c.winner_template_id -ne 'none') {
+    'calibrated_visual_relative_winner_advisory_only'
+} else {
+    'no_usable_selection'
+}
+
 [pscustomobject]@{
+    MultiSampleConsensusAttempted = $null -ne $m -and [bool]$m.attempted
+    MultiSampleConsensusApplied = $null -ne $m -and [bool]$m.applied
     CalibratedVisualTopScore = [int]$cal.top_score
     CalibratedVisualRunnerUpScore = [int]$cal.runner_up_score
     CalibratedVisualTie = [bool]$cal.tied_top_score
@@ -57,13 +85,18 @@ if ($null -eq $r) {
     SemanticRunnerUpScore = if ($null -ne $r) { [int]$r.semantic_runner_up_score } else { 0 }
     SemanticScoreGap = if ($null -ne $r) { [int]$r.semantic_score_gap } else { 0 }
     EffectiveWinnerTemplateId = [string]$c.winner_template_id
-    EffectiveSelectionScore = [int]$c.effective_selection_score
+    EffectiveSelectionScore = $effectiveScore
     EffectiveConfidence = [string]$c.confidence
     EffectiveUsableForSelection = [bool]$c.usable_for_selection
-    SelectionBasis = [string]$c.selection_basis
+    SelectionBasis = $selectionBasis
     WritesPerformed = [bool]$c.writes_performed
     AutomaticWriteAllowed = [bool]$c.automatic_write_allowed
 } | Format-List
+
+if ($null -ne $m -and [bool]$m.applied) {
+    if (-not [bool]$m.slot_order_blind -or [bool]$m.pairwise_comparison) { throw 'Multi-sample consensus violated the slot-blind non-pairwise contract.' }
+    if ([int]$m.samples_per_candidate -ne 3) { throw 'Multi-sample consensus did not use exactly three samples per candidate.' }
+}
 
 if ($null -ne $r -and [bool]$r.applied) {
     if ([bool]$r.visual_score_modified) { throw 'Semantic visual tie resolution modified a visual score, which violates the acceptance contract.' }
@@ -72,9 +105,11 @@ if ($null -ne $r -and [bool]$r.applied) {
     if (-not [bool]$c.usable_for_selection) { throw 'Tie resolution applied but the final read-only selection is not usable.' }
     Write-Host ("[PASS] Visual scores remained untouched and exact-state semantic structure safely resolved the tie: {0}." -f $c.winner_template_id) -ForegroundColor Green
 } elseif ([bool]$cal.tied_top_score) {
-    Write-Host '[PASS] The visual tie remained unresolved because the semantic tie-break contract was not strong enough. No winner was forced.' -ForegroundColor Yellow
+    Write-Host '[PASS] The calibrated visual tie remained unresolved because the semantic tie-break contract was not strong enough. No winner was forced.' -ForegroundColor Yellow
+} elseif ([bool]$c.usable_for_selection) {
+    Write-Host ("[PASS] Calibrated visual evidence established a usable read-only selection: {0}." -f $c.winner_template_id) -ForegroundColor Green
 } else {
-    Write-Host '[PASS] Visual calibration itself established the selection; semantic tie resolution was not needed.' -ForegroundColor Green
+    Write-Host '[PASS] A relative visual leader exists, but it remains below the calibrated selection contract. The result stays advisory-only.' -ForegroundColor Yellow
 }
 
 Write-Host ''
