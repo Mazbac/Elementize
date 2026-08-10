@@ -59,13 +59,19 @@ function Invoke-ElementizeGet {
         return Invoke-RestMethod @params
     }
 
+    # Windows PowerShell 5.1 can negotiate an obsolete TLS default even when
+    # curl.exe can reach the same Local HTTPS site. Force TLS 1.2 for this
+    # request only and temporarily accept Local's development certificate.
     $oldCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
+    $oldProtocol = [System.Net.ServicePointManager]::SecurityProtocol
     try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
         return Invoke-RestMethod @params
     }
     finally {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $oldCallback
+        [System.Net.ServicePointManager]::SecurityProtocol = $oldProtocol
     }
 }
 
