@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Controlled REST access to WordPress, Elementor, and Pixfort.
- * Version: 0.21.1
+ * Version: 0.22.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -56,6 +56,7 @@ require_once __DIR__ . '/includes/elementize-bounded-repair-planning.inc';
 require_once __DIR__ . '/includes/elementize-bounded-repair-planning-diagnostics.inc';
 require_once __DIR__ . '/includes/elementize-rendered-observations.inc';
 require_once __DIR__ . '/includes/elementize-rendered-observations-hardening.inc';
+require_once __DIR__ . '/includes/elementize-rendered-observation-convergence.inc';
 
 Elementize_Visual_Writes::init();
 Elementize_Visual_Rendering::init();
@@ -97,3 +98,4 @@ Elementize_Bounded_Repair_Planning::init();
 Elementize_Bounded_Repair_Planning_Diagnostics::init();
 Elementize_Rendered_Observations::init();
 Elementize_Rendered_Observations_Hardening::init();
+Elementize_Rendered_Observation_Convergence::init();
