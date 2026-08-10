@@ -4,6 +4,8 @@
 
 `fastbuild/design-intelligence`
 
+Current hardening line: `0.15.1`.
+
 ## Runtime-proven foundation
 
 - 0.7.x catalogue breadth, visual-probe tracking, template-structure inspection, and structural hardening
