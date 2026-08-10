@@ -78,7 +78,7 @@ final class Elementize_Converged_Bounded_Repair_Planning {
             if ( 'promoted_read_only_section_verified' !== (string) ( $target['promotion_status'] ?? '' ) ) continue;
             if ( 'base' !== strtolower( (string) ( $target['responsive_scope'] ?? 'base' ) ) ) continue;
             if ( '' === trim( (string) ( $target['control_fingerprint'] ?? '' ) ) ) continue;
-            if ( 'spacing' !== strtolower( (string) ( $target['category'] ?? '' ) ) ) continue;
+            if ( 'spacing' !== strtolower( (string) ( $target['category'] ?? '' ) ) continue;
             if ( 'large_internal_padding_present' !== (string) ( $target['observation_type'] ?? '' ) ) continue;
             if ( 'padding' !== (string) ( $target['rendered_property'] ?? '' ) ) continue;
 
@@ -208,7 +208,7 @@ final class Elementize_Converged_Bounded_Repair_Planning {
     private static function content_hash( int $id ): string {
         if ( ! class_exists( '\\Elementor\\Plugin' ) ) return '';
         try {
-            $doc = \\Elementor\\Plugin::$instance->documents->get( $id );
+            $doc = \Elementor\Plugin::$instance->documents->get( $id );
             $elements = $doc ? $doc->get_elements_data() : null;
             if ( ! is_array( $elements ) ) return '';
             $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
