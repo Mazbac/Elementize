@@ -15,6 +15,12 @@
 - PHP syntax lint gate is active
 - GPT Builder contract guard enforces <=8000 instruction characters and the compact Action budget
 
+## Hard project constraint: no paid dependencies
+
+Elementize must not require paid screenshot, browser-rendering, vision, or AI APIs. A feature may use free/open local software, but core visual QA must not depend on an external paid account or subscription.
+
+The experimental 0.13.0 Cloudflare Browser Rendering + Workers AI implementation violated this constraint and is superseded. Do not configure Cloudflare account/token constants for visual audit.
+
 ## 0.10.x — GPT control plane
 
 Runtime-proven:
@@ -74,50 +80,46 @@ Runtime acceptance on page 952239:
 1. `getElementizePageState` returned `visual_preview.available=true` and a signed HTTPS URL.
 2. The URL rendered the managed draft in an incognito browser without WordPress authentication.
 3. Elementor/Pixfort styling and dominant imagery rendered through the tunnel.
-4. The initial 0.12.0 render exposed a browser private-network/local-device permission prompt, proving some origin variants still pointed local.
-5. 0.12.1 added broader origin rewriting and reported `signed_visual_preview_private_network_hardening=true`.
-6. A fresh 0.12.1 signed preview then opened directly in incognito with no local-network/device permission prompt.
-
-This proves secure anonymous remote rendering sufficiently for the next headless-capture acceptance test. Expiry/stale-link behavior remains protected by the implemented guards and can receive additional destructive-free spot checks later.
+4. 0.12.1 broadened origin rewriting after an initial local-network permission prompt.
+5. A fresh 0.12.1 signed preview then opened directly in incognito with no local-network/device permission prompt.
 
 ## Visual acceptance specimen
 
 Page 952239 remains the first rendered-design acceptance specimen. Human inspection found issues that deterministic audits underweighted: excessive vertical whitespace, underscaled typography, weak hierarchy after the hero, inconsistent section widths, off-topic/inconsistent imagery, fragmented CTA styling, and disconnected section rhythm. Automatic rendered critique should surface these classes of problems without pretending subjective preferences are deterministic facts.
 
-## 0.13.0 — Opt-in automatic screenshot + visual critique
+## 0.14.0 — Free local screenshot + local vision audit
 
 Implemented; runtime acceptance pending:
 
-- no new GPT operation is added; `getElementizePageCompletionAudit` gains optional `include_visual=true`
-- normal completion audits remain local/read-only and do not call external rendering/AI unless visual critique is explicitly requested
-- a fresh signed preview is issued internally and never returned in the visual-audit payload
-- Cloudflare Browser Rendering captures a bounded full-page JPEG from the signed preview
-- screenshot bytes are kept in memory only, bounded to 8 MB, hashed, and discarded after analysis
-- Cloudflare Workers AI receives the screenshot for a structured advisory design critique
-- default model is `@cf/google/gemma-4-26b-a4b-it`, with an optional wp-config model override
-- returned critique covers hierarchy, spacing/rhythm, typography legibility, visual cohesion, imagery relevance, CTA consistency, and section balance
-- findings are advisory-only and never become design blockers by default
-- provider/account credentials are read only from wp-config constants and are never returned by status or audit responses
-- missing provider configuration degrades to `visual.available=false` without breaking the existing quality/design audit
-- screenshot bytes/base64 are never returned to GPT and are not persisted
-- `VISUAL_AUDIT_SETUP.md` documents configuration and the runtime acceptance flow
+- no new GPT operation; `getElementizePageCompletionAudit?include_visual=true` remains the opt-in entry point
+- paid Cloudflare Browser Rendering and Workers AI dependencies are removed
+- local Chrome/Chromium or Microsoft Edge is discovered on Windows/macOS/Linux; an explicit `ELEMENTIZE_CHROME_PATH` override is supported if needed
+- PHP `proc_open` launches the browser headlessly against a fresh signed preview
+- capture uses a bounded 1280px desktop viewport with a tall-page limit, then attempts to trim trailing background whitespace when GD is available
+- screenshot bytes are kept only in a temporary local file/memory, bounded to 10 MB, hashed, and deleted after analysis
+- local Ollama is the vision backend; default model is `gemma3:4b`, overridable via `ELEMENTIZE_LOCAL_VISION_MODEL`
+- Ollama is contacted only on loopback (`127.0.0.1`/`localhost`); optional `ELEMENTIZE_OLLAMA_URL` is constrained to loopback
+- screenshot analysis returns the same bounded advisory dimensions/findings structure as the prior experiment
+- no external account, API token, paid API, screenshot upload, or screenshot persistence is required
+- status exposes separate readiness for local browser capture and local Ollama vision so setup failures are diagnosable without secrets
+- normal completion audits remain unchanged unless `include_visual=true`
 
-### 0.13 runtime acceptance gate
+### 0.14 runtime acceptance gate
 
 On page 952239:
 
-1. Install 0.13.0 and verify status reports `rendered_visual_audit=true`.
-2. Before credentials are configured, verify `rendered_visual_audit_configured=false` and a normal completion audit still works unchanged.
-3. Configure Cloudflare account ID/token outside chat/source control and verify status changes to configured=true.
-4. Refresh the GPT Actions schema so `include_visual` is available on `getElementizePageCompletionAudit`.
+1. Install 0.14.0 and verify status reports provider=`local`, paid_services_required=false, external_account_required=false.
+2. Verify local Chrome/Edge detection and `rendered_visual_capture_ready=true`.
+3. If Ollama is not installed/running, verify the status degrades cleanly with `rendered_visual_ollama_reachable=false` and normal audits still work.
+4. Install/start free local Ollama and pull `gemma3:4b`; verify `rendered_visual_model_available=true` and `rendered_visual_audit_configured=true`.
 5. Call the completion audit with `include_visual=true`.
-6. Verify `visual.screenshot.captured=true`, bounded screenshot metadata is returned, and no signed URL or screenshot bytes are exposed.
-7. Verify `visual.available=true` and the structured critique identifies multiple obvious specimen issues such as whitespace/rhythm, underscaled text, imagery relevance/cohesion, or CTA/style fragmentation.
-8. Compare the critique against the human screenshot review before trusting it for autonomous corrections.
-9. Only after visual critique is credible should WP Builder use supported guarded writers to fix high-confidence findings and re-run the visual audit.
+6. Verify screenshot capture succeeds, no signed URL or screenshot bytes are returned, and the temp screenshot is not persisted.
+7. Verify the local critique flags multiple obvious specimen issues such as whitespace/rhythm, underscaled text, imagery relevance/cohesion, CTA fragmentation, or weak section balance.
+8. Compare against the human screenshot review before trusting it for autonomous corrections.
+9. Only then let WP Builder use guarded writers to fix high-confidence findings and re-run.
 
 ## Current completion state
 
-Design Intelligence now has runtime proof for catalogue exploration, visual template inspection, structural inspection, deterministic design audit, real design-control discovery, the compact GPT control plane, guarded typed design writes, and secure signed remote draft rendering.
+Design Intelligence has runtime proof for catalogue exploration, visual template inspection, structural inspection, deterministic design audit, real design-control discovery, compact GPT control plane, guarded typed design writes, and secure signed remote draft rendering.
 
-Automatic screenshot capture and visual critique are implemented but not yet runtime-proven. The deterministic and rendered design audits remain advisory-only.
+Free local screenshot capture + local visual critique are implemented but not yet runtime-proven. Deterministic and rendered design audits remain advisory-only.
