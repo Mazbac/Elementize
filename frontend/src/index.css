@@ -1,0 +1,91 @@
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+}
+
+#elementize-admin-root {
+  --background: #f2f3f7;
+  --foreground: #1d0432;
+  --card: #f2f3f7;
+  --card-foreground: #1d0432;
+  --popover: #f2f3f7;
+  --popover-foreground: #1d0432;
+  --primary: #56188f;
+  --primary-foreground: #f2f3f7;
+  --secondary: #ccafe6;
+  --secondary-foreground: #1d0432;
+  --muted: #ccafe6;
+  --muted-foreground: #584170;
+  --accent: #9854cb;
+  --accent-foreground: #1d0432;
+  --destructive: #2a1b3a;
+  --destructive-foreground: #f2f3f7;
+  --border: #94adbf;
+  --input: #94adbf;
+  --ring: #64379f;
+  min-height: calc(100vh - 32px);
+  background: #f2f3f7;
+  color: #1d0432;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#elementize-admin-root *,
+#elementize-admin-root *::before,
+#elementize-admin-root *::after {
+  box-sizing: border-box;
+  border-color: var(--border);
+  border-style: solid;
+}
+
+#elementize-admin-root button,
+#elementize-admin-root input {
+  font: inherit;
+}
+
+#elementize-admin-root button {
+  cursor: pointer;
+}
+
+#elementize-admin-root a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#elementize-admin-root h1,
+#elementize-admin-root h2,
+#elementize-admin-root h3,
+#elementize-admin-root p {
+  margin: 0;
+}
+
+@media (max-width: 782px) {
+  #elementize-admin-root {
+    min-height: calc(100vh - 46px);
+  }
+}
