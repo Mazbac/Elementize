@@ -139,6 +139,9 @@ Write-Host ''
 $status = Invoke-ElementizeCurl -Method GET -Uri $statusUri -Authorization $auth
 Write-Host ("[PASS] Plugin status reachable: {0}" -f $status.elementize_version) -ForegroundColor Green
 Write-Host ("[INFO] A/B judgment: {0}; action slot cost: {1}; automatic writes: {2}" -f $status.aesthetic_ab_judgment_version, $status.aesthetic_ab_judgment_action_slot_cost, $status.aesthetic_ab_automatic_write_allowed)
+if ($status.aesthetic_ab_judgment_calibration) {
+    Write-Host ("[INFO] A/B calibration: {0}; absolute selection score floor: {1}/10; confidence can only decrease: {2}" -f $status.aesthetic_ab_judgment_calibration_version, $status.aesthetic_ab_absolute_selection_score_floor, $status.aesthetic_ab_calibration_confidence_can_only_decrease)
+}
 
 Write-Host '[STEP] Refreshing grounded page context...' -ForegroundColor DarkCyan
 $auditStarted = Get-Date
@@ -164,6 +167,7 @@ $probe = Invoke-ElementizeCurl -Method POST -Uri $probeUri -Authorization $auth 
 $compareSeconds = [Math]::Round(((Get-Date) - $compareStarted).TotalSeconds, 2)
 $comparison = $probe.aesthetic_comparison
 if ($null -eq $comparison) { throw 'The visual-probe response did not return aesthetic_comparison.' }
+$calibration = $comparison.judgment_calibration
 
 $outDir = Join-Path (Split-Path $PSScriptRoot -Parent) '.elementize-dev'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
@@ -187,11 +191,20 @@ Write-Host '--- Compact A/B health ---' -ForegroundColor Cyan
     AssessmentComplete = [bool]$comparison.assessment_complete
     ExactCandidateCoverage = [bool]$comparison.exact_candidate_coverage
     CandidateCount = $comparison.candidate_count
+    ModelWinnerSlot = [string]$comparison.model_winner_slot
     WinnerSlot = [string]$comparison.winner_slot
     WinnerTemplateId = [string]$comparison.winner_template_id
+    ModelConfidence = [string]$comparison.model_confidence
     Confidence = [string]$comparison.confidence
+    ModelWinnerMargin = [string]$comparison.model_winner_margin
     WinnerMargin = [string]$comparison.winner_margin
     UsableForSelection = [bool]$comparison.usable_for_selection
+    JudgmentCalibrated = [bool]$calibration.applied
+    WinnerScore = $calibration.winner_score
+    AbsoluteSelectionScoreFloor = $calibration.absolute_selection_score_floor
+    WinnerMeetsAbsoluteFitFloor = [bool]$calibration.winner_meets_absolute_fit_floor
+    ScoreGap = $calibration.score_gap
+    ConsistencyConflictCount = $calibration.consistency_conflict_count
     RequiresPostInsertVerification = [bool]$comparison.requires_post_insert_visual_verification
     ReusesVisualProbeAction = [bool]$comparison.reuses_existing_visual_probe_action
     ActionSlotCost = $comparison.action_slot_cost
@@ -205,15 +218,45 @@ Write-Host ''
 Write-Host '--- Candidate ranking ---' -ForegroundColor Cyan
 @($comparison.candidate_judgments) | Select-Object slot, template_id, score, overall_fit, design_dna_fit, rhythm_fit, hierarchy_fit, conversion_fit | Format-Table -AutoSize
 
-if ($comparison.available -and $comparison.assessment_complete -and $comparison.exact_candidate_coverage -and -not $comparison.writes_performed -and -not $comparison.automatic_write_allowed) {
-    Write-Host '[PASS] Contextual A/B judgment produced a complete read-only candidate comparison.' -ForegroundColor Green
+if ($null -ne $calibration -and $calibration.applied) {
+    Write-Host ''
+    Write-Host '--- Deterministic judgment calibration ---' -ForegroundColor Cyan
+    [pscustomobject]@{
+        Version = [string]$calibration.version
+        ModelWinner = [string]$calibration.model_winner_slot
+        EffectiveWinner = [string]$calibration.effective_winner_slot
+        ModelConfidence = [string]$calibration.model_confidence
+        EffectiveConfidence = [string]$calibration.effective_confidence
+        ModelMargin = [string]$calibration.model_winner_margin
+        EffectiveMargin = [string]$calibration.effective_winner_margin
+        TopScore = $calibration.top_score
+        RunnerUpScore = $calibration.runner_up_score
+        ScoreGap = $calibration.score_gap
+        WinnerScore = $calibration.winner_score
+        WinnerMeetsFloor = [bool]$calibration.winner_meets_absolute_fit_floor
+        SevereWinnerConflict = [bool]$calibration.winner_severe_consistency_conflict
+        ConsistencyConflictCount = $calibration.consistency_conflict_count
+        ModelUsable = [bool]$calibration.model_usable_for_selection
+        EffectiveUsable = [bool]$calibration.effective_usable_for_selection
+    } | Format-List
+    if (@($calibration.calibration_reasons).Count -gt 0) {
+        Write-Host 'Calibration reasons:' -ForegroundColor DarkCyan
+        @($calibration.calibration_reasons) | ForEach-Object { Write-Host (" - {0}" -f $_) }
+    }
+}
+
+$calibrationApplied = $null -ne $calibration -and [bool]$calibration.applied
+if ($comparison.available -and $comparison.assessment_complete -and $comparison.exact_candidate_coverage -and $calibrationApplied -and -not $comparison.writes_performed -and -not $comparison.automatic_write_allowed) {
+    Write-Host '[PASS] Contextual A/B judgment produced a complete read-only candidate comparison with deterministic calibration.' -ForegroundColor Green
     if ($comparison.usable_for_selection) {
-        Write-Host ("[PASS] Read-only selection recommendation: {0} -> {1} ({2} confidence)." -f $comparison.winner_slot, $comparison.winner_template_id, $comparison.confidence) -ForegroundColor Green
+        Write-Host ("[PASS] Calibrated read-only selection recommendation: {0} -> {1} ({2} confidence)." -f $comparison.winner_slot, $comparison.winner_template_id, $comparison.confidence) -ForegroundColor Green
+    } elseif (-not [string]::IsNullOrWhiteSpace([string]$comparison.winner_slot) -and [string]$comparison.winner_slot -ne 'none') {
+        Write-Host ("[INFO] Relative winner preserved: {0} -> {1}, but deterministic calibration intentionally blocks selection usability." -f $comparison.winner_slot, $comparison.winner_template_id) -ForegroundColor Yellow
     } else {
-        Write-Host '[INFO] Comparison completed but intentionally did not cross the confidence threshold for selection.' -ForegroundColor Yellow
+        Write-Host '[INFO] Comparison completed but calibration retained no winner safe for selection.' -ForegroundColor Yellow
     }
 } else {
-    Write-Host ("[FAIL] A/B comparison unavailable or incomplete: {0}" -f $comparison.reason) -ForegroundColor Red
+    Write-Host ("[FAIL] A/B comparison unavailable, incomplete, or uncalibrated: {0}" -f $comparison.reason) -ForegroundColor Red
 }
 
 Write-Host ''
