@@ -5,6 +5,7 @@ require_once __DIR__ . '/elementize-aesthetic-ab-transport-hardening.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-coverage-hardening.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-context-hardening.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-context-source-stabilizer.inc';
+require_once __DIR__ . '/elementize-aesthetic-ab-context-cache-stability.inc';
 require_once __DIR__ . '/elementize-aesthetic-ab-judgment-calibration.inc';
 
 final class Elementize_Status_Version {
@@ -15,6 +16,7 @@ final class Elementize_Status_Version {
         if ( class_exists( 'Elementize_Aesthetic_AB_Coverage_Hardening', false ) ) Elementize_Aesthetic_AB_Coverage_Hardening::init();
         if ( class_exists( 'Elementize_Aesthetic_AB_Context_Hardening', false ) ) Elementize_Aesthetic_AB_Context_Hardening::init();
         if ( class_exists( 'Elementize_Aesthetic_AB_Context_Source_Stabilizer', false ) ) Elementize_Aesthetic_AB_Context_Source_Stabilizer::init();
+        if ( class_exists( 'Elementize_Aesthetic_AB_Context_Cache_Stability', false ) ) Elementize_Aesthetic_AB_Context_Cache_Stability::init();
         if ( class_exists( 'Elementize_Aesthetic_AB_Judgment_Calibration', false ) ) Elementize_Aesthetic_AB_Judgment_Calibration::init();
         // Run after all feature status decorators so older module version constants
         // cannot overwrite the actual installed plugin version.
