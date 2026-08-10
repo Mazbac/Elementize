@@ -111,9 +111,9 @@ final class Elementize_Signed_Preview {
     }
 
     private static function content_hash( int $id ): string {
-        if ( class_exists( '\\Elementor\\Plugin' ) ) {
+        if ( class_exists( '\Elementor\Plugin' ) ) {
             try {
-                $doc = \\Elementor\\Plugin::$instance->documents->get( $id );
+                $doc = \Elementor\Plugin::$instance->documents->get( $id );
                 $elements = $doc ? $doc->get_elements_data() : null;
                 if ( is_array( $elements ) ) {
                     $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
