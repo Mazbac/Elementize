@@ -112,12 +112,13 @@
   /wp-json/elementize/v1/pages/{id}/completion-audit:
     get:
       operationId: getElementizePageCompletionAudit
-      summary: Run content, technical, link, proof, and design completion audits together
-      description: Read-only compact GPT-facing completion gate. Preserves the full underlying quality and calibrated design-audit payloads; rendered visual inspection is still required.
+      summary: Run content, technical, link, proof, design, and optional rendered visual audits together
+      description: Compact GPT-facing completion gate. Set include_visual=true only when rendered visual critique is useful; it is advisory and may incur configured external rendering/AI usage.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: include_visual, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
-        '200': { description: Combined quality and design audits with default completion summary }
+        '200': { description: Combined quality/design audit and optional rendered visual critique }
 
   /wp-json/elementize/v1/pages/{id}/design-settings:
     get:
