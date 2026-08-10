@@ -4,7 +4,7 @@
 
 `fastbuild/design-intelligence`
 
-Current hardening line: `0.21.1`.
+Current hardening line: `0.22.0`.
 
 ## Runtime-proven foundation
 
@@ -20,6 +20,7 @@ Current hardening line: `0.21.1`.
 - 0.18.2 local Chrome DevTools Protocol rendered metrics runtime-proven
 - 0.19.x rendered repair correlation + measurement hardening runtime-proven
 - 0.20.1 bounded planning diagnostics runtime-proven
+- 0.21.1 deterministic rendered observations + dependency diagnostics runtime-proven
 - PHP syntax lint and GPT Builder contract gates active
 
 ## Hard project constraint: no paid dependencies
@@ -28,50 +29,62 @@ Core visual QA must not require paid screenshot, browser-rendering, vision, or A
 
 ## Current visual QA architecture
 
-signed preview → local Chrome screenshot → local Ollama critique → annotated localization → repair discovery → semantic grading → local CDP measurements → rendered correlation → bounded planning diagnostics → deterministic rendered observations.
+signed preview → local Chrome screenshot → local Ollama critique → annotated localization → repair discovery → semantic grading → local CDP measurements → rendered correlation → bounded planning diagnostics → deterministic rendered observations → read-only observation/control convergence.
 
-Screenshots are not persisted or exposed. Raw DOM, signed preview URLs, and CDP endpoints remain internal. All observation/correlation/planning layers remain read-only and advisory.
+Screenshots are not persisted or exposed. Raw DOM, signed preview URLs, and CDP endpoints remain internal. All observation/correlation/planning/convergence layers remain read-only and advisory.
 
 ## 0.20.1 runtime diagnosis on page 952239
 
 The empty plan was explained without weakening a gate: the fresh correlation had zero planning-ready candidates. The exact S1 padding was measured but only supporting/context-only for the fresh hierarchy finding. This confirmed vision/localization variability rather than a deterministic planner bug.
 
-## 0.21.0 — deterministic rendered observations
+## 0.21.1 runtime proof on page 952239
 
-Runtime-tested but dependency failed on the first acceptance run.
+The second 0.21.1 audit succeeded after one oversized-response retry and returned stable deterministic observations from the same fresh CDP run:
 
-The returned `visual.render_observations` object was safe/read-only but `available=false` with `reason=Rendered metrics are unavailable.` This does not show whether the already-proven CDP metrics failed at browser start, preview/target discovery, context stability, metrics evaluation, JavaScript evaluation, or another bounded stage because 0.21.0 did not propagate the dependency diagnostics.
+- `observation_version=0.21.1`
+- `available=true`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`
+- metrics dependency present/available, provider `local_chromium_cdp`, ready state `complete`, stable poll count 4, navigation transient count 0, section count 10
+- three measured 12px microtext samples in top-level section `67668c89`
+- CTA style divergence: 11 sampled CTA-like elements, 7 distinct rendered style signatures
+- large internal padding observation with max inter-section gap 0
+- exact padding samples included S1 `5eb92308` top 80px; `3f040c5b` top 60/bottom 80; `5b4c56b1` top/bottom 100; `1ef5ae9e` top/bottom 80; `cdfcafe` bottom 100
+- all three deterministic observations returned `visual_convergence=true`
+- `defects_asserted=false` and `direct_repair_candidates_created=false`
 
-No write occurred. Do not weaken observation or repair gates based on this failure.
+This proves deterministic observations can remain stable even when fresh localization categories vary.
 
-## 0.21.1 — rendered-observation dependency diagnostics
+## 0.22.0 — rendered observation/control convergence
 
 Implemented; runtime acceptance pending.
 
-Goal: when deterministic observations cannot run because `visual.render_metrics` is unavailable, surface the existing bounded CDP failure information directly in `visual.render_observations`.
+Goal: bridge stable rendered observations to exact guarded Elementor controls without depending on the fresh localization category and without creating write authority.
 
 - no new GPT Action and no schema/instruction change
-- completion audit keeps `visual.render_observations`
-- upgrades `observation_version` to `0.21.1`
-- adds `render_metrics_dependency`
-- propagates bounded dependency fields only: presence/availability, metrics version, provider, failure stage, bounded reason, ready state, stable poll count, navigation transient count, and section count
-- signed preview URL, CDP endpoint, raw DOM, screenshots, and secrets remain unexposed
-- if metrics are unavailable, observation reason now includes the underlying bounded metrics reason and `dependency_failure_stage`
-- no retry or duplicate Chrome launch is added yet; first diagnose the actual dependency failure
-- read-only; `writes_performed=false`, `automatic_write_allowed=false`
+- completion audit adds `visual.repair_convergence`
+- read-only; `writes_performed=false`, `automatic_write_allowed=false`, `defects_asserted=false`
+- a target is promoted only when all three gates hold: deterministic rendered measurement exists, the independent visual critique converges on the same issue class, and a fresh exact guarded design control maps to the same Elementor element/property
+- fresh Elementor content hash is computed and every internal design-settings read must return the same hash
+- only base-scope, currently writable controls with a non-empty control fingerprint can map
+- large-padding observations map only to an exact same-element `padding` control whose current px side agrees with the rendered side within 1px
+- microtext observations map only to an exact same-element font-size control whose current base px value agrees with the rendered font size within 1px
+- CTA style divergence is intentionally blocked from promotion because a reference CTA/style has not been selected; no normalization value is inferred
+- promoted targets include exact top-level/element IDs, setting path, current value, fingerprint, rendered property/value, matched component, writer route, and promotion basis
+- promotion is bounded to six targets and does not create a value proposal or approve an edit
+- action-slot cost remains zero
 
-### 0.21.1 runtime acceptance gate
+### 0.22.0 runtime acceptance gate
 
-On page 952239, call the completion audit with `include_visual=true` and inspect only `visual.render_observations`.
+On page 952239, call the completion audit with `include_visual=true` and inspect only `visual.repair_convergence`.
 
 Acceptance requires:
 
-1. `observation_version=0.21.1`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`.
-2. `render_metrics_dependency` is present.
-3. If metrics succeed, observations should surface the deterministic microtext/CTA/padding facts.
-4. If metrics fail again, `dependency_failure_stage` and the bounded dependency `reason` must identify the exact CDP stage instead of only saying rendered metrics are unavailable.
-5. No mutation occurs.
+1. `convergence_version=0.22.0`, `available=true`, `read_only=true`, `writes_performed=false`, `automatic_write_allowed=false`, `defects_asserted=false`.
+2. `page_content_hash` is present and fresh design-control reads do not report a stale hash.
+3. At least the S1 80px top-padding observation should promote if the exact top-level padding control is still base-scope, writable, fingerprinted, and still equals the rendered 80px top value.
+4. Any promoted target must say `promotion_status=promoted_read_only`, `exact_control_match=true`, and carry the exact current value/fingerprint/setting path.
+5. CTA style divergence must remain in `blocked_observations` with `requires_reference_style=true` rather than generating a style edit.
+6. No mutation occurs.
 
 ## Next phase
 
-Use the 0.21.1 dependency result. If CDP failure is transient and isolated, harden/retry only that exact stage. If metrics succeed, continue the original deterministic observation acceptance. Do not create promoted repair targets or perform a repair experiment until the observation layer is stable.
+If 0.22.0 produces the same exact S1 padding promoted target across fresh audits, update bounded value planning so it can consume a reproducible observation-promoted exact control as an alternative to a localization-category-specific correlation. The planner must still be read-only and keep the same conservative delta rules. Only after that path repeatedly produces the same one-control plan should the first explicit guarded write/verify/screenshot/compare/rollback experiment be implemented.
