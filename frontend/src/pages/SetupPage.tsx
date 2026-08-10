@@ -54,7 +54,7 @@ function SetupAction({
 }) {
   return (
     <Card bg="brand.0" radius="lg" p="lg" withBorder>
-      <Grid align="center" gutter="md">
+      <Grid align="center" gap="md">
         <Grid.Col span={{ base: 12, sm: 1 }}>
           <ThemeIcon color="brand" variant="filled" radius="lg" size="lg">{number}</ThemeIcon>
         </Grid.Col>

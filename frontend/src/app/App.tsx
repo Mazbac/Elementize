@@ -50,7 +50,7 @@ export function App({ config }: Props) {
 
   return (
     <Box bg="brand.0" mih="calc(100vh - 32px)" p={{ base: 'sm', md: 'lg' }}>
-      <Grid gutter="lg">
+      <Grid gap="lg">
         <Grid.Col span={{ base: 12, md: 3, lg: 2 }} visibleFrom="md">
           <Paper bg="gray.9" c="brand.0" radius="xl" p="lg" mih="calc(100vh - 68px)" withBorder>
             <Stack h="100%" gap="xl">
