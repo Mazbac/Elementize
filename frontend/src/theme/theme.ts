@@ -43,13 +43,11 @@ export const theme = createTheme({
       palette.ink,
     ],
   },
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif',
   headings: {
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif',
     fontWeight: '750',
   },
-  defaultRadius: 'md',
+  defaultRadius: 'lg',
   cursorType: 'pointer',
 });
