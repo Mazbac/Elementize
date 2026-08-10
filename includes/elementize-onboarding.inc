@@ -82,7 +82,7 @@ final class Elementize_Onboarding {
         $materials_ready = '' !== $instructions && '' !== $schema;
         $notice = isset( $_GET['elementize_notice'] ) ? sanitize_key( wp_unslash( $_GET['elementize_notice'] ) ) : '';
         $nonce = wp_create_nonce( 'elementize_onboarding' );
-        $all_ready = $requirements['elementor'] && $requirements['pixfort'] && $requirements['application_passwords'] && $env['connection_ready'] && $materials_ready;
+        $all_ready = $requirements['elementor'] && $requirements['pixfort'] && $requirements['revisions'] && $requirements['application_passwords'] && $env['connection_ready'] && $materials_ready;
         ?>
         <div class="wrap elz-wrap">
             <h1>Elementize Setup</h1>
@@ -95,6 +95,7 @@ final class Elementize_Onboarding {
             <div class="elz-grid">
                 <?php self::requirement_card( 'Elementor', $requirements['elementor'], $requirements['elementor_detail'] ); ?>
                 <?php self::requirement_card( 'Pixfort Core', $requirements['pixfort'], $requirements['pixfort_detail'] ); ?>
+                <?php self::requirement_card( 'WordPress revisions', $requirements['revisions'], $requirements['revisions'] ? 'Enabled' : 'Required for safe writes' ); ?>
                 <?php self::requirement_card( 'Application Passwords', $requirements['application_passwords'], $requirements['application_passwords'] ? 'Available' : 'Unavailable' ); ?>
                 <?php self::requirement_card( 'Public API address', $env['connection_ready'], $env['connection_ready'] ? $env['effective_origin'] : 'Needs setup' ); ?>
             </div>
@@ -176,6 +177,7 @@ final class Elementize_Onboarding {
             'elementor_detail' => $elementor ? ( defined( 'ELEMENTOR_VERSION' ) ? 'Version ' . ELEMENTOR_VERSION : 'Loaded' ) : 'Not detected',
             'pixfort' => ! empty( $pixfort['active'] ),
             'pixfort_detail' => ! empty( $pixfort['active'] ) ? trim( (string) $pixfort['name'] . ' ' . (string) $pixfort['version'] ) : 'Not detected',
+            'revisions' => Elementize_Core::page_revisions_available(),
             'application_passwords' => $app,
         ];
     }
