@@ -3,11 +3,12 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Signed_Preview {
-    private const VERSION = '0.12.1';
+    private const VERSION = '0.15.0';
     private const NS = 'elementize/v1';
     private const META_MANAGED = '_elementize_managed';
     private const OPT_PUBLIC = 'elementize_public_api_origin';
     private const TTL = 600;
+    private const MAX_LOCATORS = 24;
 
     private static ?array $validated = null;
 
@@ -41,6 +42,7 @@ final class Elementize_Signed_Preview {
             'content_hash_bound' => true,
             'no_store' => true,
             'private_network_hardening' => true,
+            'internal_locator_overlay_supported' => true,
         ];
         if ( ! $managed ) $preview['reason'] = 'Signed visual previews are available only for Elementize-managed draft pages.';
         elseif ( '' === $hash ) $preview['reason'] = 'A current Elementor content hash is required before a signed preview can be issued.';
@@ -90,6 +92,10 @@ final class Elementize_Signed_Preview {
         return isset( $_GET['elementize_preview'] ) && '1' === (string) wp_unslash( $_GET['elementize_preview'] );
     }
 
+    private static function locator_requested(): bool {
+        return self::preview_requested() && isset( $_GET['elementize_locators'] ) && '1' === (string) wp_unslash( $_GET['elementize_locators'] );
+    }
+
     private static function validate_request(): array {
         if ( null !== self::$validated ) return self::$validated;
         $bad = [ 'valid' => false, 'reason' => 'invalid' ];
@@ -127,6 +133,32 @@ final class Elementize_Signed_Preview {
         if ( ! is_array( $decoded ) ) return '';
         $json = wp_json_encode( $decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
         return hash( 'sha256', false === $json ? '' : $json );
+    }
+
+    private static function top_level_locator_map( int $id ): array {
+        $elements = null;
+        if ( class_exists( '\\Elementor\\Plugin' ) ) {
+            try {
+                $doc = \Elementor\Plugin::$instance->documents->get( $id );
+                $elements = $doc ? $doc->get_elements_data() : null;
+            } catch ( Throwable $ignored ) {}
+        }
+        if ( ! is_array( $elements ) ) {
+            $raw = get_post_meta( $id, '_elementor_data', true );
+            $elements = is_string( $raw ) ? json_decode( $raw, true ) : null;
+        }
+        if ( ! is_array( $elements ) ) return [];
+        $out = [];
+        $n = 0;
+        foreach ( $elements as $element ) {
+            if ( ! is_array( $element ) ) continue;
+            $eid = trim( (string) ( $element['id'] ?? '' ) );
+            if ( '' === $eid || ! preg_match( '/^[A-Za-z0-9_-]+$/', $eid ) ) continue;
+            $n++;
+            if ( $n > self::MAX_LOCATORS ) break;
+            $out[] = [ 'marker' => 'S' . $n, 'id' => $eid ];
+        }
+        return $out;
     }
 
     public static function allow_signed_draft_query( WP_Query $query ): void {
@@ -179,6 +211,17 @@ final class Elementize_Signed_Preview {
         return $pairs;
     }
 
+    private static function locator_overlay_script(): string {
+        if ( ! self::locator_requested() ) return '';
+        $valid = self::validate_request();
+        if ( empty( $valid['valid'] ) || empty( $valid['id'] ) ) return '';
+        $map = self::top_level_locator_map( (int) $valid['id'] );
+        if ( ! $map ) return '';
+        $json = wp_json_encode( $map, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        if ( ! is_string( $json ) || '' === $json ) return '';
+        return '<script id="elementize-preview-locators">(function(){var m=' . $json . ';function a(){m.forEach(function(x){var q=document.querySelector(".elementor-element[data-id=\""+x.id+"\"]")||document.querySelector("[data-id=\""+x.id+"\"]");if(!q||q.getAttribute("data-elementize-located")==="1")return;q.setAttribute("data-elementize-located","1");try{if(getComputedStyle(q).position==="static")q.style.position="relative"}catch(e){}q.style.outline="4px solid #ff2d95";q.style.outlineOffset="-4px";var b=document.createElement("div");b.textContent=x.marker;b.setAttribute("aria-hidden","true");b.style.cssText="position:absolute;top:8px;left:8px;z-index:2147483647;background:#111;color:#fff;border:2px solid #fff;border-radius:4px;padding:7px 9px;font:700 18px/1 monospace;letter-spacing:.5px;box-shadow:0 2px 8px rgba(0,0,0,.45);pointer-events:none";q.appendChild(b)})}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",a);else a();window.addEventListener("load",a);setTimeout(a,1500);setTimeout(a,4000)})();</script>';
+    }
+
     public static function rewrite_public_origin( string $html ): string {
         $public = self::public_origin();
         if ( '' === $public || '' === $html ) return $html;
@@ -186,10 +229,14 @@ final class Elementize_Signed_Preview {
         foreach ( $old as $origin ) {
             foreach ( self::replacements( $origin, $public ) as $needle => $replacement ) $html = str_replace( $needle, $replacement, $html );
         }
-        if ( ! $old || false === stripos( $html, '</body>' ) ) return $html;
+        if ( false === stripos( $html, '</body>' ) ) return $html;
 
-        $script = '<script id="elementize-preview-origin-rewrite">(function(){var o=' . wp_json_encode( $old ) . ',p=' . wp_json_encode( $public ) . ';function r(v){if(!v)return v;o.forEach(function(x){v=v.split(x).join(p)});return v}function w(rs){if(!rs)return;Array.prototype.forEach.call(rs,function(q){try{if(q.style){for(var i=0;i<q.style.length;i++){var k=q.style[i],v=q.style.getPropertyValue(k),n=r(v);if(n!==v)q.style.setProperty(k,n,q.style.getPropertyPriority(k))}}if(q.cssRules)w(q.cssRules)}catch(e){}})}function f(){Array.prototype.forEach.call(document.styleSheets,function(s){try{w(s.cssRules)}catch(e){}})}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",f);else f();window.addEventListener("load",f)})();</script>';
-        return preg_replace( '/<\\/body>/i', $script . '</body>', $html, 1 ) ?: $html;
+        $scripts = '';
+        if ( $old ) {
+            $scripts .= '<script id="elementize-preview-origin-rewrite">(function(){var o=' . wp_json_encode( $old ) . ',p=' . wp_json_encode( $public ) . ';function r(v){if(!v)return v;o.forEach(function(x){v=v.split(x).join(p)});return v}function w(rs){if(!rs)return;Array.prototype.forEach.call(rs,function(q){try{if(q.style){for(var i=0;i<q.style.length;i++){var k=q.style[i],v=q.style.getPropertyValue(k),n=r(v);if(n!==v)q.style.setProperty(k,n,q.style.getPropertyPriority(k))}}if(q.cssRules)w(q.cssRules)}catch(e){}})}function f(){Array.prototype.forEach.call(document.styleSheets,function(s){try{w(s.cssRules)}catch(e){}})}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",f);else f();window.addEventListener("load",f)})();</script>';
+        }
+        $scripts .= self::locator_overlay_script();
+        return '' !== $scripts ? ( preg_replace( '/<\\/body>/i', $scripts . '</body>', $html, 1 ) ?: $html ) : $html;
     }
 
     private static function status( WP_REST_Response $response ): WP_REST_Response {
@@ -203,6 +250,9 @@ final class Elementize_Signed_Preview {
         $data['signed_visual_preview_no_store'] = true;
         $data['signed_visual_preview_public_origin_rewrite'] = true;
         $data['signed_visual_preview_private_network_hardening'] = true;
+        $data['signed_visual_preview_internal_locator_overlay'] = true;
+        $data['signed_visual_preview_locator_overlay_signed_request_only'] = true;
+        $data['signed_visual_preview_locator_overlay_max_sections'] = self::MAX_LOCATORS;
         $data['signed_visual_preview_action_slot_cost'] = 0;
         $data['automatic_visual_screenshot_capture'] = false;
         $response->set_data( $data );
