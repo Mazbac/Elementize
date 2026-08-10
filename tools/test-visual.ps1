@@ -3,7 +3,7 @@ param(
     [int]$PageId = 952239,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet('focused_verification','repair_convergence','render_observations','repair_plan','repair_correlation','render_metrics','localization','all')]
+    [ValidateSet('focused_verification','focused_section_verification','repair_convergence','render_observations','repair_plan','repair_correlation','render_metrics','localization','all')]
     [string]$Object = 'focused_verification',
 
     [Parameter(Mandatory = $false)]
@@ -190,6 +190,7 @@ if ($null -eq $visual) {
 
 $selected = switch ($Object) {
     'focused_verification' { $visual.focused_verification }
+    'focused_section_verification' { $visual.focused_section_verification }
     'repair_convergence' { $visual.repair_convergence }
     'render_observations' { $visual.render_observations }
     'repair_plan' { $visual.repair_plan }
@@ -226,6 +227,9 @@ if ($visual.repair_convergence) {
 }
 if ($visual.focused_verification) {
     Write-Host ("[{0}] Focused verification: available={1}, candidates={2}, reviewable={3}" -f ($(if ($visual.focused_verification.available) {'PASS'} else {'FAIL'})), $visual.focused_verification.available, $visual.focused_verification.candidate_count, $visual.focused_verification.hardened_convergence_review_count) -ForegroundColor $(if ($visual.focused_verification.available) {'Green'} else {'Red'})
+}
+if ($visual.focused_section_verification) {
+    Write-Host ("[{0}] Section focus: available={1}, candidates={2}, reviewable={3}" -f ($(if ($visual.focused_section_verification.available) {'PASS'} else {'FAIL'})), $visual.focused_section_verification.available, $visual.focused_section_verification.candidate_count, $visual.focused_section_verification.reviewable_count) -ForegroundColor $(if ($visual.focused_section_verification.available) {'Green'} else {'Red'})
 }
 
 $totalSeconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 2)
