@@ -107,7 +107,7 @@ Write-Host ''
 
 $status = Invoke-ElementizeCurlGet -Uri $statusUri -Authorization $auth
 Write-Host ("[PASS] Plugin status reachable: {0}" -f $status.elementize_version) -ForegroundColor Green
-Write-Host ("[INFO] Aesthetic Brain: {0}; coverage recovery: {1}; hardening: {2}; calibration: {3}; semantic grounding: {4}" -f $status.aesthetic_brain_version, $status.aesthetic_coverage_recovery_version, $status.aesthetic_brain_hardening_version, $status.aesthetic_judgment_calibration_version, $status.aesthetic_semantic_grounding_version)
+Write-Host ("[INFO] Aesthetic Brain: {0}; coverage recovery: {1}; hardening: {2}; calibration: {3}; semantic grounding: {4}; grounded reassessment: {5}" -f $status.aesthetic_brain_version, $status.aesthetic_coverage_recovery_version, $status.aesthetic_brain_hardening_version, $status.aesthetic_judgment_calibration_version, $status.aesthetic_semantic_grounding_version, $status.aesthetic_grounded_reassessment_version)
 
 $started = Get-Date
 $audit = Invoke-ElementizeCurlGet -Uri $auditUri -Authorization $auth
@@ -149,6 +149,10 @@ Write-Host '--- visual.aesthetic_semantic_grounding ---' -ForegroundColor Cyan
 $visual.aesthetic_semantic_grounding | ConvertTo-Json -Depth 100
 
 Write-Host ''
+Write-Host '--- visual.aesthetic_grounded_reassessment ---' -ForegroundColor Cyan
+$visual.aesthetic_grounded_reassessment | ConvertTo-Json -Depth 100
+
+Write-Host ''
 Write-Host '--- Compact aesthetic health ---' -ForegroundColor Cyan
 $art = $visual.page_art_direction
 $coherence = $visual.section_coherence
@@ -156,6 +160,7 @@ $dna = $visual.design_dna
 $recovery = $visual.aesthetic_coverage_recovery
 $calibration = $visual.aesthetic_judgment_calibration
 $grounding = $visual.aesthetic_semantic_grounding
+$groundedReassessment = $visual.aesthetic_grounded_reassessment
 
 [pscustomobject]@{
     AestheticBrainAvailable = [bool]$audit.summary.aesthetic_brain_available
@@ -184,12 +189,17 @@ $grounding = $visual.aesthetic_semantic_grounding
     IssueBearingSections = $art.issue_bearing_section_count
     HighSeverityIssues = $art.high_severity_issue_count
     GroundedIssues = $art.grounded_issue_count
-    GroundedHighSeverityIssues = $art.grounded_high_severity_issue_count
     SemanticGroundingAvailable = [bool]$grounding.available
-    SemanticConflicts = $grounding.semantic_conflict_count
-    MaterialSemanticConflicts = $grounding.material_semantic_conflict_count
-    TransitionContractValid = [bool]$grounding.transition_contract_valid
-    RhythmJudgmentUsable = [bool]$grounding.rhythm_judgment_usable
+    InitialSemanticConflicts = $grounding.semantic_conflict_count
+    InitialMaterialSemanticConflicts = $grounding.material_semantic_conflict_count
+    InitialTransitionContractValid = [bool]$grounding.transition_contract_valid
+    GroundedReassessmentAvailable = [bool]$groundedReassessment.available
+    GroundedReassessmentNeeded = [bool]$groundedReassessment.needed
+    GroundedReassessmentApproval = [string]$groundedReassessment.overall_approval
+    GroundedReassessmentConflicts = $groundedReassessment.semantic_conflict_count
+    GroundedReassessmentTransitionValid = [bool]$groundedReassessment.transition_contract_valid
+    GroundedReassessmentComplete = [bool]$groundedReassessment.assessment_complete
+    RhythmJudgmentUsable = [bool]$coherence.rhythm_judgment_usable
     CoverageRecoveryAvailable = [bool]$recovery.available
     CoverageRecoveryApproval = [string]$recovery.overall_approval
     CrossCheckRevisionRequired = [bool]$art.revision_required_by_cross_checks
@@ -200,30 +210,30 @@ $grounding = $visual.aesthetic_semantic_grounding
 } | Format-List
 
 Write-Host ''
-Write-Host '--- Grounded interventions ---' -ForegroundColor Cyan
-$groundedIssues = @($art.grounded_issues)
-if ($groundedIssues.Count -eq 0) {
-    Write-Host '[INFO] No grounded aesthetic issues returned.' -ForegroundColor DarkGray
+Write-Host '--- Grounded reassessment interventions ---' -ForegroundColor Cyan
+$reIssues = @($groundedReassessment.issues)
+if ($reIssues.Count -eq 0) {
+    Write-Host '[INFO] No medium/high fact-conditioned reassessment issues returned.' -ForegroundColor DarkGray
 }
 else {
-    $groundedIssues | Select-Object category, severity, @{N='sections';E={@($_.section_markers) -join ','}}, semantic_grounded, evidence_usable, grounded_intervention_level | Format-Table -AutoSize
+    $reIssues | Select-Object category, severity, @{N='sections';E={@($_.section_markers) -join ','}}, semantic_grounded, evidence_usable, intervention_level | Format-Table -AutoSize
 }
 
 Write-Host ''
-Write-Host '--- Material semantic conflicts ---' -ForegroundColor Cyan
+Write-Host '--- Initial material semantic conflicts ---' -ForegroundColor Cyan
 $material = @($grounding.material_semantic_conflicts)
 if ($material.Count -eq 0) {
-    Write-Host '[PASS] No medium/high aesthetic issue depends on a contradicted semantic claim.' -ForegroundColor Green
+    Write-Host '[PASS] Initial aesthetic pass had no medium/high semantic conflicts.' -ForegroundColor Green
 }
 else {
     $material | Select-Object marker, severity, category, @{N='conflicts';E={@($_.conflicts) -join ' | '}} | Format-Table -Wrap -AutoSize
 }
 
-if ($art.available -and $art.approval_usable -and $calibration.available -and $grounding.available) {
-    Write-Host '[PASS] Aesthetic Brain produced a complete, evidence-covered, calibrated and semantically grounded page-level judgment.' -ForegroundColor Green
+if ($art.available -and $art.approval_usable -and $calibration.available -and $groundedReassessment.available -and $groundedReassessment.assessment_complete) {
+    Write-Host '[PASS] Aesthetic Brain produced a complete fact-conditioned, transition-valid professional judgment.' -ForegroundColor Green
 }
 elseif ($art.available) {
-    Write-Host '[WARN] Aesthetic Brain returned model output, but the professional judgment is not yet fully grounded/usable.' -ForegroundColor Yellow
+    Write-Host '[WARN] Aesthetic Brain returned model output, but the final professional judgment is not yet fully grounded/usable.' -ForegroundColor Yellow
 }
 else {
     Write-Host ("[FAIL] Aesthetic Brain unavailable: {0}" -f $art.reason) -ForegroundColor Red
