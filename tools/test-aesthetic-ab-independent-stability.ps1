@@ -154,12 +154,15 @@ Write-Host "Target marker: $target"
 Write-Host ("Candidates: {0} vs {1}" -f $TemplateIds[0], $TemplateIds[1])
 Write-Host ("Runs: {0} total ({1} forward + {1} swapped), alternating order" -f $totalRuns, $RunsPerOrder)
 Write-Host ("Score drift threshold: <= {0} points per template" -f $MaxScoreRange)
-Write-Host 'Policy: each candidate is model-scored alone against one shared grounded context; no insertion, replacement, or write endpoint is called.'
+Write-Host 'Policy: each candidate is model-scored alone against one shared grounded context; anchored discrimination may run for ties/near-ties; no insertion, replacement, or write endpoint is called.'
 Write-Host ''
 
 $status = Invoke-ElementizeCurl -Method GET -Uri $statusUri -Authorization $auth
 Write-Host ("[PASS] Plugin status reachable: {0}" -f $status.elementize_version) -ForegroundColor Green
 Write-Host ("[INFO] Independent scoring: {0}; slot-order blind: {1}; template identity hidden: {2}; automatic writes: {3}" -f $status.aesthetic_ab_independent_scoring_version, $status.aesthetic_ab_independent_scoring_slot_order_blind, $status.aesthetic_ab_independent_scoring_template_identity_hidden_from_model, $status.aesthetic_ab_independent_scoring_automatic_write_allowed)
+if ($status.aesthetic_ab_independent_discrimination) {
+    Write-Host ("[INFO] Anchored discrimination: {0}; trigger gap <= {1}; PHP-derived score: {2}; automatic writes: {3}" -f $status.aesthetic_ab_independent_discrimination_version, $status.aesthetic_ab_independent_discrimination_trigger_max_gap, $status.aesthetic_ab_independent_discrimination_php_derived_overall_score, $status.aesthetic_ab_independent_discrimination_automatic_write_allowed)
+}
 Write-Host ("[INFO] Calibration: {0}; score floor: {1}/10" -f $status.aesthetic_ab_judgment_calibration_version, $status.aesthetic_ab_absolute_selection_score_floor)
 if (-not $status.aesthetic_ab_independent_scoring) { throw 'Independent candidate scoring is not active in plugin status.' }
 
@@ -202,11 +205,20 @@ foreach ($plan in $runPlan) {
     $comparison = $probe.aesthetic_comparison
     if ($null -eq $comparison) { throw "Run $($plan.Label) did not return aesthetic_comparison." }
     $independent = $comparison.independent_candidate_scoring
+    $discrimination = $comparison.independent_discrimination
     $calibration = $comparison.judgment_calibration
 
-    $independentApplied = $null -ne $independent -and [bool]$independent.applied -and [string]$comparison.comparison_method -eq 'slot_blind_independent_candidate_scoring'
+    $method = [string]$comparison.comparison_method
+    $independentApplied = $null -ne $independent -and [bool]$independent.applied -and $method.StartsWith('slot_blind_independent_candidate_scoring')
+    $triggerGap = if ($null -ne $status.aesthetic_ab_independent_discrimination_trigger_max_gap) { [int]$status.aesthetic_ab_independent_discrimination_trigger_max_gap } else { 1 }
+    $independentGap = if ($null -ne $independent -and $null -ne $independent.score_gap) { [int]$independent.score_gap } else { 999 }
+    $independentTie = $null -ne $independent -and [bool]$independent.tied_top_score
+    $discriminationRequired = [bool]$status.aesthetic_ab_independent_discrimination -and ($independentTie -or $independentGap -le $triggerGap)
+    $discriminationApplied = $null -ne $discrimination -and [bool]$discrimination.applied
+    $discriminationContractOk = -not $discriminationRequired -or $discriminationApplied
+
     $safeContract = [bool]$comparison.available -and [bool]$comparison.assessment_complete -and [bool]$comparison.exact_candidate_coverage -and
-        $independentApplied -and $null -ne $calibration -and [bool]$calibration.applied -and
+        $independentApplied -and $discriminationContractOk -and $null -ne $calibration -and [bool]$calibration.applied -and
         -not [bool]$comparison.writes_performed -and -not [bool]$comparison.automatic_write_allowed
 
     $returnedHash = [string]$comparison.page_state_hash
@@ -226,6 +238,8 @@ foreach ($plan in $runPlan) {
         Margin = [string]$comparison.winner_margin
         Usable = [bool]$comparison.usable_for_selection
         IndependentApplied = $independentApplied
+        DiscriminationRequired = $discriminationRequired
+        DiscriminationApplied = $discriminationApplied
         WinnerScore = if ($null -ne $calibration) { [int]$calibration.winner_score } else { 0 }
         ScoreGap = if ($null -ne $calibration) { [int]$calibration.score_gap } else { 0 }
         Conflicts = if ($null -ne $calibration) { [int]$calibration.consistency_conflict_count } else { -1 }
@@ -234,7 +248,7 @@ foreach ($plan in $runPlan) {
         HashReturned = $hashReturned
         HashMismatch = $hashMismatch
         SafeContract = $safeContract
-        FailureReason = if ($independentApplied) { '' } elseif ($null -ne $independent) { [string]$independent.reason } else { [string]$comparison.reason }
+        FailureReason = if (-not $independentApplied -and $null -ne $independent) { [string]$independent.reason } elseif ($discriminationRequired -and -not $discriminationApplied -and $null -ne $discrimination) { [string]$discrimination.reason } else { [string]$comparison.reason }
         Seconds = $seconds
     }
     $results += $record
@@ -247,7 +261,7 @@ foreach ($plan in $runPlan) {
     }
 
     $ok = $safeContract -and -not $hashMismatch
-    Write-Host ("[{0}] {1}: winner={2}; score={3}; candidateScores={4}/{5}; confidence={6}; usable={7}; independent={8}; conflicts={9}; {10}s" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $plan.Label, $record.Winner, $record.WinnerScore, $record.ScoreCandidate1, $record.ScoreCandidate2, $record.Confidence, $record.Usable, $record.IndependentApplied, $record.Conflicts, $seconds) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
+    Write-Host ("[{0}] {1}: winner={2}; score={3}; candidateScores={4}/{5}; confidence={6}; usable={7}; independent={8}; discriminator={9}/{10}; conflicts={11}; {12}s" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $plan.Label, $record.Winner, $record.WinnerScore, $record.ScoreCandidate1, $record.ScoreCandidate2, $record.Confidence, $record.Usable, $record.IndependentApplied, $record.DiscriminationApplied, $record.DiscriminationRequired, $record.Conflicts, $seconds) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
     if (-not $ok -and -not [string]::IsNullOrWhiteSpace($record.FailureReason)) { Write-Host ("       reason: {0}" -f $record.FailureReason) -ForegroundColor Yellow }
 }
 
@@ -256,6 +270,7 @@ $winnerUnique = @($winnerValues | Sort-Object -Unique)
 $allRunsHaveWinner = $winnerValues.Count -eq $totalRuns
 $sameWinnerIdentity = $allRunsHaveWinner -and $winnerUnique.Count -eq 1
 $allIndependent = @($results | Where-Object { -not $_.IndependentApplied }).Count -eq 0
+$allDiscriminationRequirementsMet = @($results | Where-Object { $_.DiscriminationRequired -and -not $_.DiscriminationApplied }).Count -eq 0
 $allSafe = @($results | Where-Object { -not $_.SafeContract }).Count -eq 0
 $allUsable = @($results | Where-Object { -not $_.Usable }).Count -eq 0
 $allConflictFree = @($results | Where-Object { $_.Conflicts -ne 0 }).Count -eq 0
@@ -289,7 +304,7 @@ foreach ($templateId in $TemplateIds) {
 $forwardWinners = @($results | Where-Object { $_.Order -eq 'forward' } | ForEach-Object { [string]$_.Winner } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
 $swappedWinners = @($results | Where-Object { $_.Order -eq 'swapped' } | ForEach-Object { [string]$_.Winner } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
 $orderInvariant = $sameWinnerIdentity -and $forwardWinners.Count -eq 1 -and $swappedWinners.Count -eq 1 -and $forwardWinners[0] -eq $swappedWinners[0]
-$preferenceStable = $allIndependent -and $allSafe -and $pageStateStableWhereObserved -and $sameWinnerIdentity -and $orderInvariant -and $allScoreRangesAcceptable
+$preferenceStable = $allIndependent -and $allDiscriminationRequirementsMet -and $allSafe -and $pageStateStableWhereObserved -and $sameWinnerIdentity -and $orderInvariant -and $allScoreRangesAcceptable
 $stableForSelection = $preferenceStable -and $hashEvidenceComplete -and $allUsable -and $allConflictFree
 $stableWinner = if ($sameWinnerIdentity) { [string]$winnerUnique[0] } else { '' }
 
@@ -304,6 +319,7 @@ $rawPath = Join-Path $outDir "aesthetic-ab-independent-stability-$PageId-$target
     runs = $rawRuns
     verdict = [ordered]@{
         independent_scoring_every_run = $allIndependent
+        anchored_discrimination_when_required = $allDiscriminationRequirementsMet
         safe_read_only_contract_every_run = $allSafe
         page_state_hash_evidence_complete = $hashEvidenceComplete
         observed_page_state_hash_mismatch = $observedHashMismatch
@@ -320,7 +336,7 @@ $rawPath = Join-Path $outDir "aesthetic-ab-independent-stability-$PageId-$target
 
 Write-Host ''
 Write-Host '--- Independent stability runs ---' -ForegroundColor Cyan
-$results | Select-Object Run, Order, RequestSlotA, RequestSlotB, Winner, ScoreCandidate1, ScoreCandidate2, Confidence, Usable, IndependentApplied, HashReturned, HashMismatch, Conflicts | Format-Table -AutoSize
+$results | Select-Object Run, Order, RequestSlotA, RequestSlotB, Winner, ScoreCandidate1, ScoreCandidate2, Confidence, Usable, IndependentApplied, DiscriminationRequired, DiscriminationApplied, HashReturned, HashMismatch, Conflicts | Format-Table -AutoSize
 
 Write-Host ''
 Write-Host '--- Score stability by template identity ---' -ForegroundColor Cyan
@@ -331,6 +347,7 @@ Write-Host '--- Independent stability verdict ---' -ForegroundColor Cyan
 [pscustomobject]@{
     TotalRuns = $totalRuns
     IndependentScoringEveryRun = $allIndependent
+    AnchoredDiscriminationWhenRequired = $allDiscriminationRequirementsMet
     SafeReadOnlyContractEveryRun = $allSafe
     PageStateHashEvidenceComplete = $hashEvidenceComplete
     ObservedPageStateHashMismatch = $observedHashMismatch
@@ -353,6 +370,7 @@ if ($stableForSelection) {
 } else {
     Write-Host '[WARN] Independent candidate scoring is not yet stable enough for a future autonomous selection gate.' -ForegroundColor Yellow
     if (-not $allIndependent) { Write-Host ' - One or more runs did not complete the independent one-image scoring method.' }
+    if (-not $allDiscriminationRequirementsMet) { Write-Host ' - Anchored discrimination was required for at least one tie/near-tie but did not complete.' }
     if (-not $allSafe) { Write-Host ' - One or more runs failed the complete calibrated read-only comparison contract.' }
     if ($observedHashMismatch) { Write-Host ' - At least one returned page-state hash actually differed from the grounded context hash.' }
     if (-not $hashEvidenceComplete) { Write-Host ' - One or more failed runs omitted page-state hash evidence; this is not treated as proof that the page changed.' }
