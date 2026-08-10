@@ -1,45 +1,41 @@
 # Design Intelligence status
 
-## Runtime-proven through 0.8.1
+## Current branch
 
-Branch: `fastbuild/design-intelligence`
+`fastbuild/design-intelligence`
 
-Proven on the live Essentials/Pixfort environment:
+## Runtime-proven foundation
 
-- catalogue summary sees 1,133 templates: 983 sections and 150 pages
-- catalogue family names are useful only as advisory naming clues; they are not trusted as proof of visual uniqueness
-- visual probes distinguish materially different compositions, hierarchy, density, imagery treatment, and style
-- read-only template structure inspection works against live Pixfort data
-- 0.7.1 hardening corrects CTA counts, separates interactive widgets from hard dependencies, adds alignment confidence, media hints, and coarse composition families
-- 0.8.0 page design audit works read-only
-- 0.8.1 calibration produces credible advisory signals for isolated palette accents, compact text, CTA style fragmentation, spacing rhythm, typography coverage, and composition rhythm
-- deterministic design findings remain advisory-only; rendered visual inspection is still required for actual hierarchy, whitespace, background media, compositing, and reference similarity
+- 0.7.x catalogue breadth, visual-probe tracking, template-structure inspection, and structural hardening
+- 0.8.x page-level design audit plus calibration for palette usage, typography coverage, spacing rhythm, CTA style tokens, inherited-solid contrast attempts, and composition rhythm
+- 0.9.x read-only real design-control discovery for typography, spacing, alignment, sizing, borders/radius, shadows, backgrounds, colors, responsive scopes, and explicit/global/dynamic classification
+- PHP syntax lint gate is active
+- GPT Builder contract guard enforces <=8000 instruction characters and the compact Action budget
 
-## 0.9.0 — design-controls discovery pending runtime acceptance
+## 0.10.0 — GPT control plane
 
 Implemented:
 
-- read-only `/pages/{id}/design-settings`
-- exact Elementor/Pixfort setting paths for discovered design controls
-- categories: typography, spacing, alignment, sizing, border radius, border, shadow, background, and color
-- explicit vs global vs dynamic source classification
-- responsive-scope classification
-- value-shape and unit reporting
-- future guarded-writer candidate hints without granting write permission
-- filters by category, element, top-level section, responsive scope, offset, and limit
-- GPT Action `getElementizePageDesignSettings`
-- WP Builder instruction to inspect real design controls before attempting substantial normalization
+- new compact `getElementizePageState` action returning layout + lifecycle state together
+- new compact `updateElementizePageState` action for `set_layout`, `trash`, `restore`, `publish`, and `unpublish`
+- new `getElementizePageCompletionAudit` action combining the existing hardened quality audit with the calibrated design audit
+- legacy WordPress REST layout/lifecycle/quality/design endpoints remain available internally and for compatibility; they are no longer separate GPT Action slots
+- canonical core GPT schema reduced to the stable core operations
+- generated GPT schema target is now 24 operations, leaving six slots below the current 30-operation editor ceiling
+- WP Builder instructions use the compact state and completion actions
+- CI rejects regressions above the 24-operation Elementize budget
 
-Runtime gate for 0.9.0:
+## Acceptance gate
 
-1. Verify `getElementizeStatus` reports the 0.9.0 discovery flags.
-2. Run `getElementizePageDesignSettings` on page 952239 and inspect summary/category/source counts.
-3. Inspect typography, spacing, CTA-related, and responsive controls with filters.
-4. Confirm global/dynamic values are classified read-only and that writer candidates are only explicit observed controls.
-5. Only after runtime validation, design a typed guarded writer from proven setting shapes. Do not expose arbitrary Elementor JSON writes.
+After installing 0.10.0 and refreshing the GPT Instructions + Actions Schema:
 
-Later phases:
+1. `getElementizeStatus` should report 0.10.0 and the control-plane flags.
+2. GPT Builder should accept the schema with no 30-operation error.
+3. `getElementizePageState` should return both layout and lifecycle state without modifying the page.
+4. `getElementizePageCompletionAudit` should preserve the hardened quality payload and calibrated design payload.
+5. `getElementizePageDesignSettings` should still expose the real page controls read-only.
+6. Only after those reads pass should a state-mutation smoke test be considered.
 
-- typed guarded design-settings writer with stale-value/hash protection, revisions, verification, rollback, and CSS regeneration
-- rendered-page visual critique for hierarchy, whitespace, balance, imagery/backgrounds, reference similarity, and desktop/mobile quality
-- combine content quality, technical quality, deterministic design audit, and rendered visual critique into the final completion model
+## Next after acceptance
+
+Use the runtime design-settings evidence from page 952239 to design the first typed guarded design writer. Do not expose a raw Elementor JSON writer. Add writer types only for control shapes and exact setting paths that were actually observed and validated.
