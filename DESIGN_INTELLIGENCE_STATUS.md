@@ -4,7 +4,7 @@
 
 `fastbuild/design-intelligence`
 
-Current hardening line: `0.18.0`.
+Current hardening line: `0.19.0`.
 
 ## Runtime-proven foundation
 
@@ -19,6 +19,7 @@ Current hardening line: `0.18.0`.
 - 0.15.1 localization consistency hardening is runtime-proven on page 952239
 - 0.16.0 read-only repair-candidate discovery is runtime-proven on page 952239
 - 0.16.1 semantic repair-actionability hardening is runtime-proven on page 952239
+- 0.18.2 local Chrome DevTools Protocol rendered metrics are runtime-proven on page 952239
 - PHP syntax lint gate is active
 - GPT Builder contract guard enforces <=8000 instruction characters and the compact Action budget
 
@@ -30,11 +31,11 @@ The experimental 0.13.0 Cloudflare Browser Rendering + Workers AI implementation
 
 ## Current visual QA architecture
 
-The rendered loop proven through 0.16.1 is:
+The rendered loop proven through 0.18.2 is:
 
-signed managed draft preview → local Chrome screenshot → local Ollama critique → annotated internal screenshot → consistency-hardened section localization → read-only exact-target repair discovery → semantic candidate grading.
+signed managed draft preview → local Chrome screenshot → local Ollama critique → annotated internal screenshot → consistency-hardened section localization → read-only exact-target repair discovery → semantic candidate grading → loopback-only Chrome DevTools Protocol rendered measurements.
 
-The clean screenshot remains the source for visual judgment. The annotated screenshot is an internal-only locator pass. Neither screenshot is persisted or exposed by the completion-audit response.
+The clean screenshot remains the source for visual judgment. The annotated screenshot is an internal-only locator pass. Neither screenshot is persisted or exposed by the completion-audit response. Rendered DOM measurements are returned as bounded structured evidence only; raw DOM, DevTools endpoints, and signed preview URLs remain internal.
 
 ### Runtime evidence on page 952239
 
@@ -45,6 +46,9 @@ The clean screenshot remains the source for visual judgment. The annotated scree
 - 0.16.0 acceptance returned `available=true`, `read_only=true`, `writes_performed=false`, and `source_hashes_match=true`
 - 0.16.1 acceptance returned `automatic_write_allowed=false` globally, hierarchy spacing/alignment candidates downgraded to `supporting`, and CTA margin downgraded to `weak`
 - the 0.16.1 run returned no `value_planning_ready` candidates, so the system correctly refused to invent an automatic edit
+- 0.18.2 rendered metrics returned `available=true`, `read_only=true`, `writes_performed=false`, `provider=local_chromium_cdp`, `page_ready_state=complete`, `stable_poll_count=4`, `navigation_transient_count=0`, and 10 exact top-level section IDs
+- the rendered measurement pass completed in about 2.23 seconds and returned section geometry, padding/margins, text sizes, CTA computed styles, and media dimensions/source filenames without exposing raw DOM or the CDP endpoint
+- runtime evidence confirms several deterministic style facts that the vision pass only described qualitatively: section S1 renders a purple pill CTA (`rgb(86, 24, 143)`, radius `9999px`), S7 renders a purple radius-10 CTA, and S10 renders a green radius-10 CTA; visible microcopy in S8 renders at 12px; inter-section gaps are 0 while several sections carry substantial internal padding
 
 ## 0.17.x — dump-dom rendered metrics attempt
 
@@ -61,9 +65,9 @@ Runtime result on page 952239:
 
 Conclusion: do not continue stacking DOM-injection workarounds. The dump-dom transport is superseded for rendered repair metrics.
 
-## 0.18.0 — Chrome DevTools Protocol rendered metrics
+## 0.18.x — Chrome DevTools Protocol rendered metrics
 
-Implemented; runtime acceptance pending.
+Runtime-proven at 0.18.2.
 
 - no new GPT Action and no schema/instruction change
 - supersedes the 0.17 dump-dom transport for completion-audit rendered metrics
@@ -71,30 +75,47 @@ Implemented; runtime acceptance pending.
 - discovers the loopback-only DevTools endpoint and signed-preview page target
 - connects directly to the page target over a local WebSocket
 - uses CDP `Runtime.evaluate` with by-value results to measure the live rendered page directly
-- waits briefly for document/font settling before measurement
 - maps rendered top-level sections back to exact Elementor IDs
 - returns section top/bottom/height/width, computed margin/padding, section gaps, background color, bounded text/CTA/media samples, and nearest Elementor IDs
-- disables the old metrics dump-dom callback and its browser-agent injection while 0.18 is loaded
 - DevTools endpoint, signed preview URL, and raw DOM are not exposed
 - temporary browser profile/logs are removed and the browser process is terminated after the read
 - loopback transport only; no external account, API, or paid service
 - action-slot cost remains zero
+- 0.18.1 added synchronous execution-context stability polling and navigation-transient retry after runtime exposed `Execution context was destroyed`
+- 0.18.2 replaced fragile dynamically quoted selectors with safe `data-id` comparisons and surfaced bounded browser exception details; runtime acceptance then passed
 
-Chrome documents headless remote debugging with `--remote-debugging-port=0`, and CDP `Runtime.evaluate` supports evaluating an expression in the inspected page and returning the result by value. This is the correct transport for deterministic live rendered measurements after the dump-dom experiments failed.
+## 0.19.0 — rendered repair evidence correlation
 
-### 0.18.0 runtime acceptance gate
+Implemented; runtime acceptance pending.
 
-On page 952239, call the completion audit with `include_visual=true` and inspect `visual.render_metrics`.
+Goal: join semantic repair discovery with deterministic rendered metrics without granting write authority.
+
+- no new GPT Action and no schema/instruction change
+- completion audit adds `visual.repair_correlation`
+- operates only when both repair discovery and rendered metrics are available
+- re-computes the current Elementor content hash and rejects stale correlation if it differs from the repair-discovery hash
+- indexes rendered text, CTA, media, and top-level section metrics by exact Elementor ID
+- attaches candidate-level rendered evidence for exact spacing, typography, border-radius, color, and media properties when measurable
+- distinguishes `exact_element`, `exact_top_level`, `section_context_only`, and `none`
+- distinguishes `supported`, `context_only`, `exact_element_but_property_unmeasured`, `section_context_only`, and `unmeasured` causal support
+- finding-level evidence summarizes section geometry, internal padding versus inter-section gaps, typography ranges/microtext, CTA style signatures, and media samples where relevant
+- a candidate may become `bounded_value_planning_ready=true` only if it was already semantically direct, its exact affected rendered property is measured, it is a reversible design spacing/typography control, and it is base-scope
+- all candidates still return `automatic_write_allowed=false`
+
+### 0.19.0 runtime acceptance gate
+
+On page 952239, call the completion audit with `include_visual=true` and inspect `visual.repair_correlation`.
 
 Acceptance requires:
 
-1. `render_metrics_version=0.18.0`, `provider=local_chromium_cdp`, `available=true`, `read_only=true`, and `writes_performed=false`.
-2. `section_count` is non-zero and sections carry exact `top_level_element_id` values matching the page.
-3. Section geometry and computed padding/margin/gap evidence are populated.
-4. At least some visible text/CTA/media samples carry nearest Elementor IDs plus rendered metrics.
-5. `signed_preview_url_exposed=false`, `cdp_endpoint_exposed=false`, `raw_dom_exposed=false`, and `raw_dom_persisted=false`.
-6. No page mutation occurs and the page remains a draft.
+1. `correlation_version=0.19.0`, `available=true`, `read_only=true`, `writes_performed=false`, and `automatic_write_allowed=false`.
+2. `repair_discovery_hash_matches_current=true`.
+3. localized findings include `rendered_finding_evidence` from the same exact top-level IDs.
+4. candidate correlations report only real exact-element/top-level evidence; section-only evidence must not be upgraded to causal support.
+5. semantically weak/supporting candidates remain blocked even if nearby rendered measurements exist.
+6. only an exact, semantically direct, base-scope reversible spacing/typography candidate may report `bounded_value_planning_ready=true`.
+7. no mutation occurs.
 
 ## Next phase
 
-After 0.18.0 is runtime-proven, join rendered metrics with semantic repair discovery. Upgrade a candidate to a direct bounded repair target only when rendered evidence shows that the exact control plausibly causes the exact visual finding. Only then add conservative value planning and one-change reversible experiments followed by fresh screenshot comparison. Media replacement, CTA normalization, and broader style changes remain later phases until their reference/asset selection is separately proven.
+After 0.19.0 is runtime-proven, add conservative bounded value planning for one exact reversible spacing/typography control. Planning must derive a small bounded delta from the current guarded value plus rendered evidence, never invent a style wholesale, and still perform no write by itself. The first actual repair experiment must be a separate one-change guarded write followed immediately by fresh screenshot/metrics comparison and automatic rollback if the measured/visual result regresses or the verification contract fails. Media replacement, CTA normalization, and broader style changes remain later phases until their reference/asset selection is separately proven.
