@@ -9,6 +9,7 @@ final class Elementize_Onboarding {
     public static function init(): void {
         add_action( 'admin_menu', [ self::class, 'menu' ] );
         add_action( 'admin_init', [ self::class, 'maybe_redirect_after_activation' ] );
+        add_action( 'admin_enqueue_scripts', [ self::class, 'enqueue_assets' ] );
         add_action( 'admin_post_elementize_save_connection', [ self::class, 'save_connection' ] );
         add_action( 'wp_ajax_elementize_generate_connection_key', [ self::class, 'generate_key' ] );
     }
@@ -30,6 +31,34 @@ final class Elementize_Onboarding {
 
     public static function menu(): void {
         add_menu_page( 'Elementize', 'Elementize', 'manage_options', self::SLUG, [ self::class, 'render' ], 'dashicons-edit-page', 58 );
+    }
+
+    public static function enqueue_assets( string $hook ): void {
+        if ( 'toplevel_page_' . self::SLUG !== $hook || ! current_user_can( 'manage_options' ) ) return;
+        if ( ! self::frontend_assets_ready() ) return;
+
+        $css_path = trailingslashit( ELEMENTIZE_DIR ) . 'assets/admin/elementize-admin.css';
+        $js_path = trailingslashit( ELEMENTIZE_DIR ) . 'assets/admin/elementize-admin.js';
+        $base_url = trailingslashit( plugin_dir_url( ELEMENTIZE_FILE ) );
+
+        wp_enqueue_style(
+            'elementize-admin',
+            $base_url . 'assets/admin/elementize-admin.css',
+            [],
+            (string) filemtime( $css_path )
+        );
+        wp_enqueue_script(
+            'elementize-admin',
+            $base_url . 'assets/admin/elementize-admin.js',
+            [],
+            (string) filemtime( $js_path ),
+            true
+        );
+        wp_add_inline_script(
+            'elementize-admin',
+            'window.ElementizeAdminConfig = ' . wp_json_encode( self::frontend_config() ) . ';',
+            'before'
+        );
     }
 
     public static function save_connection(): void {
@@ -75,6 +104,11 @@ final class Elementize_Onboarding {
 
     public static function render(): void {
         if ( ! current_user_can( 'manage_options' ) ) return;
+        if ( self::frontend_assets_ready() ) {
+            echo '<div id="elementize-admin-root"></div>';
+            return;
+        }
+
         $env = self::environment();
         $requirements = self::requirements();
         $instructions = self::read_config_file( 'gpt/wp-builder-instructions.md' );
@@ -155,6 +189,56 @@ final class Elementize_Onboarding {
         })();
         </script>
         <?php
+    }
+
+    private static function frontend_assets_ready(): bool {
+        return is_readable( trailingslashit( ELEMENTIZE_DIR ) . 'assets/admin/elementize-admin.css' )
+            && is_readable( trailingslashit( ELEMENTIZE_DIR ) . 'assets/admin/elementize-admin.js' );
+    }
+
+    private static function frontend_config(): array {
+        $env = self::environment();
+        $requirements = self::requirements();
+        $instructions = self::read_config_file( 'gpt/wp-builder-instructions.md' );
+        $schema = $env['connection_ready'] ? self::schema( $env['effective_origin'] ) : '';
+        $materials_ready = '' !== $instructions && '' !== $schema;
+        $notice = isset( $_GET['elementize_notice'] ) ? sanitize_key( wp_unslash( $_GET['elementize_notice'] ) ) : '';
+        $all_ready = $requirements['elementor'] && $requirements['pixfort'] && $requirements['revisions'] && $requirements['application_passwords'] && $env['connection_ready'] && $materials_ready;
+
+        return [
+            'version' => defined( 'ELEMENTIZE_VERSION' ) ? ELEMENTIZE_VERSION : '',
+            'requirements' => [
+                'elementor' => (bool) $requirements['elementor'],
+                'elementorDetail' => (string) $requirements['elementor_detail'],
+                'pixfort' => (bool) $requirements['pixfort'],
+                'pixfortDetail' => (string) $requirements['pixfort_detail'],
+                'revisions' => (bool) $requirements['revisions'],
+                'applicationPasswords' => (bool) $requirements['application_passwords'],
+            ],
+            'environment' => [
+                'siteOrigin' => (string) $env['site_origin'],
+                'sitePublicHttps' => (bool) $env['site_public_https'],
+                'storedPublic' => (string) $env['stored_public'],
+                'effectiveOrigin' => (string) $env['effective_origin'],
+                'connectionReady' => (bool) $env['connection_ready'],
+            ],
+            'materialsReady' => $materials_ready,
+            'allReady' => $all_ready,
+            'instructions' => $instructions,
+            'schema' => $schema,
+            'notice' => $notice,
+            'testPrompt' => 'Call getElementizeStatus and show me the full raw result.',
+            'urls' => [
+                'gptBuilder' => 'https://chatgpt.com/gpts/editor',
+                'ajax' => admin_url( 'admin-ajax.php' ),
+                'adminPost' => admin_url( 'admin-post.php' ),
+                'setup' => admin_url( 'admin.php?page=' . self::SLUG ),
+            ],
+            'nonces' => [
+                'generateKey' => wp_create_nonce( 'elementize_onboarding' ),
+                'saveConnection' => wp_create_nonce( 'elementize_save_connection' ),
+            ],
+        ];
     }
 
     private static function requirement_card( string $label, bool $ok, string $detail ): void {
