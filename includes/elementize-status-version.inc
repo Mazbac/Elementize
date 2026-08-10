@@ -12,6 +12,8 @@ require_once __DIR__ . '/elementize-aesthetic-ab-intensity-plateau-hardening.inc
 require_once __DIR__ . '/elementize-aesthetic-ab-judgment-calibration.inc';
 require_once __DIR__ . '/elementize-aesthetic-semantic-shortlist.inc';
 require_once __DIR__ . '/elementize-aesthetic-semantic-shortlist-hardening.inc';
+require_once __DIR__ . '/elementize-aesthetic-semantic-shortlist-evidence-cache.inc';
+require_once __DIR__ . '/elementize-aesthetic-semantic-visual-tie-resolution.inc';
 
 final class Elementize_Status_Version {
     private const NS = 'elementize/v1';
@@ -28,6 +30,8 @@ final class Elementize_Status_Version {
         if ( class_exists( 'Elementize_Aesthetic_AB_Judgment_Calibration', false ) ) Elementize_Aesthetic_AB_Judgment_Calibration::init();
         if ( class_exists( 'Elementize_Aesthetic_Semantic_Shortlist', false ) ) Elementize_Aesthetic_Semantic_Shortlist::init();
         if ( class_exists( 'Elementize_Aesthetic_Semantic_Shortlist_Hardening', false ) ) Elementize_Aesthetic_Semantic_Shortlist_Hardening::init();
+        if ( class_exists( 'Elementize_Aesthetic_Semantic_Shortlist_Evidence_Cache', false ) ) Elementize_Aesthetic_Semantic_Shortlist_Evidence_Cache::init();
+        if ( class_exists( 'Elementize_Aesthetic_Semantic_Visual_Tie_Resolution', false ) ) Elementize_Aesthetic_Semantic_Visual_Tie_Resolution::init();
         // Run after all feature status decorators so older module version constants
         // cannot overwrite the actual installed plugin version.
         add_filter( 'rest_request_after_callbacks', [ self::class, 'after_rest' ], 1000, 3 );
