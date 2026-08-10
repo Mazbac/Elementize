@@ -1,12 +1,18 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': resolve(root, 'src'),
+    },
+  },
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
