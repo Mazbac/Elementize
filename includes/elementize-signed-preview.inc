@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Signed_Preview {
-    private const VERSION = '0.12.0';
+    private const VERSION = '0.12.1';
     private const NS = 'elementize/v1';
     private const META_MANAGED = '_elementize_managed';
     private const OPT_PUBLIC = 'elementize_public_api_origin';
@@ -40,6 +40,7 @@ final class Elementize_Signed_Preview {
             'ttl_seconds' => self::TTL,
             'content_hash_bound' => true,
             'no_store' => true,
+            'private_network_hardening' => true,
         ];
         if ( ! $managed ) $preview['reason'] = 'Signed visual previews are available only for Elementize-managed draft pages.';
         elseif ( '' === $hash ) $preview['reason'] = 'A current Elementor content hash is required before a signed preview can be issued.';
@@ -111,9 +112,9 @@ final class Elementize_Signed_Preview {
     }
 
     private static function content_hash( int $id ): string {
-        if ( class_exists( '\Elementor\Plugin' ) ) {
+        if ( class_exists( '\\Elementor\\Plugin' ) ) {
             try {
-                $doc = \Elementor\Plugin::$instance->documents->get( $id );
+                $doc = \\Elementor\\Plugin::$instance->documents->get( $id );
                 $elements = $doc ? $doc->get_elements_data() : null;
                 if ( is_array( $elements ) ) {
                     $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
@@ -160,14 +161,30 @@ final class Elementize_Signed_Preview {
         return self::preview_requested() ? false : $redirect_url;
     }
 
+    private static function replacements( string $old, string $public ): array {
+        $pairs = [
+            $old => $public,
+            str_replace( '/', '\\/', $old ) => str_replace( '/', '\\/', $public ),
+            rawurlencode( $old ) => rawurlencode( $public ),
+            str_replace( '/', '\\u002F', $old ) => str_replace( '/', '\\u002F', $public ),
+        ];
+        $parts = wp_parse_url( $old );
+        $host = is_array( $parts ) ? strtolower( (string) ( $parts['host'] ?? '' ) ) : '';
+        if ( '' !== $host ) {
+            foreach ( [ 'http://' . $host, 'https://' . $host, '//' . $host ] as $variant ) $pairs[$variant] = $public;
+            foreach ( [ 'http:\\/\\/' . $host, 'https:\\/\\/' . $host, '\\/\\/' . $host ] as $variant ) $pairs[$variant] = str_replace( '/', '\\/', $public );
+            foreach ( [ rawurlencode( 'http://' . $host ), rawurlencode( 'https://' . $host ) ] as $variant ) $pairs[$variant] = rawurlencode( $public );
+            foreach ( [ 'http:\\u002F\\u002F' . $host, 'https:\\u002F\\u002F' . $host ] as $variant ) $pairs[$variant] = str_replace( '/', '\\u002F', $public );
+        }
+        return $pairs;
+    }
+
     public static function rewrite_public_origin( string $html ): string {
         $public = self::public_origin();
         if ( '' === $public || '' === $html ) return $html;
         $old = array_values( array_unique( array_filter( [ untrailingslashit( (string) get_option( 'home', '' ) ), untrailingslashit( (string) get_option( 'siteurl', '' ) ) ] ) ) );
         foreach ( $old as $origin ) {
-            if ( $origin === $public ) continue;
-            $html = str_replace( $origin, $public, $html );
-            $html = str_replace( str_replace( '/', '\\/', $origin ), str_replace( '/', '\\/', $public ), $html );
+            foreach ( self::replacements( $origin, $public ) as $needle => $replacement ) $html = str_replace( $needle, $replacement, $html );
         }
         if ( ! $old || false === stripos( $html, '</body>' ) ) return $html;
 
@@ -185,6 +202,7 @@ final class Elementize_Signed_Preview {
         $data['signed_visual_preview_content_hash_bound'] = true;
         $data['signed_visual_preview_no_store'] = true;
         $data['signed_visual_preview_public_origin_rewrite'] = true;
+        $data['signed_visual_preview_private_network_hardening'] = true;
         $data['signed_visual_preview_action_slot_cost'] = 0;
         $data['automatic_visual_screenshot_capture'] = false;
         $response->set_data( $data );
