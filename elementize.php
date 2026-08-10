@@ -70,6 +70,7 @@ require_once __DIR__ . '/includes/elementize-section-convergence-backstop.inc';
 require_once __DIR__ . '/includes/elementize-section-convergence-backstop-hardening.inc';
 require_once __DIR__ . '/includes/elementize-converged-bounded-repair-planning.inc';
 require_once __DIR__ . '/includes/elementize-aesthetic-brain.inc';
+require_once __DIR__ . '/includes/elementize-aesthetic-brain-hardening.inc';
 require_once __DIR__ . '/includes/elementize-status-version.inc';
 
 Elementize_Visual_Writes::init();
@@ -126,4 +127,5 @@ Elementize_Section_Convergence_Backstop::init();
 Elementize_Section_Convergence_Backstop_Hardening::init();
 Elementize_Converged_Bounded_Repair_Planning::init();
 Elementize_Aesthetic_Brain::init();
+Elementize_Aesthetic_Brain_Hardening::init();
 Elementize_Status_Version::init();
