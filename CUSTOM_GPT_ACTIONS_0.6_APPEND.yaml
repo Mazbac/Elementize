@@ -113,12 +113,12 @@
     get:
       operationId: getElementizePageCompletionAudit
       summary: Run content, technical, link, proof, design, and optional rendered visual audits together
-      description: Compact GPT-facing completion gate. Set include_visual=true only when rendered visual critique is useful; it is advisory and may incur configured external rendering/AI usage.
+      description: Compact GPT-facing completion gate. Set include_visual=true only when useful. Rendered visual critique uses free local browser capture plus a local Ollama vision model; it is advisory and requires no paid API or external account.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: include_visual, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
-        '200': { description: Combined quality/design audit and optional rendered visual critique }
+        '200': { description: Combined quality/design audit and optional local rendered visual critique }
 
   /wp-json/elementize/v1/pages/{id}/design-settings:
     get:
