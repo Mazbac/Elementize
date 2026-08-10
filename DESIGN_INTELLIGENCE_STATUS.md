@@ -11,6 +11,7 @@
 - 0.9.x read-only real design-control discovery for typography, spacing, alignment, sizing, borders/radius, shadows, backgrounds, colors, responsive scopes, and explicit/global/dynamic classification
 - 0.10.x compact GPT control plane plus GPT-safe design-settings response budgeting
 - 0.11.1 guarded typed design writer is runtime-proven for an exact reversible spacing write on managed draft page 952239
+- 0.12.1 short-lived signed remote rendering is runtime-proven on page 952239, including anonymous incognito rendering without local-network permission prompts
 - PHP syntax lint gate is active
 - GPT Builder contract guard enforces <=8000 instruction characters and the compact Action budget
 
@@ -54,53 +55,69 @@ Runtime acceptance on page 952239:
 
 This proves the first general-purpose design-control read → guarded write → verify → fresh read → guarded restore → verify loop.
 
-## 0.12.0 — Signed rendered-preview foundation
+## 0.12.1 — Signed rendered preview
 
-Implemented; runtime acceptance pending:
+Implemented and runtime-proven:
 
-- `getElementizePageState` now receives a `visual_preview` object for eligible managed drafts without consuming another GPT Action slot
+- `getElementizePageState` returns a `visual_preview` object for eligible managed drafts without consuming another GPT Action slot
 - preview URLs are short-lived (10 minutes), HMAC-signed, tied to the exact current Elementor content hash, and invalidated by edits
 - only Elementize-managed draft pages are eligible
 - preview responses send no-store/no-cache and noindex/nofollow/noarchive headers
 - invalid, expired, stale, unmanaged, or non-draft preview requests fail closed
-- the configured public Elementize HTTPS origin is used so local WordPress sites can be previewed through the existing tunnel
-- rendered HTML rewrites local home/site origins to the public origin; a small same-origin CSSOM pass also repairs local absolute asset references that remain in loaded stylesheets
+- the configured public Elementize HTTPS origin is used so local WordPress sites can render through the existing public tunnel
+- rendered output rewrites local WordPress origins, including escaped/encoded variants, to the public origin
 - canonical redirects are suppressed only for signed preview requests
-- automatic screenshot capture is explicitly **not** claimed yet; this release establishes private remote rendering first
-- WP Builder instructions require truthful visual behavior: inspect the signed preview only if the runtime can actually see rendered visuals; otherwise request a screenshot instead of inferring appearance from HTML or the URL
+- WP Builder may expose a signed preview URL only when the user explicitly requests the current URL for manual preview testing
 
-### 0.12 runtime acceptance gate
+Runtime acceptance on page 952239:
 
-On managed draft page 952239:
+1. `getElementizePageState` returned `visual_preview.available=true` and a signed HTTPS URL.
+2. The URL rendered the managed draft in an incognito browser without WordPress authentication.
+3. Elementor/Pixfort styling and dominant imagery rendered through the tunnel.
+4. The initial 0.12.0 render exposed a browser private-network/local-device permission prompt, proving some origin variants still pointed local.
+5. 0.12.1 added broader origin rewriting and reported `signed_visual_preview_private_network_hardening=true`.
+6. A fresh 0.12.1 signed preview then opened directly in incognito with no local-network/device permission prompt.
 
-1. `getElementizeStatus` reports 0.12.0 and signed-preview capability flags.
-2. `getElementizePageState` returns `visual_preview.available=true`, a short expiry, and a signed public HTTPS URL.
-3. Opening that URL in a browser session that is **not logged into WordPress** renders the draft successfully.
-4. Dominant images, Elementor/Pixfort CSS, fonts, and background assets load through the public origin rather than `mijn-ibp.local`.
-5. The response is no-store/noindex and does not expose WordPress authentication.
-6. After any Elementor change, the old signed URL fails as stale; a fresh state read issues a new working URL.
-7. After expiry, the URL fails closed.
-
-Do not call 0.12 rendered-preview support runtime-proven until these checks pass.
+This proves secure anonymous remote rendering sufficiently for the next headless-capture acceptance test. Expiry/stale-link behavior remains protected by the implemented guards and can receive additional destructive-free spot checks later.
 
 ## Visual acceptance specimen
 
-The full-page screenshot of page 952239 is intentionally useful as the first visual-evaluation specimen. Human inspection found issues that deterministic audits underweighted: excessive vertical whitespace, underscaled typography, weak hierarchy after the hero, inconsistent section widths, off-topic/inconsistent imagery, fragmented CTA styling, and disconnected section rhythm. Future rendered evaluation should surface these classes of problems without pretending subjective preferences are deterministic facts.
+Page 952239 remains the first rendered-design acceptance specimen. Human inspection found issues that deterministic audits underweighted: excessive vertical whitespace, underscaled typography, weak hierarchy after the hero, inconsistent section widths, off-topic/inconsistent imagery, fragmented CTA styling, and disconnected section rhythm. Automatic rendered critique should surface these classes of problems without pretending subjective preferences are deterministic facts.
+
+## 0.13.0 — Opt-in automatic screenshot + visual critique
+
+Implemented; runtime acceptance pending:
+
+- no new GPT operation is added; `getElementizePageCompletionAudit` gains optional `include_visual=true`
+- normal completion audits remain local/read-only and do not call external rendering/AI unless visual critique is explicitly requested
+- a fresh signed preview is issued internally and never returned in the visual-audit payload
+- Cloudflare Browser Rendering captures a bounded full-page JPEG from the signed preview
+- screenshot bytes are kept in memory only, bounded to 8 MB, hashed, and discarded after analysis
+- Cloudflare Workers AI receives the screenshot for a structured advisory design critique
+- default model is `@cf/google/gemma-4-26b-a4b-it`, with an optional wp-config model override
+- returned critique covers hierarchy, spacing/rhythm, typography legibility, visual cohesion, imagery relevance, CTA consistency, and section balance
+- findings are advisory-only and never become design blockers by default
+- provider/account credentials are read only from wp-config constants and are never returned by status or audit responses
+- missing provider configuration degrades to `visual.available=false` without breaking the existing quality/design audit
+- screenshot bytes/base64 are never returned to GPT and are not persisted
+- `VISUAL_AUDIT_SETUP.md` documents configuration and the runtime acceptance flow
+
+### 0.13 runtime acceptance gate
+
+On page 952239:
+
+1. Install 0.13.0 and verify status reports `rendered_visual_audit=true`.
+2. Before credentials are configured, verify `rendered_visual_audit_configured=false` and a normal completion audit still works unchanged.
+3. Configure Cloudflare account ID/token outside chat/source control and verify status changes to configured=true.
+4. Refresh the GPT Actions schema so `include_visual` is available on `getElementizePageCompletionAudit`.
+5. Call the completion audit with `include_visual=true`.
+6. Verify `visual.screenshot.captured=true`, bounded screenshot metadata is returned, and no signed URL or screenshot bytes are exposed.
+7. Verify `visual.available=true` and the structured critique identifies multiple obvious specimen issues such as whitespace/rhythm, underscaled text, imagery relevance/cohesion, or CTA/style fragmentation.
+8. Compare the critique against the human screenshot review before trusting it for autonomous corrections.
+9. Only after visual critique is credible should WP Builder use supported guarded writers to fix high-confidence findings and re-run the visual audit.
 
 ## Current completion state
 
-Design Intelligence has runtime proof for:
+Design Intelligence now has runtime proof for catalogue exploration, visual template inspection, structural inspection, deterministic design audit, real design-control discovery, the compact GPT control plane, guarded typed design writes, and secure signed remote draft rendering.
 
-- broad catalogue exploration signals
-- visual template inspection
-- template structural inspection
-- calibrated deterministic page design audit
-- exact real design-control discovery
-- compact GPT control plane
-- guarded typed design-setting writes
-
-The deterministic design audit remains advisory-only until stronger rendered evidence and more runtime calibration justify design blockers.
-
-## Next after 0.12 preview acceptance
-
-Determine the safest route to automatic screenshot evidence. Prefer capability detection and a bounded local/headless renderer if the WordPress environment can support one safely; otherwise keep the signed preview plus user-supplied screenshot workflow. Do not add an external screenshot service or make drafts public by default. Rendered critique remains advisory initially.
+Automatic screenshot capture and visual critique are implemented but not yet runtime-proven. The deterministic and rendered design audits remain advisory-only.
