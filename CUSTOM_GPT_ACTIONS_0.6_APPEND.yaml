@@ -123,7 +123,7 @@
     get:
       operationId: getElementizePageDesignSettings
       summary: Discover real Elementor and Pixfort design controls on a page
-      description: Read-only. Use before broader design editing to inspect exact style-setting paths, explicit/global/dynamic sources, responsive scopes, and future writer candidates.
+      description: Read-only. Use before broader design editing to inspect exact style-setting paths, explicit/global/dynamic sources, responsive scopes, and writer candidates.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: category, in: query, required: false, schema: { type: string, enum: [typography, spacing, alignment, sizing, border_radius, border, shadow, background, color] } }
@@ -132,8 +132,54 @@
         - { name: responsive_scope, in: query, required: false, schema: { type: string } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 300, default: 100 } }
+        - { name: compact, in: query, required: false, schema: { type: boolean, default: true } }
+        - { name: summary_only, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200': { description: Read-only discovered design controls with exact paths, values, sources, responsive scopes, and writer-candidate hints }
+    post:
+      operationId: updateElementizePageDesignSettings
+      summary: Guardedly update proven typography, spacing, alignment, or border-radius controls
+      description: Managed drafts only. Read design settings immediately first, then use exact fresh page identity/hash, element/path, expected value, and control fingerprint. Global/dynamic and complex composited controls are blocked.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, content_hash, updates, confirm_design_write]
+              properties:
+                expected_status: { type: string, enum: [draft] }
+                expected_title: { type: string }
+                content_hash: { type: string }
+                updates:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [category, element_id, setting_path, expected_value, value, control_fingerprint]
+                    properties:
+                      category: { type: string, enum: [spacing, alignment, typography, border_radius] }
+                      element_id: { type: string }
+                      setting_path:
+                        type: array
+                        minItems: 1
+                        items:
+                          anyOf:
+                            - { type: string }
+                            - { type: integer }
+                      expected_value: {}
+                      value: {}
+                      control_fingerprint: { type: string }
+                confirm_design_write: { type: boolean, enum: [true] }
+      responses:
+        '200': { description: Guarded design-setting update saved and verified }
+        '400': { description: Unsupported design target/value or missing confirmation }
+        '409': { description: Page identity, content, target fingerprint, or expected value changed }
 
   /wp-json/elementize/v1/pixfort/catalogue-summary:
     get:
