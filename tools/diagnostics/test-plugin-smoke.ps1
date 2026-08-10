@@ -89,10 +89,7 @@ try {
         throw 'Status did not expose elementize_version.'
     }
 
-    Write-Host ("[PASS] Elementize loaded: {0}" -f $status.elementize_version) -ForegroundColor Green
-    Write-Host ("[PASS] Status endpoint: HTTP {0}" -f $httpCode) -ForegroundColor Green
-
-    $signals = [ordered]@{
+    $signals = [pscustomobject][ordered]@{
         StatusVersionSource = [string]$status.elementize_status_version_source
         StatusFinalizedLast = [bool]$status.elementize_status_version_finalized_last
         IndependentScoring = [string]$status.aesthetic_ab_independent_scoring_version
@@ -102,9 +99,18 @@ try {
         AutomaticWriteAllowed = [bool]$status.aesthetic_semantic_shortlist_automatic_write_allowed
     }
 
+    if ([string]::IsNullOrWhiteSpace($signals.StatusVersionSource)) { throw 'Status version finalizer did not load.' }
+    if (-not $signals.StatusFinalizedLast) { throw 'Status finalizer is not running last.' }
+    if ([string]::IsNullOrWhiteSpace($signals.IndependentScoring)) { throw 'Independent scoring module did not load.' }
+    if ([string]::IsNullOrWhiteSpace($signals.AnchoredDiscrimination)) { throw 'Anchored discrimination module did not load.' }
+    if ([string]::IsNullOrWhiteSpace($signals.MultiSampleConsensus)) { throw 'Multi-sample consensus module did not load.' }
+    if ([string]::IsNullOrWhiteSpace($signals.SemanticShortlist)) { throw 'Semantic shortlist module did not load.' }
+    if ($signals.AutomaticWriteAllowed) { throw 'Semantic shortlist unexpectedly reports automatic writes allowed.' }
+
+    Write-Host ("[PASS] Elementize loaded: {0}" -f $status.elementize_version) -ForegroundColor Green
+    Write-Host ("[PASS] Status endpoint: HTTP {0}" -f $httpCode) -ForegroundColor Green
     Write-Host ''
-    $signals | Format-Table -AutoSize
-    Write-Host ''
+    $signals | Format-List
     Write-Host '[PASS] Bootstrap smoke test completed. No write endpoint was called.' -ForegroundColor Green
 }
 finally {
