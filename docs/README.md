@@ -1,6 +1,9 @@
 # Documentation map
 
-This directory contains non-runtime documentation. Current operational files stay at the repository root.
+This directory contains project and non-runtime documentation.
+
+## `project/`
+Current project state and durable technical findings.
 
 ## `architecture/`
 Current design and system architecture documents.
@@ -14,10 +17,5 @@ Runtime milestones, superseded setup notes, and dated status snapshots. These ar
 ## `archive/`
 Old generated/configuration artifacts retained for reference only.
 
-## Root documents
-
-- `../PROJECT.md` — active project state and backlog.
-- `../DISCOVERY.md` — durable technical findings.
-- `../AGENTS.md` — AI-assisted development rules.
-- `../WP_BUILDER_INSTRUCTIONS.md` — active GPT instructions.
-- `../CUSTOM_GPT_ACTIONS.openapi.yaml` — active GPT Actions schema.
+Active Custom GPT configuration lives under `../config/gpt/`.
+Repository operating rules remain at `../AGENTS.md` so coding agents can discover them automatically.

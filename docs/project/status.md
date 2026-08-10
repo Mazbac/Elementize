@@ -64,10 +64,10 @@ Do not lower the visual quality floor merely to force a recommendation.
 
 Purpose:
 - make repository structure understandable;
-- separate active docs from history/archive;
-- group local harnesses by purpose;
-- reduce the plugin entry point to a bootstrap include;
-- map runtime modules before any risky physical PHP reorganization.
+- keep the root limited to true repository/plugin entry files;
+- separate current project docs, configuration, history, and local harnesses;
+- map runtime modules before the physical PHP module-tree refactor;
+- preserve exact runtime behavior while cleaning structure.
 
 ## Next milestones
 
@@ -96,10 +96,11 @@ Purpose:
 
 ## Working documents
 
-- `PROJECT.md` — this current project/roadmap snapshot.
-- `DISCOVERY.md` — durable integration/runtime findings.
+- `docs/project/status.md` — this current project/roadmap snapshot.
+- `docs/project/discovery.md` — durable integration/runtime findings.
 - `docs/architecture/design-intelligence.md` — design-intelligence architecture and principles.
 - `docs/history/` — superseded status/project snapshots and accepted milestone records.
+- `config/gpt/` — active GPT instructions and OpenAPI material.
 - `AGENTS.md` — repository operating rules.
 
 ## Progress convention

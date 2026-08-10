@@ -9,8 +9,8 @@ Always follow `docs/process/fast-build-os.md`.
 ## Before meaningful work
 
 Read, in this order:
-1. `PROJECT.md`
-2. `DISCOVERY.md`
+1. `docs/project/status.md`
+2. `docs/project/discovery.md`
 3. `docs/process/fast-build-os.md`
 4. this file
 5. relevant current code, tests, and recent related changes
@@ -42,7 +42,7 @@ For unfamiliar integrations or unclear behavior:
 - research authoritative documentation first;
 - inspect relevant existing implementation/code when useful;
 - distinguish verified facts, observed behavior, inference, and unknowns;
-- record durable findings in `DISCOVERY.md`;
+- record durable findings in `docs/project/discovery.md`;
 - never fabricate environment details, APIs, payloads, file structures, errors, or test results.
 
 When the human supplies screenshots, logs, traces, HAR/network data, or errors, analyze the actual evidence before proposing changes.
@@ -127,7 +127,7 @@ A task is complete when:
 - acceptance conditions for the current objective are met;
 - required existing behavior remains intact;
 - the implementation did not silently expand scope;
-- important discoveries were persisted in `DISCOVERY.md` or `PROJECT.md`;
+- important discoveries were persisted in `docs/project/discovery.md` or `docs/project/status.md`;
 - the current working state is recoverable.
 
 Once V0.1 is useful, stop building optional features and let real use determine what comes next.

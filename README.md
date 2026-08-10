@@ -5,15 +5,11 @@ Elementize is a guarded WordPress/Elementor/Pixfort design and page-building eng
 ## Repository layout
 
 - `elementize.php` — WordPress plugin entry point.
-- `includes/` — runtime PHP modules. See `includes/README.md` for the module map.
-- `tools/` — local acceptance, diagnostics, visual, and repair harnesses. See `tools/README.md`.
-- `docs/` — architecture, process, historical milestones, and archived material.
-- `PROJECT.md` — active project outcome, constraints, and backlog.
-- `DISCOVERY.md` — durable technical findings from source/runtime investigation.
+- `includes/` — runtime PHP modules. This will be the next cleanup target after local smoke verification.
+- `config/` — non-runtime configuration and agent integration material.
+- `tools/` — local diagnostics, visual, repair, and acceptance harnesses.
+- `docs/` — active project notes, architecture, process, history, and archives.
 - `AGENTS.md` — repository operating rules for AI-assisted development.
-- `WP_BUILDER_INSTRUCTIONS.md` — current Custom GPT operating instructions.
-- `CUSTOM_GPT_ACTIONS.openapi.yaml` — current GPT Actions schema.
-- `CUSTOM_GPT_ACTIONS_0.6_APPEND.yaml` — current schema extension consumed by CI when required.
 
 ## Development principles
 
@@ -26,18 +22,17 @@ Elementize is a guarded WordPress/Elementor/Pixfort design and page-building eng
 
 ## Validation
 
-GitHub Actions run PHP/INC syntax linting and the GPT Builder contract on branch pushes and pull requests.
+GitHub Actions run PHP/INC syntax linting and the GPT Builder contract on every branch push and pull request.
 
-Local acceptance harnesses are grouped under `tools/` by purpose.
+Local harnesses are grouped under `tools/` by purpose.
 
-## Documentation
+## Start here
 
-Start with:
-
-1. `PROJECT.md`
-2. `DISCOVERY.md`
+1. `docs/project/status.md`
+2. `docs/project/discovery.md`
 3. `docs/architecture/design-intelligence.md`
 4. `docs/process/fast-build-os.md`
 5. `AGENTS.md`
 
+Custom GPT configuration lives under `config/gpt/`.
 Historical status snapshots and superseded setup notes live under `docs/history/` and must not be treated as current runtime truth.

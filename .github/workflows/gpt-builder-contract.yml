@@ -16,17 +16,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          instruction_chars=$(wc -m < WP_BUILDER_INSTRUCTIONS.md | tr -d ' ')
+          instructions="config/gpt/wp-builder-instructions.md"
+          schema="config/gpt/actions.openapi.yaml"
+          append_schema="config/gpt/actions-append.openapi.yaml"
+
+          instruction_chars=$(wc -m < "$instructions" | tr -d ' ')
           echo "WP Builder instruction characters: ${instruction_chars}/8000"
           if [ "$instruction_chars" -gt 8000 ]; then
-            echo "WP_BUILDER_INSTRUCTIONS.md exceeds ChatGPT's 8000-character instruction limit."
+            echo "$instructions exceeds ChatGPT's 8000-character instruction limit."
             exit 1
           fi
 
-          cp CUSTOM_GPT_ACTIONS.openapi.yaml /tmp/elementize-generated-schema.yaml
-          if ! grep -q 'operationId: getElementizePageCompletionAudit' CUSTOM_GPT_ACTIONS.openapi.yaml; then
+          cp "$schema" /tmp/elementize-generated-schema.yaml
+          if ! grep -q 'operationId: getElementizePageCompletionAudit' "$schema"; then
             printf '\n' >> /tmp/elementize-generated-schema.yaml
-            cat CUSTOM_GPT_ACTIONS_0.6_APPEND.yaml >> /tmp/elementize-generated-schema.yaml
+            cat "$append_schema" >> /tmp/elementize-generated-schema.yaml
           fi
 
           operation_count=$(grep -c 'operationId:' /tmp/elementize-generated-schema.yaml || true)
