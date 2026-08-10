@@ -58,13 +58,22 @@
 #elementize-admin-root *,
 #elementize-admin-root *::before,
 #elementize-admin-root *::after {
+  --tw-ring-offset-color: var(--background);
+  --tw-shadow: 0 0 #0000;
   box-sizing: border-box;
   border-color: var(--border);
   border-style: solid;
 }
 
+#elementize-admin-root .bg-secondary\/40,
+#elementize-admin-root .bg-secondary\/60,
+#elementize-admin-root .hover\:bg-secondary\/40:hover {
+  background-color: var(--secondary);
+}
+
 #elementize-admin-root button,
-#elementize-admin-root input {
+#elementize-admin-root input,
+#elementize-admin-root textarea {
   font: inherit;
 }
 
