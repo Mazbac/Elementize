@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 
 final class Elementize_Visual_Audit {
-    private const VERSION = '0.14.1';
+    private const VERSION = '0.14.2';
     private const NS = 'elementize/v1';
     private const MODEL_CONST = 'ELEMENTIZE_LOCAL_VISION_MODEL';
     private const OLLAMA_URL_CONST = 'ELEMENTIZE_OLLAMA_URL';
@@ -97,7 +97,7 @@ final class Elementize_Visual_Audit {
     }
 
     private static function ollama_state(): array {
-        $cached = get_transient( 'elementize_local_vision_state_v0141' );
+        $cached = get_transient( 'elementize_local_vision_state_v0142' );
         if ( is_array( $cached ) ) return $cached;
         $state = [ 'reachable' => false, 'model_available' => false, 'model' => self::model() ];
         $response = wp_remote_get( self::ollama_url() . '/api/tags', [ 'timeout' => 2, 'redirection' => 0, 'sslverify' => false, 'limit_response_size' => 1048576 ] );
@@ -112,7 +112,7 @@ final class Elementize_Visual_Audit {
                 }
             }
         }
-        set_transient( 'elementize_local_vision_state_v0141', $state, 30 );
+        set_transient( 'elementize_local_vision_state_v0142', $state, 30 );
         return $state;
     }
 
@@ -205,6 +205,26 @@ final class Elementize_Visual_Audit {
         return trailingslashit( $dir ) . 'elementize-visual-' . wp_generate_uuid4() . $suffix;
     }
 
+    private static function temp_profile_dir(): string {
+        $dir = function_exists( 'get_temp_dir' ) ? get_temp_dir() : sys_get_temp_dir();
+        $path = trailingslashit( $dir ) . 'elementize-chrome-profile-' . wp_generate_uuid4();
+        return wp_mkdir_p( $path ) && is_dir( $path ) ? $path : '';
+    }
+
+    private static function remove_tree( string $path ): void {
+        if ( '' === $path || ! is_dir( $path ) ) return;
+        $items = @scandir( $path );
+        if ( is_array( $items ) ) {
+            foreach ( $items as $item ) {
+                if ( '.' === $item || '..' === $item ) continue;
+                $child = $path . DIRECTORY_SEPARATOR . $item;
+                if ( is_dir( $child ) && ! is_link( $child ) ) self::remove_tree( $child );
+                else @unlink( $child );
+            }
+        }
+        @rmdir( $path );
+    }
+
     private static function stop_process( $proc ): void {
         if ( ! is_resource( $proc ) ) return;
         $status = @proc_get_status( $proc );
@@ -221,6 +241,21 @@ final class Elementize_Visual_Audit {
         @proc_close( $proc );
     }
 
+    private static function browser_error_summary( string $stderr, string $fallback ): string {
+        if ( '' === trim( $stderr ) ) return $fallback;
+        $ignored = [ 'device_event_log', 'usb_service_win.cc', 'registration_request.cc', 'PHONE_REGISTRATION_ERROR', 'DEPRECATED_ENDPOINT', 'gcm\\engine' ];
+        $lines = preg_split( '/\R+/', $stderr ) ?: [];
+        $useful = [];
+        foreach ( $lines as $line ) {
+            $line = trim( $line );
+            if ( '' === $line ) continue;
+            $skip = false;
+            foreach ( $ignored as $needle ) if ( false !== stripos( $line, $needle ) ) { $skip = true; break; }
+            if ( ! $skip ) $useful[] = $line;
+        }
+        return $useful ? self::clip( implode( ' ', array_slice( $useful, -3 ) ), 500 ) : $fallback;
+    }
+
     private static function capture_screenshot( string $url, string $browser ) {
         if ( ! self::process_available() ) return new WP_Error( 'elementize_local_process_unavailable', 'PHP proc_open is unavailable.' );
         if ( '' === $browser || ! is_file( $browser ) ) return new WP_Error( 'elementize_local_browser_missing', 'A supported local browser executable was not found.' );
@@ -228,18 +263,30 @@ final class Elementize_Visual_Audit {
         $path = self::temp_path( '.png' );
         $stdout_path = self::temp_path( '.stdout.log' );
         $stderr_path = self::temp_path( '.stderr.log' );
+        $profile_path = self::temp_profile_dir();
+        if ( '' === $profile_path ) return new WP_Error( 'elementize_local_browser_profile_failed', 'Could not create an isolated temporary Chrome profile.' );
+
         $command = [
             $browser,
-            '--headless=new', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars', '--mute-audio',
+            '--headless=new',
+            '--user-data-dir=' . $profile_path,
+            '--profile-directory=Default',
+            '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars', '--mute-audio', '--noerrdialogs',
             '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-background-networking',
-            '--disable-sync', '--metrics-recording-only', '--run-all-compositor-stages-before-draw',
+            '--disable-component-update', '--disable-default-apps', '--disable-domain-reliability', '--disable-notifications',
+            '--disable-popup-blocking', '--disable-sync', '--metrics-recording-only', '--no-pings',
+            '--disable-features=MediaRouter,OptimizationHints,OptimizationGuideModelDownloading,Translate',
+            '--run-all-compositor-stages-before-draw',
             '--window-size=' . self::VIEWPORT_WIDTH . ',' . self::CAPTURE_HEIGHT,
             '--virtual-time-budget=8000', '--screenshot=' . $path, $url,
         ];
         $spec = [ 0 => [ 'file', 'NUL', 'r' ], 1 => [ 'file', $stdout_path, 'a' ], 2 => [ 'file', $stderr_path, 'a' ] ];
         if ( DIRECTORY_SEPARATOR !== '\\' ) $spec[0] = [ 'file', '/dev/null', 'r' ];
         $proc = @proc_open( $command, $spec, $pipes, null, null, [ 'bypass_shell' => true ] );
-        if ( ! is_resource( $proc ) ) { @unlink( $stdout_path ); @unlink( $stderr_path ); return new WP_Error( 'elementize_local_browser_start_failed', 'Could not start the local headless browser.' ); }
+        if ( ! is_resource( $proc ) ) {
+            @unlink( $stdout_path ); @unlink( $stderr_path ); self::remove_tree( $profile_path );
+            return new WP_Error( 'elementize_local_browser_start_failed', 'Could not start the isolated local headless browser.' );
+        }
 
         $started = microtime( true );
         $last_size = -1;
@@ -271,14 +318,16 @@ final class Elementize_Visual_Audit {
         }
         $wait_seconds = round( microtime( true ) - $started, 2 );
         self::stop_process( $proc );
+        usleep( 250000 );
 
         $stderr = is_file( $stderr_path ) ? (string) @file_get_contents( $stderr_path ) : '';
         @unlink( $stdout_path ); @unlink( $stderr_path );
+        self::remove_tree( $profile_path );
         clearstatcache( true, $path );
         if ( ! $captured || ! is_file( $path ) || (int) @filesize( $path ) < 1000 ) {
             @unlink( $path );
-            $fallback = $browser_exited ? 'The local browser exited without creating a screenshot.' : 'Local browser capture exceeded ' . self::CAPTURE_TIMEOUT_SECONDS . ' seconds before a complete screenshot was detected.';
-            return new WP_Error( 'elementize_local_browser_no_screenshot', self::clip( '' !== trim( $stderr ) ? $stderr : $fallback, 500 ) );
+            $fallback = $browser_exited ? 'The isolated local browser exited without creating a screenshot.' : 'The isolated local browser stayed alive for ' . self::CAPTURE_TIMEOUT_SECONDS . ' seconds but never created a screenshot.';
+            return new WP_Error( 'elementize_local_browser_no_screenshot', self::browser_error_summary( $stderr, $fallback ) );
         }
 
         self::trim_trailing_background( $path );
@@ -399,6 +448,9 @@ final class Elementize_Visual_Audit {
         $data['rendered_visual_capture_ready'] = $cap['capture_ready'];
         $data['rendered_visual_capture_file_polling'] = true;
         $data['rendered_visual_capture_pipe_deadlock_hardening'] = true;
+        $data['rendered_visual_capture_isolated_profile'] = true;
+        $data['rendered_visual_capture_browser_reuse_hardening'] = true;
+        $data['rendered_visual_capture_benign_log_filtering'] = true;
         $data['rendered_visual_vision_backend'] = 'local_ollama';
         $data['rendered_visual_vision_model'] = $cap['model'];
         $data['rendered_visual_ollama_reachable'] = $cap['ollama_reachable'];
