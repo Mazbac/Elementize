@@ -28,11 +28,24 @@ Write-Host 'Policy: run the guarded reversible experiment, restore the page, the
 Write-Host 'This harness never keeps the temporary change.' -ForegroundColor Yellow
 Write-Host ''
 
-$experimentArgs = @('-PageId', $PageId, '-SiteUrl', $SiteUrl, '-ConfirmExperiment')
-if (-not [string]::IsNullOrWhiteSpace($Username)) { $experimentArgs += @('-Username', $Username) }
+# Use named-parameter hashtable splatting. Array splatting passes '-PageId' as
+# a positional value, which makes PowerShell try to convert the literal string
+# '-PageId' into the child script's [int] PageId parameter.
+$experimentArgs = @{
+    PageId = $PageId
+    SiteUrl = $SiteUrl
+    ConfirmExperiment = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($Username)) {
+    $experimentArgs['Username'] = $Username
+}
 
-& $experiment @experimentArgs
-if ($LASTEXITCODE -ne 0) { throw "The reversible repair experiment failed with exit code $LASTEXITCODE. No shadow decision will be made." }
+try {
+    & $experiment @experimentArgs
+}
+catch {
+    throw "The reversible repair experiment failed. No shadow decision will be made. $($_.Exception.Message)"
+}
 
 $devDir = Join-Path $repoRoot '.elementize-dev'
 $before = Get-ChildItem $devDir -Filter "experiment-before-$PageId-*.json" |
