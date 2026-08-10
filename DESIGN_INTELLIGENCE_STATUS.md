@@ -40,7 +40,7 @@ Implemented and runtime-proven:
 - Elementor save is re-read and exact requested values are verified
 - verification failure triggers an attempted rollback
 - Elementor per-post CSS is regenerated
-- design-settings discovery now advertises `write_endpoint_available`, page eligibility, and truthful per-control `writable_now`
+- design-settings discovery advertises `write_endpoint_available`, page eligibility, and truthful per-control `writable_now`
 
 Runtime acceptance on page 952239:
 
@@ -54,9 +54,42 @@ Runtime acceptance on page 952239:
 
 This proves the first general-purpose design-control read → guarded write → verify → fresh read → guarded restore → verify loop.
 
+## 0.12.0 — Signed rendered-preview foundation
+
+Implemented; runtime acceptance pending:
+
+- `getElementizePageState` now receives a `visual_preview` object for eligible managed drafts without consuming another GPT Action slot
+- preview URLs are short-lived (10 minutes), HMAC-signed, tied to the exact current Elementor content hash, and invalidated by edits
+- only Elementize-managed draft pages are eligible
+- preview responses send no-store/no-cache and noindex/nofollow/noarchive headers
+- invalid, expired, stale, unmanaged, or non-draft preview requests fail closed
+- the configured public Elementize HTTPS origin is used so local WordPress sites can be previewed through the existing tunnel
+- rendered HTML rewrites local home/site origins to the public origin; a small same-origin CSSOM pass also repairs local absolute asset references that remain in loaded stylesheets
+- canonical redirects are suppressed only for signed preview requests
+- automatic screenshot capture is explicitly **not** claimed yet; this release establishes private remote rendering first
+- WP Builder instructions require truthful visual behavior: inspect the signed preview only if the runtime can actually see rendered visuals; otherwise request a screenshot instead of inferring appearance from HTML or the URL
+
+### 0.12 runtime acceptance gate
+
+On managed draft page 952239:
+
+1. `getElementizeStatus` reports 0.12.0 and signed-preview capability flags.
+2. `getElementizePageState` returns `visual_preview.available=true`, a short expiry, and a signed public HTTPS URL.
+3. Opening that URL in a browser session that is **not logged into WordPress** renders the draft successfully.
+4. Dominant images, Elementor/Pixfort CSS, fonts, and background assets load through the public origin rather than `mijn-ibp.local`.
+5. The response is no-store/noindex and does not expose WordPress authentication.
+6. After any Elementor change, the old signed URL fails as stale; a fresh state read issues a new working URL.
+7. After expiry, the URL fails closed.
+
+Do not call 0.12 rendered-preview support runtime-proven until these checks pass.
+
+## Visual acceptance specimen
+
+The full-page screenshot of page 952239 is intentionally useful as the first visual-evaluation specimen. Human inspection found issues that deterministic audits underweighted: excessive vertical whitespace, underscaled typography, weak hierarchy after the hero, inconsistent section widths, off-topic/inconsistent imagery, fragmented CTA styling, and disconnected section rhythm. Future rendered evaluation should surface these classes of problems without pretending subjective preferences are deterministic facts.
+
 ## Current completion state
 
-Design Intelligence now has runtime proof for:
+Design Intelligence has runtime proof for:
 
 - broad catalogue exploration signals
 - visual template inspection
@@ -68,14 +101,6 @@ Design Intelligence now has runtime proof for:
 
 The deterministic design audit remains advisory-only until stronger rendered evidence and more runtime calibration justify design blockers.
 
-## Next phase
+## Next after 0.12 preview acceptance
 
-Implement reference-aware rendered-page visual evaluation without weakening draft privacy.
-
-Preferred direction:
-
-1. Add a short-lived signed preview capability for Elementize-managed drafts rather than making drafts public.
-2. Preserve the actual page/layout rendering as closely as possible; do not substitute structural metadata for visual truth.
-3. Let WP Builder inspect rendered evidence for hierarchy, whitespace, balance, imagery/backgrounds, CTA treatment, section rhythm, and reference similarity.
-4. Keep rendered critique advisory initially.
-5. Only after runtime proof consider stronger design-completion gating or expanding the writer to additional control families such as sizing, border, or responsive variants.
+Determine the safest route to automatic screenshot evidence. Prefer capability detection and a bounded local/headless renderer if the WordPress environment can support one safely; otherwise keep the signed preview plus user-supplied screenshot workflow. Do not add an external screenshot service or make drafts public by default. Rendered critique remains advisory initially.
