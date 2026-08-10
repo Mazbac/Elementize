@@ -12,8 +12,6 @@ final class Elementize_Converged_Bounded_Repair_Planning {
     private const LARGE_SPACING_PX = 60.0;
 
     public static function init(): void {
-        // Convergence hardening is complete by 500 and section-focus verification by 515.
-        // Rebuild the bounded plan here from the final section-verified convergence object.
         add_filter( 'rest_request_after_callbacks', [ self::class, 'after_rest' ], 520, 3 );
     }
 
@@ -77,8 +75,8 @@ final class Elementize_Converged_Bounded_Repair_Planning {
             if ( empty( $target['eligible_for_bounded_planning_review'] ) ) continue;
             if ( 'promoted_read_only_section_verified' !== (string) ( $target['promotion_status'] ?? '' ) ) continue;
             if ( 'base' !== strtolower( (string) ( $target['responsive_scope'] ?? 'base' ) ) ) continue;
-            if ( '' === trim( (string) ( $target['control_fingerprint'] ?? '' ) ) ) continue;
-            if ( 'spacing' !== strtolower( (string) ( $target['category'] ?? '' ) ) continue;
+            if ( '' === trim( (string) ( $target['control_fingerprint'] ?? '' ) ) continue;
+            if ( 'spacing' !== strtolower( (string) ( $target['category'] ?? '' ) ) ) continue;
             if ( 'large_internal_padding_present' !== (string) ( $target['observation_type'] ?? '' ) ) continue;
             if ( 'padding' !== (string) ( $target['rendered_property'] ?? '' ) ) continue;
 
@@ -181,7 +179,7 @@ final class Elementize_Converged_Bounded_Repair_Planning {
         $rendered = is_numeric( $target['rendered_value'] ?? null ) ? (float) $target['rendered_value'] : null;
         $value = $target['current_value'] ?? null;
         if ( null === $rendered || $rendered < self::LARGE_SPACING_PX ) return null;
-        if ( ! is_array( $value ) || 'px' !== strtolower( trim( (string) ( $value['unit'] ?? '' ) ) || ! is_numeric( $value[$side] ?? null ) ) ) return null;
+        if ( ! is_array( $value ) || 'px' !== strtolower( trim( (string) ( $value['unit'] ?? '' ) ) ) || ! is_numeric( $value[$side] ?? null ) ) return null;
         $current = (float) $value[$side];
         if ( abs( $current - $rendered ) > 1.0 ) return null;
 
