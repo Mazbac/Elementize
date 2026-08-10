@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Elementize Content Actions
-  version: 0.31.0
-  description: Guarded content editing for existing Elementor and Pixfort pages.
+  version: 0.32.0
+  description: Guarded content editing, image replacement/import, and Pixfort icon lookup for existing Elementor + Pixfort pages.
 servers:
   - url: https://example.invalid
     description: Replaced automatically by the Elementize setup screen.
@@ -13,29 +13,18 @@ paths:
       operationId: getElementizeStatus
       summary: Check Elementize, Elementor, and Pixfort readiness
       responses:
-        '200':
-          description: Elementize status and supported content-editing scope
+        '200': { description: Elementize status and supported content-editing scope }
 
   /wp-json/elementize/v1/pages:
     get:
       operationId: listElementizePages
       summary: List editable Elementor pages
       parameters:
-        - name: q
-          in: query
-          required: false
-          schema: { type: string }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
       responses:
-        '200':
-          description: Editable Elementor pages
+        '200': { description: Editable Elementor pages }
 
   /wp-json/elementize/v1/pages/{id}/content:
     get:
@@ -43,46 +32,21 @@ paths:
       summary: Read editable copy, links, images, and Pixfort icons from one Elementor page
       description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash. Dynamic/global values and shared template documents are not writable.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer, minimum: 1 }
-        - name: kind
-          in: query
-          required: false
-          schema: { type: string, enum: [all, text, link, media, pixfort_icon], default: all }
-        - name: element_id
-          in: query
-          required: false
-          schema: { type: string }
-        - name: top_level_id
-          in: query
-          required: false
-          schema: { type: string }
-        - name: q
-          in: query
-          required: false
-          schema: { type: string }
-        - name: offset
-          in: query
-          required: false
-          schema: { type: integer, minimum: 0, default: 0 }
-        - name: limit
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [all, text, link, media, pixfort_icon], default: all } }
+        - { name: element_id, in: query, required: false, schema: { type: string } }
+        - { name: top_level_id, in: query, required: false, schema: { type: string } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
       responses:
-        '200':
-          description: Fresh editable page-content snapshot
+        '200': { description: Fresh editable page-content snapshot }
     post:
       operationId: updateElementizePageContent
       summary: Guardedly update copy, links, images, or Pixfort icons
-      description: Always read the page immediately before writing. Requires the fresh page status/title/hash and exact setting values. Live published pages require a second explicit confirmation.
+      description: Always read the page immediately before writing. Requires the fresh page status/title/hash and exact setting values. Pixfort icon writes must use an exact value returned by searchElementizePixfortIcons. Live published pages require a second explicit confirmation.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer, minimum: 1 }
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
         required: true
         content:
@@ -121,37 +85,21 @@ paths:
                       expected_attachment_id: { type: integer, minimum: 0 }
                       attachment_id: { type: integer, minimum: 1 }
       responses:
-        '200':
-          description: Content changes saved and verified in persisted Elementor data
-        '400':
-          description: Unsupported content field/value or missing confirmation
-        '409':
-          description: Page, revision capability, or target changed after the fresh read
+        '200': { description: Content changes saved and verified in persisted Elementor data }
+        '400': { description: Unsupported content field/value or missing confirmation }
+        '409': { description: Page, revision capability, or target changed after the fresh read }
 
   /wp-json/elementize/v1/media/images:
     get:
       operationId: searchElementizeMediaImages
       summary: Search WordPress Media Library images
       parameters:
-        - name: q
-          in: query
-          required: false
-          schema: { type: string }
-        - name: filename
-          in: query
-          required: false
-          schema: { type: string }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: filename, in: query, required: false, schema: { type: string } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
-        '200':
-          description: Matching WordPress image attachments
+        '200': { description: Matching WordPress image attachments }
 
   /wp-json/elementize/v1/media/images/import-chat-file:
     post:
@@ -177,7 +125,43 @@ paths:
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201':
-          description: Conversation image imported and verified
-        '400':
-          description: Invalid file, unsupported image, or confirmation missing
+        '201': { description: Conversation image imported and verified }
+        '400': { description: Invalid file, unsupported image, or confirmation missing }
+
+  /wp-json/elementize/v1/media/images/import-url:
+    post:
+      operationId: importElementizeRemoteImage
+      summary: Import one public HTTPS image into the WordPress Media Library
+      description: Use after the user supplies an image URL or ChatGPT finds and verifies a suitable image online. The URL must point to a public HTTPS image. Returns a WordPress attachment_id for a later guarded media update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url, confirm_import]
+              properties:
+                url: { type: string, format: uri, maxLength: 8192 }
+                source_page_url: { type: string, format: uri, maxLength: 8192, description: Optional page where the image was found for provenance. }
+                title: { type: string }
+                alt: { type: string }
+                confirm_import: { type: boolean, enum: [true] }
+      responses:
+        '201': { description: Remote image imported and verified }
+        '400': { description: Unsafe URL, unsupported image, or confirmation missing }
+        '502': { description: Remote image download failed }
+
+  /wp-json/elementize/v1/pixfort/icons:
+    get:
+      operationId: searchElementizePixfortIcons
+      summary: Search the Pixfort icon library discovered from the installed Pixfort/theme assets
+      description: Returns exact Pixfort icon values suitable for a later guarded pixfort_icon content update. Do not invent icon identifiers; use an exact returned value.
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: style, in: query, required: false, schema: { type: string, enum: [all, line, duotone, solid], default: all } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+      responses:
+        '200': { description: Matching installed Pixfort icon values }
+        '503': { description: Installed Pixfort icon library could not be indexed }

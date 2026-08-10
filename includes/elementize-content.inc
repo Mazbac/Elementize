@@ -53,12 +53,8 @@ final class Elementize_Content {
         $id = absint( $request['id'] );
         $loaded = Elementize_Core::elements( $id );
         if ( is_wp_error( $loaded ) ) return $loaded;
-
         $kind = strtolower( trim( (string) $request->get_param( 'kind' ) ) ) ?: 'all';
-        if ( 'all' !== $kind && ! in_array( $kind, self::KINDS, true ) ) {
-            return new WP_Error( 'elementize_invalid_content_kind', 'kind must be all, text, link, media, or pixfort_icon.', [ 'status' => 400 ] );
-        }
-
+        if ( 'all' !== $kind && ! in_array( $kind, self::KINDS, true ) ) return new WP_Error( 'elementize_invalid_content_kind', 'kind must be all, text, link, media, or pixfort_icon.', [ 'status' => 400 ] );
         $items = [];
         self::collect_elements( $loaded['elements'], $items );
         $filters = [
@@ -73,7 +69,6 @@ final class Elementize_Content {
         $returned = array_slice( $filtered, $offset, $limit );
         $counts = array_fill_keys( self::KINDS, 0 );
         foreach ( $items as $item ) $counts[ $item['kind'] ]++;
-
         return new WP_REST_Response( [
             'page' => Elementize_Core::page_identity( $id, $loaded['document'] ),
             'content_hash' => Elementize_Core::hash_elements( $loaded['elements'] ),
@@ -94,33 +89,20 @@ final class Elementize_Content {
     }
 
     public static function update( WP_REST_Request $request ) {
-        if ( true !== $request->get_param( 'confirm_content_write' ) ) {
-            return new WP_Error( 'elementize_confirmation_required', 'Explicit confirm_content_write=true is required.', [ 'status' => 400 ] );
-        }
-
+        if ( true !== $request->get_param( 'confirm_content_write' ) ) return new WP_Error( 'elementize_confirmation_required', 'Explicit confirm_content_write=true is required.', [ 'status' => 400 ] );
         $id = absint( $request['id'] );
         $post = get_post( $id );
         if ( ! $post || 'page' !== $post->post_type ) return new WP_Error( 'elementize_page_not_found', 'Page not found.', [ 'status' => 404 ] );
-        if ( (string) $request->get_param( 'expected_status' ) !== (string) $post->post_status ) {
-            return new WP_Error( 'elementize_status_changed', 'The page status changed after the fresh content read.', [ 'status' => 409, 'status_now' => (string) $post->post_status ] );
-        }
-        if ( (string) $request->get_param( 'expected_title' ) !== (string) $post->post_title ) {
-            return new WP_Error( 'elementize_title_changed', 'The page title changed after the fresh content read.', [ 'status' => 409, 'title_now' => (string) $post->post_title ] );
-        }
-        if ( 'publish' === $post->post_status && true !== $request->get_param( 'confirm_published_page' ) ) {
-            return new WP_Error( 'elementize_published_confirmation_required', 'This is a published page. Explicit confirm_published_page=true is required before changing live content.', [ 'status' => 400 ] );
-        }
-
+        if ( (string) $request->get_param( 'expected_status' ) !== (string) $post->post_status ) return new WP_Error( 'elementize_status_changed', 'The page status changed after the fresh content read.', [ 'status' => 409, 'status_now' => (string) $post->post_status ] );
+        if ( (string) $request->get_param( 'expected_title' ) !== (string) $post->post_title ) return new WP_Error( 'elementize_title_changed', 'The page title changed after the fresh content read.', [ 'status' => 409, 'title_now' => (string) $post->post_title ] );
+        if ( 'publish' === $post->post_status && true !== $request->get_param( 'confirm_published_page' ) ) return new WP_Error( 'elementize_published_confirmation_required', 'This is a published page. Explicit confirm_published_page=true is required before changing live content.', [ 'status' => 400 ] );
         $loaded = Elementize_Core::elements( $id );
         if ( is_wp_error( $loaded ) ) return $loaded;
         $document = $loaded['document'];
         $before = $loaded['elements'];
         $before_hash = Elementize_Core::hash_elements( $before );
         $expected_hash = trim( (string) $request->get_param( 'content_hash' ) );
-        if ( '' === $expected_hash || ! hash_equals( $before_hash, $expected_hash ) ) {
-            return new WP_Error( 'elementize_content_changed', 'The Elementor page changed after the fresh content read. Read the content again before applying edits.', [ 'status' => 409, 'content_hash' => $before_hash ] );
-        }
-
+        if ( '' === $expected_hash || ! hash_equals( $before_hash, $expected_hash ) ) return new WP_Error( 'elementize_content_changed', 'The Elementor page changed after the fresh content read. Read the content again before applying edits.', [ 'status' => 409, 'content_hash' => $before_hash ] );
         $updates = $request->get_param( 'updates' );
         if ( ! is_array( $updates ) || ! $updates ) return new WP_Error( 'elementize_updates_required', 'At least one content update is required.', [ 'status' => 400 ] );
         if ( count( $updates ) > self::MAX_UPDATES ) return new WP_Error( 'elementize_too_many_updates', 'Send at most ' . self::MAX_UPDATES . ' content updates per request.', [ 'status' => 400 ] );
@@ -131,31 +113,22 @@ final class Elementize_Content {
         foreach ( array_values( $updates ) as $index => $update ) {
             $valid = self::validate_update( $update, $index );
             if ( is_wp_error( $valid ) ) return $valid;
-            $key = hash( 'sha256', (string) $update['element_id'] . '|' . wp_json_encode( array_values( $update['setting_path'] ) ) );
-            if ( isset( $seen[ $key ] ) ) return self::invalid_update( $index, 'The same Elementor setting may only be updated once per request.' );
-            $seen[ $key ] = true;
-
+            $target_key = hash( 'sha256', (string) $update['element_id'] . '|' . wp_json_encode( array_values( $update['setting_path'] ) ) );
+            if ( isset( $seen[ $target_key ] ) ) return self::invalid_update( $index, 'The same Elementor setting may only be updated once per request.' );
+            $seen[ $target_key ] = true;
             $old = null;
             $new = null;
             $applied = self::apply_update( $elements, $update, $old, $new );
             if ( is_wp_error( $applied ) ) return $applied;
             if ( false === $applied ) return new WP_Error( 'elementize_element_not_found', 'The requested Elementor element no longer exists.', [ 'status' => 409, 'update_index' => $index ] );
             if ( $old === $new ) return self::invalid_update( $index, 'The requested update does not change the current value.' );
-            $changes[] = [
-                'kind' => (string) $update['kind'],
-                'element_id' => (string) $update['element_id'],
-                'setting_path' => array_values( $update['setting_path'] ),
-                'old_value' => $old,
-                'new_value' => $new,
-            ];
+            $changes[] = [ 'kind' => (string) $update['kind'], 'element_id' => (string) $update['element_id'], 'setting_path' => array_values( $update['setting_path'] ), 'old_value' => $old, 'new_value' => $new ];
         }
 
         $revision = Elementize_Core::save_revision( $id );
         if ( is_wp_error( $revision ) ) return $revision;
-
-        try {
-            $saved = $document->save( [ 'elements' => $elements ] );
-        } catch ( Throwable $e ) {
+        try { $saved = $document->save( [ 'elements' => $elements ] ); }
+        catch ( Throwable $e ) {
             $rollback = self::restore( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_save_failed', 'Elementor could not save the content changes: ' . $e->getMessage(), [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
@@ -163,25 +136,15 @@ final class Elementize_Content {
             $rollback = self::restore( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_save_failed', 'Elementor refused to save the content changes.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
-
         $persisted = Elementize_Core::persisted_elements( $id );
         if ( is_wp_error( $persisted ) || ! self::verify_changes( $persisted, $changes ) ) {
             $rollback = self::restore( $document, $id, $before, $before_hash );
             Elementize_Core::regenerate_css( $id );
             return new WP_Error( 'elementize_verification_failed', 'Persisted Elementor data did not verify every requested change, so Elementize attempted to restore the exact pre-change content.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
-
         Elementize_Core::regenerate_css( $id );
         clean_post_cache( $id );
-        return new WP_REST_Response( [
-            'saved' => true,
-            'page' => Elementize_Core::page_identity( $id ),
-            'updated_count' => count( $changes ),
-            'revision_id' => $revision,
-            'content_hash' => Elementize_Core::hash_elements( $persisted ),
-            'persisted_verification' => true,
-            'changes' => $changes,
-        ], 200 );
+        return new WP_REST_Response( [ 'saved' => true, 'page' => Elementize_Core::page_identity( $id ), 'updated_count' => count( $changes ), 'revision_id' => $revision, 'content_hash' => Elementize_Core::hash_elements( $persisted ), 'persisted_verification' => true, 'changes' => $changes ], 200 );
     }
 
     private static function collect_elements( array $elements, array &$items, string $top = '' ): void {
@@ -200,10 +163,7 @@ final class Elementize_Content {
     private static function collect_settings( $value, array $path, string $id, string $top, string $type, string $widget, array &$items ): void {
         if ( count( $items ) >= self::MAX_ITEMS ) return;
         if ( is_array( $value ) ) {
-            if ( self::media_target( $path, $value ) ) {
-                $items[] = self::item( 'media', $id, $top, $type, $widget, $path, self::media_snapshot( $value ) );
-                return;
-            }
+            if ( self::media_target( $path, $value ) ) { $items[] = self::item( 'media', $id, $top, $type, $widget, $path, self::media_snapshot( $value ) ); return; }
             foreach ( $value as $key => $child ) {
                 self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $top, $type, $widget, $items );
                 if ( count( $items ) >= self::MAX_ITEMS ) return;
@@ -219,17 +179,7 @@ final class Elementize_Content {
     }
 
     private static function item( string $kind, string $id, string $top, string $type, string $widget, array $path, $value ): array {
-        $item = [
-            'kind' => $kind,
-            'element_id' => $id,
-            'top_level_id' => $top,
-            'element_type' => $type,
-            'widget_type' => $widget,
-            'setting_path' => array_values( $path ),
-            'setting_key' => self::last_key( $path ),
-            'value' => $value,
-            'writable' => true,
-        ];
+        $item = [ 'kind' => $kind, 'element_id' => $id, 'top_level_id' => $top, 'element_type' => $type, 'widget_type' => $widget, 'setting_path' => array_values( $path ), 'setting_key' => self::last_key( $path ), 'value' => $value, 'writable' => true ];
         if ( 'text' === $kind ) $item['format'] = wp_strip_all_tags( (string) $value ) === $value ? 'text' : 'html';
         if ( 'media' === $kind ) $item['attachment_id'] = absint( $value['id'] ?? 0 );
         return $item;
@@ -241,8 +191,7 @@ final class Elementize_Content {
         if ( '' !== $filters['top_level_id'] && $filters['top_level_id'] !== $item['top_level_id'] ) return false;
         if ( '' === $filters['q'] ) return true;
         $value = is_scalar( $item['value'] ) ? (string) $item['value'] : (string) wp_json_encode( $item['value'] );
-        $haystack = implode( ' ', [ $item['kind'], $item['element_id'], $item['top_level_id'], $item['widget_type'], $item['setting_key'], wp_strip_all_tags( $value ) ] );
-        return false !== stripos( $haystack, $filters['q'] );
+        return false !== stripos( implode( ' ', [ $item['kind'], $item['element_id'], $item['top_level_id'], $item['widget_type'], $item['setting_key'], wp_strip_all_tags( $value ) ] ), $filters['q'] );
     }
 
     private static function validate_update( $update, int $index ) {
@@ -256,7 +205,6 @@ final class Elementize_Content {
             if ( is_string( $segment ) && strlen( $segment ) > self::MAX_PATH_SEGMENT ) return self::invalid_update( $index, 'A setting_path segment is too long.' );
         }
         if ( self::path_has( $update['setting_path'], '__globals__' ) ) return self::invalid_update( $index, 'Global style values are not writable.' );
-
         if ( 'media' === $kind ) {
             if ( ! is_numeric( $update['expected_attachment_id'] ?? null ) || ! is_numeric( $update['attachment_id'] ?? null ) ) return self::invalid_update( $index, 'Media writes require expected_attachment_id and attachment_id.' );
             return true;
@@ -276,7 +224,7 @@ final class Elementize_Content {
     private static function apply_update( array &$elements, array $update, &$old, &$new ) {
         foreach ( $elements as &$element ) {
             if ( ! is_array( $element ) ) continue;
-            if ( isset( $element['id'] ) && (string) $element['id'] === (string) $update['element_id'] ) {
+            if ( (string) ( $element['id'] ?? '' ) === (string) $update['element_id'] ) {
                 if ( ! is_array( $element['settings'] ?? null ) ) return new WP_Error( 'elementize_setting_not_found', 'The target Elementor element has no editable settings.', [ 'status' => 409 ] );
                 $cursor =& $element['settings'];
                 foreach ( $update['setting_path'] as $segment ) {
@@ -302,8 +250,7 @@ final class Elementize_Content {
         if ( ! is_string( $cursor ) || ! self::copy_field( $update['setting_path'], $cursor ) ) return new WP_Error( 'elementize_not_text_field', 'Elementize only permits text writes to recognized copy fields.', [ 'status' => 400 ] );
         if ( $cursor !== $update['expected_value'] ) return new WP_Error( 'elementize_value_changed', 'The target text changed after the fresh content read.', [ 'status' => 409 ] );
         $old = $cursor;
-        $new = wp_kses_post( $update['value'] );
-        $cursor = $new;
+        $cursor = $new = wp_kses_post( $update['value'] );
         return true;
     }
 
@@ -321,7 +268,10 @@ final class Elementize_Content {
         if ( ! is_string( $cursor ) || ! self::icon_target( $update['setting_path'], $cursor ) ) return new WP_Error( 'elementize_not_pixfort_icon_field', 'Elementize only permits icon writes to recognized Pixfort icon fields.', [ 'status' => 400 ] );
         if ( $cursor !== $update['expected_value'] ) return new WP_Error( 'elementize_value_changed', 'The target icon changed after the fresh content read.', [ 'status' => 409 ] );
         $candidate = trim( $update['value'] );
-        if ( ! self::valid_icon( $candidate ) ) return new WP_Error( 'elementize_invalid_pixfort_icon', 'The new icon must be a Pixfort Solid/... or Line/... icon value.', [ 'status' => 400 ] );
+        if ( ! self::valid_icon_format( $candidate ) ) return new WP_Error( 'elementize_invalid_pixfort_icon', 'The new icon must use Pixfort Line/..., Duotone/..., or Solid/... format.', [ 'status' => 400 ] );
+        $known = Elementize_Pixfort_Icons::validate_value( $candidate );
+        if ( is_wp_error( $known ) ) return $known;
+        if ( true !== $known ) return new WP_Error( 'elementize_unknown_pixfort_icon', 'The requested icon was not found in the installed Pixfort icon library. Search the Pixfort icon library again and use an exact returned value.', [ 'status' => 400 ] );
         $old = $cursor;
         $cursor = $new = $candidate;
         return true;
@@ -385,10 +335,7 @@ final class Elementize_Content {
     }
 
     private static function media_snapshot( array $value ): array {
-        $out = [
-            'id' => absint( $value['id'] ?? 0 ),
-            'url' => is_string( $value['url'] ?? null ) ? esc_url_raw( $value['url'] ) : '',
-        ];
+        $out = [ 'id' => absint( $value['id'] ?? 0 ), 'url' => is_string( $value['url'] ?? null ) ? esc_url_raw( $value['url'] ) : '' ];
         foreach ( [ 'alt', 'title' ] as $field ) if ( is_scalar( $value[ $field ] ?? null ) ) $out[ $field ] = (string) $value[ $field ];
         return $out;
     }
@@ -400,11 +347,11 @@ final class Elementize_Content {
     }
 
     private static function icon_target( array $path, string $value ): bool {
-        return ! self::path_has( $path, '__globals__' ) && in_array( self::last_key( $path ), [ 'icon', 'btn_icon' ], true ) && self::valid_icon( $value );
+        return ! self::path_has( $path, '__globals__' ) && in_array( self::last_key( $path ), [ 'icon', 'btn_icon' ], true ) && self::valid_icon_format( $value );
     }
 
-    private static function valid_icon( string $value ): bool {
-        return (bool) preg_match( '#^(Solid|Line)/pixfort-icon-[A-Za-z0-9_-]+$#', trim( $value ) );
+    private static function valid_icon_format( string $value ): bool {
+        return (bool) preg_match( '#^(Line|Duotone|Solid)/pixfort-icon-[A-Za-z0-9_-]+$#', trim( $value ) );
     }
 
     private static function copy_field( array $path, string $value ): bool {
