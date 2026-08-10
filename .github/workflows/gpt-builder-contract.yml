@@ -26,30 +26,50 @@ jobs:
           fi
 
           cp CUSTOM_GPT_ACTIONS.openapi.yaml /tmp/elementize-generated-schema.yaml
-          if ! grep -q 'operationId: getElementizePageQualityAudit' CUSTOM_GPT_ACTIONS.openapi.yaml; then
+          if ! grep -q 'operationId: getElementizePageCompletionAudit' CUSTOM_GPT_ACTIONS.openapi.yaml; then
             printf '\n' >> /tmp/elementize-generated-schema.yaml
             cat CUSTOM_GPT_ACTIONS_0.6_APPEND.yaml >> /tmp/elementize-generated-schema.yaml
           fi
 
           operation_count=$(grep -c 'operationId:' /tmp/elementize-generated-schema.yaml || true)
-          echo "Generated GPT Action operations: ${operation_count}/30"
-          if [ "$operation_count" -gt 30 ]; then
-            echo "Generated GPT Actions schema exceeds the 30-operation editor limit."
+          echo "Generated GPT Action operations: ${operation_count}/24 target (30 platform max)"
+          if [ "$operation_count" -gt 24 ]; then
+            echo "Generated GPT Actions schema exceeds Elementize's 24-operation control-plane budget."
             exit 1
           fi
 
           required_operations=(
             getElementizeStatus
-            getElementizePageQualityAudit
-            getElementizePageDesignAudit
+            getElementizePageState
+            updateElementizePageState
+            getElementizePageCompletionAudit
             getElementizePageDesignSettings
             getElementizePixfortCatalogueSummary
             inspectElementizePixfortTemplateStructure
           )
 
+          forbidden_operations=(
+            getElementizePageLayout
+            updateElementizePageLayout
+            getElementizePageLifecycle
+            trashElementizeManagedPage
+            restoreElementizeManagedPage
+            publishElementizeManagedPage
+            unpublishElementizeManagedPage
+            getElementizePageQualityAudit
+            getElementizePageDesignAudit
+          )
+
           for operation in "${required_operations[@]}"; do
             if ! grep -q "operationId: ${operation}" /tmp/elementize-generated-schema.yaml; then
               echo "Required GPT operation is missing: ${operation}"
+              exit 1
+            fi
+          done
+
+          for operation in "${forbidden_operations[@]}"; do
+            if grep -q "operationId: ${operation}" /tmp/elementize-generated-schema.yaml; then
+              echo "Legacy operation should not consume a GPT Action slot: ${operation}"
               exit 1
             fi
           done
