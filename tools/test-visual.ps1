@@ -41,38 +41,100 @@ function New-BasicAuthHeader {
     }
 }
 
+function Invoke-ElementizeCurlGet {
+    param(
+        [string]$Uri,
+        [string]$Authorization
+    )
+
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($null -eq $curl) {
+        throw 'curl.exe is required for Windows PowerShell 5.1 local HTTPS testing.'
+    }
+
+    # Feed the Authorization header to curl over stdin via --config - so the
+    # Application Password-derived credential is not placed in the process argv.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $curl.Source
+    $psi.Arguments = '--config -'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    if (-not $proc.Start()) {
+        throw 'Could not start curl.exe.'
+    }
+
+    try {
+        $proc.StandardInput.WriteLine('silent')
+        $proc.StandardInput.WriteLine('show-error')
+        $proc.StandardInput.WriteLine('insecure')
+        $proc.StandardInput.WriteLine('header = "Authorization: ' + $Authorization + '"')
+        $proc.StandardInput.WriteLine('url = "' + $Uri + '"')
+        $proc.StandardInput.WriteLine('write-out = "\n__ELEMENTIZE_HTTP_CODE__:%{http_code}"')
+        $proc.StandardInput.Close()
+
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $stderr = $proc.StandardError.ReadToEnd()
+        $proc.WaitForExit()
+
+        if ($proc.ExitCode -ne 0) {
+            $safe = if ([string]::IsNullOrWhiteSpace($stderr)) { "curl.exe failed with exit code $($proc.ExitCode)." } else { $stderr.Trim() }
+            throw $safe
+        }
+
+        $marker = '__ELEMENTIZE_HTTP_CODE__:'
+        $idx = $stdout.LastIndexOf($marker)
+        if ($idx -lt 0) {
+            throw 'curl.exe returned no HTTP status marker.'
+        }
+
+        $body = $stdout.Substring(0, $idx).Trim()
+        $codeText = $stdout.Substring($idx + $marker.Length).Trim()
+        $httpCode = 0
+        [void][int]::TryParse($codeText, [ref]$httpCode)
+
+        if ($httpCode -lt 200 -or $httpCode -ge 300) {
+            $snippet = if ($body.Length -gt 500) { $body.Substring(0, 500) + '...' } else { $body }
+            throw "Elementize returned HTTP $httpCode. $snippet"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($body)) {
+            throw 'Elementize returned an empty response body.'
+        }
+
+        return $body | ConvertFrom-Json
+    }
+    finally {
+        if (-not $proc.HasExited) {
+            try { $proc.Kill() } catch {}
+        }
+        $proc.Dispose()
+    }
+}
+
 function Invoke-ElementizeGet {
     param(
         [string]$Uri,
         [hashtable]$Headers
     )
 
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        return Invoke-ElementizeCurlGet -Uri $Uri -Authorization ([string]$Headers.Authorization)
+    }
+
     $params = @{
         Uri = $Uri
         Method = 'GET'
         Headers = $Headers
         ErrorAction = 'Stop'
+        SkipCertificateCheck = $true
     }
-
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        $params['SkipCertificateCheck'] = $true
-        return Invoke-RestMethod @params
-    }
-
-    # Windows PowerShell 5.1 can negotiate an obsolete TLS default even when
-    # curl.exe can reach the same Local HTTPS site. Force TLS 1.2 for this
-    # request only and temporarily accept Local's development certificate.
-    $oldCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
-    $oldProtocol = [System.Net.ServicePointManager]::SecurityProtocol
-    try {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-        return Invoke-RestMethod @params
-    }
-    finally {
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $oldCallback
-        [System.Net.ServicePointManager]::SecurityProtocol = $oldProtocol
-    }
+    return Invoke-RestMethod @params
 }
 
 if ([string]::IsNullOrWhiteSpace($Username)) {
