@@ -44,7 +44,7 @@
   --accent-foreground: #1d0432;
   --destructive: #2a1b3a;
   --destructive-foreground: #f2f3f7;
-  --border: #94adbf;
+  --border: #ccafe6;
   --input: #94adbf;
   --ring: #64379f;
   min-height: calc(100vh - 32px);
@@ -59,10 +59,7 @@
 #elementize-admin-root *::before,
 #elementize-admin-root *::after {
   --tw-ring-offset-color: var(--background);
-  --tw-shadow: 0 0 #0000;
   box-sizing: border-box;
-  border-color: var(--border);
-  border-style: solid;
 }
 
 #elementize-admin-root .bg-secondary\/40,
