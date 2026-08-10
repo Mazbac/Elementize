@@ -4,7 +4,7 @@
 
 `fastbuild/design-intelligence`
 
-Current hardening line: `0.17.0`.
+Current hardening line: `0.18.0`.
 
 ## Runtime-proven foundation
 
@@ -30,11 +30,11 @@ The experimental 0.13.0 Cloudflare Browser Rendering + Workers AI implementation
 
 ## Current visual QA architecture
 
-The rendered loop currently proven is:
+The rendered loop proven through 0.16.1 is:
 
 signed managed draft preview → local Chrome screenshot → local Ollama critique → annotated internal screenshot → consistency-hardened section localization → read-only exact-target repair discovery → semantic candidate grading.
 
-The clean screenshot remains the source for visual judgment. The annotated screenshot is a second internal-only pass used only to map findings to exact top-level Elementor section IDs. Neither screenshot is persisted or exposed by the completion-audit response.
+The clean screenshot remains the source for visual judgment. The annotated screenshot is an internal-only locator pass. Neither screenshot is persisted or exposed by the completion-audit response.
 
 ### Runtime evidence on page 952239
 
@@ -45,40 +45,56 @@ The clean screenshot remains the source for visual judgment. The annotated scree
 - 0.16.0 acceptance returned `available=true`, `read_only=true`, `writes_performed=false`, and `source_hashes_match=true`
 - 0.16.1 acceptance returned `automatic_write_allowed=false` globally, hierarchy spacing/alignment candidates downgraded to `supporting`, and CTA margin downgraded to `weak`
 - the 0.16.1 run returned no `value_planning_ready` candidates, so the system correctly refused to invent an automatic edit
-- the localized typography finding had no exact currently guarded typography target, demonstrating fail-closed behavior rather than creating an explicit style control merely to make the automation possible
 
-## 0.17.0 — Rendered repair metrics
+## 0.17.x — dump-dom rendered metrics attempt
 
-Implemented; runtime acceptance pending:
+Runtime-tested and superseded.
+
+The goal was to obtain deterministic rendered section geometry, computed spacing/typography, CTA styling, and media measurements before any bounded repair experiment. The first implementation used a signed-preview-only browser agent plus local Chrome `--dump-dom`.
+
+Runtime result on page 952239:
+
+- 0.17.0: Chrome returned a DOM dump but no internal metrics payload
+- 0.17.1: synchronous bootstrap hardening did not change the result
+- 0.17.2: direct `wp_footer` agent plus output-buffer fallback also did not change the result
+- all three attempts stayed read-only and did not mutate the page
+
+Conclusion: do not continue stacking DOM-injection workarounds. The dump-dom transport is superseded for rendered repair metrics.
+
+## 0.18.0 — Chrome DevTools Protocol rendered metrics
+
+Implemented; runtime acceptance pending.
 
 - no new GPT Action and no schema/instruction change
-- augments the existing completion audit only when `include_visual=true`
-- issues a fresh short-lived signed preview internally and adds a signed-request-only `elementize_metrics=1` mode
-- launches the already configured local Chrome/Chromium/Edge in an isolated temporary profile with bounded `--timeout` and `--dump-dom`
-- injects an internal browser-side metrics agent only into the valid signed preview
+- supersedes the 0.17 dump-dom transport for completion-audit rendered metrics
+- launches the already configured local Chrome/Chromium/Edge with an isolated temporary profile and `--remote-debugging-port=0`
+- discovers the loopback-only DevTools endpoint and signed-preview page target
+- connects directly to the page target over a local WebSocket
+- uses CDP `Runtime.evaluate` with by-value results to measure the live rendered page directly
+- waits briefly for document/font settling before measurement
 - maps rendered top-level sections back to exact Elementor IDs
-- returns section top/bottom/height/width, computed margin/padding, section gaps, and background color
-- returns bounded visible text samples with exact nearest Elementor IDs and computed font-size/line-height/font-weight/color
-- returns bounded CTA samples with exact nearest Elementor IDs and computed styling
-- returns bounded media samples with exact nearest Elementor IDs, rendered dimensions, filename, and object-fit
-- raw DOM is never returned, the signed preview URL is never returned, temporary DOM/log/profile files are deleted, and no page mutation occurs
+- returns section top/bottom/height/width, computed margin/padding, section gaps, background color, bounded text/CTA/media samples, and nearest Elementor IDs
+- disables the old metrics dump-dom callback and its browser-agent injection while 0.18 is loaded
+- DevTools endpoint, signed preview URL, and raw DOM are not exposed
+- temporary browser profile/logs are removed and the browser process is terminated after the read
+- loopback transport only; no external account, API, or paid service
 - action-slot cost remains zero
 
-Why this phase was added before bounded value planning: 0.16.1 correctly found zero semantically direct reversible targets in the latest specimen run. The next safe step is therefore stronger deterministic rendered evidence about the actual visual cause, not forcing a writable nearby control into an experiment.
+Chrome documents headless remote debugging with `--remote-debugging-port=0`, and CDP `Runtime.evaluate` supports evaluating an expression in the inspected page and returning the result by value. This is the correct transport for deterministic live rendered measurements after the dump-dom experiments failed.
 
-### 0.17.0 runtime acceptance gate
+### 0.18.0 runtime acceptance gate
 
 On page 952239, call the completion audit with `include_visual=true` and inspect `visual.render_metrics`.
 
 Acceptance requires:
 
-1. `available=true`, `read_only=true`, `writes_performed=false`.
-2. `section_count` is non-zero and rendered sections carry exact `top_level_element_id` values matching the page.
+1. `render_metrics_version=0.18.0`, `provider=local_chromium_cdp`, `available=true`, `read_only=true`, and `writes_performed=false`.
+2. `section_count` is non-zero and sections carry exact `top_level_element_id` values matching the page.
 3. Section geometry and computed padding/margin/gap evidence are populated.
-4. At least some visible text/CTA/media samples carry exact nearest Elementor element IDs plus rendered metrics.
-5. `signed_preview_url_exposed=false`, `raw_dom_exposed=false`, and `raw_dom_persisted=false`.
+4. At least some visible text/CTA/media samples carry nearest Elementor IDs plus rendered metrics.
+5. `signed_preview_url_exposed=false`, `cdp_endpoint_exposed=false`, `raw_dom_exposed=false`, and `raw_dom_persisted=false`.
 6. No page mutation occurs and the page remains a draft.
 
 ## Next phase
 
-After 0.17.0 is runtime-proven, join rendered metrics with semantic repair discovery. Upgrade a candidate to a direct bounded repair target only when the rendered evidence shows that the exact control plausibly causes the exact visual finding—for example an excessive rendered section gap corresponding to an explicit writable padding/margin control, or undersized visible text corresponding to an exact writable font-size control. Only then add conservative value planning and one-change reversible experiments followed by fresh screenshot comparison. Media replacement, CTA normalization, and broader style changes remain later phases until their reference/asset selection is separately proven.
+After 0.18.0 is runtime-proven, join rendered metrics with semantic repair discovery. Upgrade a candidate to a direct bounded repair target only when rendered evidence shows that the exact control plausibly causes the exact visual finding. Only then add conservative value planning and one-change reversible experiments followed by fresh screenshot comparison. Media replacement, CTA normalization, and broader style changes remain later phases until their reference/asset selection is separately proven.
