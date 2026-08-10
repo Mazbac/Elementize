@@ -24,24 +24,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Refresh dependency lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Enforce pure Mantine frontend
+      - name: Enforce shadcn frontend
         run: |
           set -euo pipefail
-          if find src -type f -name '*.css' | grep -q .; then
-            echo 'Custom frontend CSS is not allowed. Use Mantine components, theme and style props.'
-            find src -type f -name '*.css'
+          if grep -R -n '@mantine/' src package.json --include='*.ts' --include='*.tsx' --include='package.json'; then
+            echo 'Mantine is not allowed in the Elementize frontend.'
             exit 1
           fi
-          if grep -R -n 'className=' src --include='*.tsx'; then
-            echo 'className styling hooks are not allowed in the pure Mantine frontend.'
-            exit 1
-          fi
-          if grep -R -nE '<(div|span|section|nav|main|aside|header|footer|form|input)([[:space:]>])' src --include='*.tsx'; then
-            echo 'Raw visible/layout HTML is not allowed. Use Mantine components.'
-            exit 1
-          fi
+          test -f components.json
+          test -f src/index.css
+          test -d src/components/ui
+          grep -q 'ui.shadcn.com/schema.json' components.json
+          grep -q '@tailwindcss/vite' package.json
       - name: Type-check and build
         run: npm run build
       - name: Upload WordPress admin bundle
@@ -63,5 +61,5 @@ jobs:
             echo "Frontend bundle already matches source."
             exit 0
           fi
-          git commit -m "Build Mantine admin bundle"
+          git commit -m "Build shadcn admin bundle"
           git push
