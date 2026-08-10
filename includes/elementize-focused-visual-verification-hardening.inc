@@ -4,13 +4,10 @@ if ( ! class_exists( 'Elementize_Plugin', false ) ) return;
 if ( ! class_exists( 'Elementize_Focused_Visual_Verification', false ) ) return;
 
 final class Elementize_Focused_Visual_Verification_Hardening {
-    private const VERSION = '0.23.1';
+    private const VERSION = '0.23.5';
     private const NS = 'elementize/v1';
 
     public static function init(): void {
-        // Run after convergence diagnostics so the root status version reflects the
-        // newest loaded feature, and after focused verification so we can harden its
-        // advisory evidence without altering any writer or convergence authority.
         add_filter( 'rest_request_after_callbacks', [ self::class, 'after_rest' ], 510, 3 );
     }
 
@@ -38,6 +35,7 @@ final class Elementize_Focused_Visual_Verification_Hardening {
         $reviewable = 0;
         $grounded_problematic = 0;
         $rejected = 0;
+        $measurement_context_accepted = 0;
         $assessments = [];
 
         foreach ( is_array( $focused['assessments'] ?? null ) ? $focused['assessments'] : [] as $assessment ) {
@@ -50,11 +48,13 @@ final class Elementize_Focused_Visual_Verification_Hardening {
             $assessment['pre_evidence_hardening_focused_visual_support'] = $pre_support;
             $assessment['evidence_visual_grounded'] = ! empty( $grounding['grounded'] );
             $assessment['evidence_grounding_reason'] = (string) ( $grounding['reason'] ?? '' );
+            $assessment['measurement_context_present'] = ! empty( $grounding['measurement_context_present'] );
             $assessment['focused_visual_support'] = $pre_support && ! empty( $grounding['grounded'] );
             $assessment['eligible_for_hardened_convergence_review'] = ! empty( $assessment['focused_visual_support'] );
             $assessment['automatic_write_allowed'] = false;
 
             if ( $pre_support && empty( $grounding['grounded'] ) ) $rejected++;
+            if ( ! empty( $grounding['grounded'] ) && ! empty( $grounding['measurement_context_present'] ) ) $measurement_context_accepted++;
             if ( 'visibly_problematic' === (string) ( $assessment['verdict'] ?? '' ) && ! empty( $grounding['grounded'] ) ) $grounded_problematic++;
             if ( ! empty( $assessment['eligible_for_hardened_convergence_review'] ) ) $reviewable++;
             $assessments[] = $assessment;
@@ -64,14 +64,16 @@ final class Elementize_Focused_Visual_Verification_Hardening {
         $focused['verification_version'] = self::VERSION;
         $focused['evidence_grounding_hardening'] = true;
         $focused['numeric_measurement_alone_is_insufficient'] = true;
+        $focused['measurement_context_allowed_when_visual_causality_present'] = true;
         $focused['visual_causality_language_required'] = true;
         $focused['raw_hardened_convergence_review_count'] = $raw_reviewable;
         $focused['hardened_convergence_review_count'] = $reviewable;
         $focused['grounded_visibly_problematic_count'] = $grounded_problematic;
         $focused['evidence_grounding_rejected_count'] = $rejected;
+        $focused['measurement_context_accepted_count'] = $measurement_context_accepted;
         $focused['assessments'] = $assessments;
         $focused['automatic_write_allowed'] = false;
-        $focused['note'] = 'Focused visual support is now additionally gated on screenshot-grounded causal evidence. Numeric measurement, threshold, or acceptable-range language cannot by itself promote a target for later convergence review. No write authority is granted.';
+        $focused['note'] = 'Focused visual support requires screenshot-grounded causal evidence. Numeric measurement, threshold, or acceptable-range language cannot promote a target by itself, but measurement context is allowed when the same evidence also states an explicit visual spatial or legibility consequence. No write authority is granted.';
 
         $visual['focused_verification'] = $focused;
         $data['visual'] = $visual;
@@ -81,39 +83,57 @@ final class Elementize_Focused_Visual_Verification_Hardening {
 
     private static function evidence_grounding( array $candidate, string $evidence ): array {
         $text = strtolower( trim( preg_replace( '/\s+/', ' ', $evidence ) ?? $evidence ) );
-        if ( '' === $text ) return [ 'grounded' => false, 'reason' => 'empty_evidence' ];
+        if ( '' === $text ) return [ 'grounded' => false, 'reason' => 'empty_evidence', 'measurement_context_present' => false ];
 
-        // The focused model is allowed to know that a measured property is being
-        // checked, but its causal evidence must come from the screenshot. Reject
-        // common phrases that merely restate a measurement or a generic threshold.
-        if ( preg_match( '/\b(?:padding|font(?:-|\s)?size|spacing)?\s*value(?:\s+of)?\b|\bacceptable\s+range\b|\bwithin\s+(?:an\s+)?acceptable\s+range\b/i', $text ) ) {
-            return [ 'grounded' => false, 'reason' => 'measurement_or_range_language' ];
-        }
+        $measurement_context = (bool) preg_match(
+            '/\b(?:padding|font(?:-|\s)?size|spacing)?\s*value(?:\s+of)?\b|\bacceptable\s+range\b|\bwithin\s+(?:an\s+)?acceptable\s+range\b|\b(?:padding|font(?:-|\s)?size|spacing)\s*(?:of|=|:)\s*\d+(?:\.\d+)?\b/i',
+            $text
+        );
 
         $type = strtolower( trim( (string) ( $candidate['observation_type'] ?? '' ) ) );
         if ( 'large_internal_padding_present' === $type ) {
             $visual_terms = [
                 'empty space', 'blank space', 'white space', 'whitespace', 'breathing room',
-                'spacing rhythm', 'visual rhythm', 'section balance', 'poor balance', 'unbalanced',
+                'spacing rhythm', 'visual rhythm', 'section balance', 'visual balance', 'poor balance', 'unbalanced',
                 'space above', 'space below', 'gap above', 'gap below', 'content starts',
                 'content sits', 'adjacent section', 'next section', 'previous section', 'composition',
+                'layout feels', 'layout appears', 'layout looks', 'too much space',
             ];
-            return self::contains_any( $text, $visual_terms )
-                ? [ 'grounded' => true, 'reason' => 'visual_spatial_causality_present' ]
-                : [ 'grounded' => false, 'reason' => 'visual_spatial_causality_missing' ];
+            if ( self::contains_any( $text, $visual_terms ) ) {
+                return [
+                    'grounded' => true,
+                    'reason' => $measurement_context ? 'visual_spatial_causality_present_with_measurement_context' : 'visual_spatial_causality_present',
+                    'measurement_context_present' => $measurement_context,
+                ];
+            }
+            return [
+                'grounded' => false,
+                'reason' => $measurement_context ? 'measurement_or_range_language_without_visual_causality' : 'visual_spatial_causality_missing',
+                'measurement_context_present' => $measurement_context,
+            ];
         }
 
         if ( 'micro_text_present' === $type ) {
             $visual_terms = [
                 'hard to read', 'difficult to read', 'too small to read', 'legibility', 'legible',
                 'readability', 'readable', 'tiny text', 'small text', 'caption', 'label', 'microcopy',
+                'comfortable to read', 'comfortably readable', 'read comfortably',
             ];
-            return self::contains_any( $text, $visual_terms )
-                ? [ 'grounded' => true, 'reason' => 'visual_legibility_causality_present' ]
-                : [ 'grounded' => false, 'reason' => 'visual_legibility_causality_missing' ];
+            if ( self::contains_any( $text, $visual_terms ) ) {
+                return [
+                    'grounded' => true,
+                    'reason' => $measurement_context ? 'visual_legibility_causality_present_with_measurement_context' : 'visual_legibility_causality_present',
+                    'measurement_context_present' => $measurement_context,
+                ];
+            }
+            return [
+                'grounded' => false,
+                'reason' => $measurement_context ? 'measurement_or_range_language_without_visual_causality' : 'visual_legibility_causality_missing',
+                'measurement_context_present' => $measurement_context,
+            ];
         }
 
-        return [ 'grounded' => false, 'reason' => 'unsupported_observation_type' ];
+        return [ 'grounded' => false, 'reason' => 'unsupported_observation_type', 'measurement_context_present' => $measurement_context ];
     }
 
     private static function contains_any( string $haystack, array $needles ): bool {
@@ -132,6 +152,7 @@ final class Elementize_Focused_Visual_Verification_Hardening {
         $data['elementize_version'] = self::VERSION;
         $data['rendered_visual_focused_verification_evidence_hardening'] = true;
         $data['rendered_visual_focused_verification_numeric_measurement_alone_insufficient'] = true;
+        $data['rendered_visual_focused_verification_measurement_context_allowed_with_visual_causality'] = true;
         $data['rendered_visual_focused_verification_visual_causality_language_required'] = true;
         $data['rendered_visual_focused_verification_evidence_hardening_read_only'] = true;
         $data['rendered_visual_focused_verification_evidence_hardening_automatic_write_allowed'] = false;
