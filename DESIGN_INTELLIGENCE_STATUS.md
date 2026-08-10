@@ -12,6 +12,7 @@
 - 0.10.x compact GPT control plane plus GPT-safe design-settings response budgeting
 - 0.11.1 guarded typed design writer is runtime-proven for an exact reversible spacing write on managed draft page 952239
 - 0.12.1 short-lived signed remote rendering is runtime-proven on page 952239, including anonymous incognito rendering without local-network permission prompts
+- 0.14.4 free local screenshot capture + local Ollama visual critique are runtime-proven on page 952239
 - PHP syntax lint gate is active
 - GPT Builder contract guard enforces <=8000 instruction characters and the compact Action budget
 
@@ -85,41 +86,40 @@ Runtime acceptance on page 952239:
 
 ## Visual acceptance specimen
 
-Page 952239 remains the first rendered-design acceptance specimen. Human inspection found issues that deterministic audits underweighted: excessive vertical whitespace, underscaled typography, weak hierarchy after the hero, inconsistent section widths, off-topic/inconsistent imagery, fragmented CTA styling, and disconnected section rhythm. Automatic rendered critique should surface these classes of problems without pretending subjective preferences are deterministic facts.
+Page 952239 remains the first rendered-design acceptance specimen. Human inspection found issues that deterministic audits underweighted: excessive vertical whitespace, underscaled typography, weak hierarchy after the hero, inconsistent section widths, off-topic/inconsistent imagery, fragmented CTA styling, and disconnected section rhythm.
 
-## 0.14.0 — Free local screenshot + local vision audit
+## 0.14.4 — Free local screenshot + local vision audit
 
-Implemented; runtime acceptance pending:
+Implemented and runtime-proven:
 
-- no new GPT operation; `getElementizePageCompletionAudit?include_visual=true` remains the opt-in entry point
-- paid Cloudflare Browser Rendering and Workers AI dependencies are removed
-- local Chrome/Chromium or Microsoft Edge is discovered on Windows/macOS/Linux; an explicit `ELEMENTIZE_CHROME_PATH` override is supported if needed
-- PHP `proc_open` launches the browser headlessly against a fresh signed preview
-- capture uses a bounded 1280px desktop viewport with a tall-page limit, then attempts to trim trailing background whitespace when GD is available
-- screenshot bytes are kept only in a temporary local file/memory, bounded to 10 MB, hashed, and deleted after analysis
-- local Ollama is the vision backend; default model is `gemma3:4b`, overridable via `ELEMENTIZE_LOCAL_VISION_MODEL`
-- Ollama is contacted only on loopback (`127.0.0.1`/`localhost`); optional `ELEMENTIZE_OLLAMA_URL` is constrained to loopback
-- screenshot analysis returns the same bounded advisory dimensions/findings structure as the prior experiment
-- no external account, API token, paid API, screenshot upload, or screenshot persistence is required
-- status exposes separate readiness for local browser capture and local Ollama vision so setup failures are diagnosable without secrets
+- no new GPT operation; `getElementizePageCompletionAudit?include_visual=true` is the opt-in entry point
+- no paid screenshot, browser-rendering, vision, or AI service is required
+- local Chrome/Chromium/Edge is used for rendered capture; local Ollama is the vision backend
+- explicit `ELEMENTIZE_CHROME_PATH` is supported for environments where the browser executable is not auto-discovered
+- local Ollama is constrained to loopback; default model is `gemma3:4b`
+- Chrome capture uses an isolated temporary profile, deterministic `--timeout` capture, bounded 1280px desktop width, a 9000px tall-page limit, file polling, and cleanup
+- screenshot bytes are bounded to 10 MB, hashed, used only locally, and deleted after analysis
+- signed preview URLs and screenshot bytes are not exposed in the completion-audit response
+- Ollama receives an explicit structured-output JSON schema, the same schema is grounded in the prompt, temperature is zero, and incomplete model output is rejected rather than silently defaulted
+- rendered critique remains advisory-only
 - normal completion audits remain unchanged unless `include_visual=true`
 
-### 0.14 runtime acceptance gate
+### Runtime acceptance on page 952239
 
-On page 952239:
+1. Local PHP process execution was available.
+2. Chrome was explicitly configured with `ELEMENTIZE_CHROME_PATH`; browser capture readiness became true.
+3. Ollama + `gemma3:4b` were installed locally; Ollama/model/vision readiness and overall configuration became true.
+4. Early capture attempts exposed Windows Chrome process/pipeline and wait-behavior issues; 0.14.1–0.14.3 hardened file polling, process isolation, and deterministic timeout capture.
+5. A manual Chrome CLI acceptance test proved local headless screenshot capture independently.
+6. 0.14.3 then captured the signed page automatically at 1280×9000 in about 2.3 seconds without returning or persisting the screenshot.
+7. 0.14.4 captured the page again at 1280×9000 (1,453,235 bytes) in about 2.72 seconds and produced a structured local visual critique.
+8. The critique independently surfaced the same major classes seen in human review: weak visual hierarchy, excessive/inconsistent spacing rhythm, small text, fragmented visual cohesion, irrelevant/inconsistent imagery, weak CTA prominence/consistency, and disconnected section flow/balance.
+9. `visual_available=true` and `rendered_visual_truth_obtained=true` were returned while the page remained unmodified.
 
-1. Install 0.14.0 and verify status reports provider=`local`, paid_services_required=false, external_account_required=false.
-2. Verify local Chrome/Edge detection and `rendered_visual_capture_ready=true`.
-3. If Ollama is not installed/running, verify the status degrades cleanly with `rendered_visual_ollama_reachable=false` and normal audits still work.
-4. Install/start free local Ollama and pull `gemma3:4b`; verify `rendered_visual_model_available=true` and `rendered_visual_audit_configured=true`.
-5. Call the completion audit with `include_visual=true`.
-6. Verify screenshot capture succeeds, no signed URL or screenshot bytes are returned, and the temp screenshot is not persisted.
-7. Verify the local critique flags multiple obvious specimen issues such as whitespace/rhythm, underscaled text, imagery relevance/cohesion, CTA fragmentation, or weak section balance.
-8. Compare against the human screenshot review before trusting it for autonomous corrections.
-9. Only then let WP Builder use guarded writers to fix high-confidence findings and re-run.
+The first rendered visual QA loop is therefore runtime-proven: signed draft preview → local Chrome screenshot → local Ollama vision critique → structured advisory findings.
 
 ## Current completion state
 
-Design Intelligence has runtime proof for catalogue exploration, visual template inspection, structural inspection, deterministic design audit, real design-control discovery, compact GPT control plane, guarded typed design writes, and secure signed remote draft rendering.
+Design Intelligence has runtime proof for catalogue exploration, visual template inspection, structural inspection, deterministic design audit, real design-control discovery, compact GPT control plane, guarded typed design writes, secure signed remote draft rendering, free local screenshot capture, and free local rendered visual critique.
 
-Free local screenshot capture + local visual critique are implemented but not yet runtime-proven. Deterministic and rendered design audits remain advisory-only.
+The next phase is finding-to-control repair orchestration: map high-confidence rendered findings to exact safe Elementor controls/media/link targets, make guarded changes only where the existing writers support them, then re-render and compare before/after results. Deterministic and rendered design audits remain advisory-only; rendered findings must not directly bypass write guards.
