@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.5.14.0
-  description: Controlled WordPress, Elementor, Pixfort, Media Library, conversation-image import, visual, layout, lifecycle, and page-owned embedded Pixfort copy actions for Elementize.
+  version: 0.10.0
+  description: Guarded WordPress, Elementor, Pixfort, media, copy, and visual actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
-    description: Current Cloudflare quick tunnel. Replace if the quick tunnel changes.
+    description: Elementize public WordPress API origin.
 
 paths:
   /wp-json/elementize/v1/status:
@@ -30,8 +30,8 @@ paths:
   /wp-json/elementize/v1/media/images/import-chat-file:
     post:
       operationId: importElementizeConversationImage
-      summary: Import one image attached in this ChatGPT conversation into WordPress Media Library
-      description: Use when the user supplied an image in the conversation and wants that exact image used on the WordPress page. Send exactly one conversation image through openaiFileIdRefs. The action imports it as a normal WordPress image attachment; use the returned attachment_id in a later guarded media write. JPG, PNG, WEBP, AVIF, and GIF are supported. Do not use for unrelated files.
+      summary: Import one conversation image into WordPress Media Library
+      description: Import exactly one image attached in this ChatGPT conversation and return its attachment_id for a later guarded media write.
       requestBody:
         required: true
         content:
@@ -45,19 +45,14 @@ paths:
                   type: array
                   minItems: 1
                   maxItems: 1
-                  description: Exactly one image file uploaded by the user in this conversation, or an image file created in this conversation, to import into WordPress.
                   items: { type: string }
-                title:
-                  type: string
-                  description: Optional WordPress Media Library title for the image.
-                alt:
-                  type: string
-                  description: Optional concise alt text describing the image for the page context.
+                title: { type: string }
+                alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201': { description: Conversation image imported and verified as a WordPress image attachment }
-        '400': { description: Missing/invalid file reference, unsupported image, or confirmation missing }
-        '502': { description: Temporary OpenAI file URL could not be downloaded }
+        '201': { description: Conversation image imported and verified }
+        '400': { description: Invalid file reference, unsupported image, or confirmation missing }
+        '502': { description: Temporary conversation file could not be downloaded }
 
   /wp-json/elementize/v1/pixfort/templates:
     get:
@@ -184,7 +179,7 @@ paths:
     get:
       operationId: getElementizeEmbeddedDocuments
       summary: Audit Pixfort child documents referenced by a page
-      description: Read-only. Use before any embedded Pixfort copy write. Original Pixfort templates must never be edited directly.
+      description: Read-only. Original/shared Pixfort templates must never be edited directly.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: q, in: query, required: false, schema: { type: string } }
@@ -194,8 +189,7 @@ paths:
   /wp-json/elementize/v1/pages/{id}/embedded-documents/clone-relink:
     post:
       operationId: cloneRelinkElementizeEmbeddedDocuments
-      summary: Clone referenced Pixfort templates and relink only this managed draft page
-      description: Guarded isolation step. Never modifies the original Pixfort templates.
+      summary: Clone referenced Pixfort templates and relink only this managed draft
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -231,7 +225,6 @@ paths:
     get:
       operationId: getElementizeEmbeddedText
       summary: Read copy fields from Pixfort child documents referenced by a page
-      description: Check prepare_required, ownership, writability, and fresh document hashes before writing.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
@@ -239,7 +232,6 @@ paths:
     post:
       operationId: updateElementizeEmbeddedText
       summary: Update copy only inside Elementize-owned Pixfort clones
-      description: Direct writes to original Pixfort templates are blocked. Use only fresh page/document hashes and expected values.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -335,142 +327,3 @@ paths:
       responses:
         '200': { description: Visual update result }
         '409': { description: Page or visual target changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/layout:
-    get:
-      operationId: getElementizePageLayout
-      summary: Read current guarded page layout mode
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: Current page layout state }
-    post:
-      operationId: updateElementizePageLayout
-      summary: Change a managed draft between site and standalone layout
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, expected_mode, layout_token, content_hash, mode, confirm_layout_change]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                expected_mode: { type: string, enum: [default, site, standalone] }
-                layout_token: { type: string }
-                content_hash: { type: string }
-                mode: { type: string, enum: [site, standalone] }
-                confirm_layout_change: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Page layout update result }
-        '409': { description: Page layout or content changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/lifecycle:
-    get:
-      operationId: getElementizePageLifecycle
-      summary: Read guarded lifecycle state for a WordPress page
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: Current page lifecycle snapshot }
-
-  /wp-json/elementize/v1/pages/{id}/trash:
-    post:
-      operationId: trashElementizeManagedPage
-      summary: Move a managed draft page to WordPress Trash
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_trash]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                lifecycle_token: { type: string }
-                content_hash: { type: string }
-                confirm_trash: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Page moved to Trash }
-        '409': { description: Lifecycle or content changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/restore:
-    post:
-      operationId: restoreElementizeManagedPage
-      summary: Restore a managed page from Trash to draft
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, lifecycle_token, confirm_restore]
-              properties:
-                expected_status: { type: string, enum: [trash] }
-                expected_title: { type: string }
-                lifecycle_token: { type: string }
-                confirm_restore: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Page restored to draft }
-        '409': { description: Lifecycle changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/publish:
-    post:
-      operationId: publishElementizeManagedPage
-      summary: Publish a non-empty managed Elementor draft
-      description: High impact. Use only when explicitly requested after a fresh lifecycle read.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_publish]
-              properties:
-                expected_status: { type: string, enum: [draft] }
-                expected_title: { type: string }
-                lifecycle_token: { type: string }
-                content_hash: { type: string }
-                confirm_publish: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Page published }
-        '400': { description: Publication refused }
-        '409': { description: Lifecycle or content changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/unpublish:
-    post:
-      operationId: unpublishElementizeManagedPage
-      summary: Return a published managed page to draft
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, lifecycle_token, content_hash, confirm_unpublish]
-              properties:
-                expected_status: { type: string, enum: [publish] }
-                expected_title: { type: string }
-                lifecycle_token: { type: string }
-                content_hash: { type: string }
-                confirm_unpublish: { type: boolean, enum: [true] }
-      responses:
-        '200': { description: Page returned to draft }
-        '409': { description: Lifecycle or content changed after the fresh read }
