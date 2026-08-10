@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Custom GPT Actions
-  version: 0.10.0
+  version: 0.11.0
   description: Guarded WordPress, Elementor, Pixfort, media, copy, and visual actions for Elementize.
 servers:
   - url: https://permitted-tucson-invention-principles.trycloudflare.com
