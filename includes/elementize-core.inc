@@ -105,7 +105,7 @@ final class Elementize_Core {
             return new WP_REST_Response( [ 'q' => '', 'page' => 1, 'per_page' => 0, 'total' => 0, 'total_pages' => 0, 'pages' => [], 'warning' => 'Elementor is not active.' ], 200 );
         }
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
         $search = trim( (string) $request->get_param( 'q' ) );
         $args = [
             'post_type' => 'page',
@@ -176,8 +176,11 @@ final class Elementize_Core {
     }
 
     public static function hash_elements( array $elements ): string {
-        $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-        return hash( 'sha256', false === $json ? '' : $json );
+        $options = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+        if ( defined( 'JSON_INVALID_UTF8_SUBSTITUTE' ) ) $options |= JSON_INVALID_UTF8_SUBSTITUTE;
+        $json = wp_json_encode( $elements, $options );
+        if ( ! is_string( $json ) ) $json = serialize( $elements );
+        return hash( 'sha256', $json );
     }
 
     public static function page_revisions_available(): bool {
