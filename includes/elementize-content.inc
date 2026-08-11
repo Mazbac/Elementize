@@ -398,18 +398,18 @@ final class Elementize_Content {
         return (bool) preg_match( '/(^|_)(title|text|content|editor|description|heading|headline|subtitle|sub_title|label|caption|button_text|btn_text|button_label|cta_text|placeholder|prefix|suffix|message|quote|author|client|person|eyebrow|kicker|overline|tagline|question|answer|testimonial|review|feature|service|intro|body|paragraph|copy|notice|note|html)(_|$)/i', $key );
     }
 
+    private static function technical_key_pattern(): string {
+        return '/(^|_)(css|custom_css|selector|class|classes|shortcode|template|template_id|html_tag|aria|attribute|attributes|url|link|href|src|id|element_id|html_id|icon|image|media|logo|photo|thumbnail|poster|video|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow|breakpoint|responsive|visibility|motion|mask|filter|blend|shadow|menu_id|form_id|role|rel|target|tag|type|style|source|control|config|option|device|mode|variant|skin|scheme|unit)(_|$)/i';
+    }
+
     private static function known_technical_copy_collision( array $path, string $key ): bool {
-        if ( preg_match( '/(^|_)(css|custom_css|selector|class|classes|shortcode|template|template_id|html_tag|aria|attribute|attributes|url|link|href|src|id|element_id|html_id|icon|image|media|logo|photo|thumbnail|poster|video|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow|breakpoint|responsive|visibility|motion|mask|filter|blend|shadow|menu_id|form_id|role|rel|target)(_|$)/i', $key ) ) return true;
-        $parents = array_slice( $path, 0, -1 );
-        if ( self::technical_path( $parents ) ) return true;
-        return false;
+        if ( preg_match( self::technical_key_pattern(), $key ) ) return true;
+        return self::technical_path( array_slice( $path, 0, -1 ) );
     }
 
     private static function technical_path( array $path ): bool {
         foreach ( $path as $segment ) {
-            if ( ! is_string( $segment ) ) continue;
-            $segment = strtolower( $segment );
-            if ( preg_match( '/(^|_)(url|link|href|src|id|element_id|html_id|class|classes|css|selector|shortcode|icon|image|media|logo|photo|thumbnail|poster|video|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow|breakpoint|responsive|visibility|motion|mask|filter|blend|shadow|template|template_id|menu_id|form_id|role|rel|target|html_tag)(_|$)/i', $segment ) ) return true;
+            if ( is_string( $segment ) && preg_match( self::technical_key_pattern(), strtolower( $segment ) ) ) return true;
         }
         return false;
     }
