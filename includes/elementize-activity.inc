@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 final class Elementize_Activity {
     private const OPT_LOG = 'elementize_activity_log';
     private const SNAPSHOT_META = '_elementize_activity_snapshot';
+    private const CREATIVE_MANAGED_META = '_elementize_managed_roots';
+    private const CREATIVE_MANAGED_SNAPSHOT_META = '_elementize_managed_roots_snapshot';
     private const MAX_LOG = 100;
     private static array $pending = [];
 
@@ -190,6 +192,11 @@ final class Elementize_Activity {
         $current_hash = Elementize_Core::hash_elements( $current );
         if ( ! hash_equals( (string) ( $record['after_hash'] ?? '' ), $current_hash ) ) return new WP_Error( 'elementize_activity_page_changed', 'The page changed after this activity. Undo the newest matching change first or review the page manually.', [ 'status' => 409, 'content_hash' => $current_hash ] );
 
+        $creative = ! empty( $record['creative'] );
+        $current_managed = $creative ? self::current_creative_managed( $page_id ) : [];
+        $target_managed = $creative ? self::creative_managed_snapshot( $revision_id ) : [];
+        if ( $creative && null === $target_managed ) return new WP_Error( 'elementize_activity_managed_snapshot_missing', 'The creative managed-section snapshot is unavailable, so this creative change cannot be undone safely.', [ 'status' => 409 ] );
+
         $undo_revision = Elementize_Core::save_revision( $page_id );
         if ( is_wp_error( $undo_revision ) ) return $undo_revision;
         $document = Elementize_Core::need_document( $page_id );
@@ -205,9 +212,30 @@ final class Elementize_Activity {
             ] );
         }
 
+        if ( $creative && ! self::save_creative_managed( $page_id, $target_managed ) ) {
+            $rollback = self::save_verified( $document, $page_id, $current, $current_hash );
+            $metadata_rollback = self::save_creative_managed( $page_id, $current_managed );
+            return new WP_Error( 'elementize_undo_managed_metadata_failed', 'Elementize could not verify the creative managed-section metadata, so it attempted to restore the page to the state before Undo.', [
+                'status' => 500,
+                'undo_revision_id' => $undo_revision,
+                'rollback_verified' => ! is_wp_error( $rollback ) && $metadata_rollback,
+            ] );
+        }
+
+        $records_before = $records;
         $records[ $index ]['undone_at_gmt'] = gmdate( 'Y-m-d H:i:s' );
         $records[ $index ]['undo_revision_id'] = (int) $undo_revision;
-        self::save_records( $records );
+        if ( ! self::save_records( $records ) ) {
+            $rollback = self::save_verified( $document, $page_id, $current, $current_hash );
+            $metadata_rollback = ! $creative || self::save_creative_managed( $page_id, $current_managed );
+            self::save_records( $records_before );
+            return new WP_Error( 'elementize_undo_activity_persist_failed', 'Elementize could not persist the Undo activity state, so it attempted to restore the page to its pre-Undo state.', [
+                'status' => 500,
+                'undo_revision_id' => $undo_revision,
+                'rollback_verified' => ! is_wp_error( $rollback ) && $metadata_rollback,
+            ] );
+        }
+
         Elementize_Core::regenerate_css( $page_id );
         clean_post_cache( $page_id );
 
@@ -218,6 +246,7 @@ final class Elementize_Activity {
             'undo_revision_id' => (int) $undo_revision,
             'content_hash' => (string) $record['before_hash'],
             'persisted_verification' => true,
+            'creative_managed_metadata_restored' => $creative ? true : null,
         ], 200 );
     }
 
@@ -260,6 +289,31 @@ final class Elementize_Activity {
         return is_array( $decoded ) ? $decoded : null;
     }
 
+    private static function current_creative_managed( int $page_id ): array {
+        $value = get_post_meta( $page_id, self::CREATIVE_MANAGED_META, true );
+        return is_array( $value ) ? $value : [];
+    }
+
+    private static function creative_managed_snapshot( int $revision_id ): ?array {
+        if ( $revision_id <= 0 ) return null;
+        $payload = (string) get_metadata( 'post', $revision_id, self::CREATIVE_MANAGED_SNAPSHOT_META, true );
+        if ( '' === $payload ) return null;
+        $json = base64_decode( $payload, true );
+        if ( ! is_string( $json ) ) return null;
+        $decoded = json_decode( $json, true );
+        return is_array( $decoded ) ? $decoded : null;
+    }
+
+    private static function save_creative_managed( int $page_id, array $managed ): bool {
+        if ( $managed ) update_post_meta( $page_id, self::CREATIVE_MANAGED_META, $managed );
+        else delete_post_meta( $page_id, self::CREATIVE_MANAGED_META );
+        $persisted = get_post_meta( $page_id, self::CREATIVE_MANAGED_META, true );
+        $persisted = is_array( $persisted ) ? $persisted : [];
+        $expected_json = wp_json_encode( $managed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        $actual_json = wp_json_encode( $persisted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        return is_string( $expected_json ) && is_string( $actual_json ) && hash_equals( $expected_json, $actual_json );
+    }
+
     private static function save_verified( $document, int $page_id, array $elements, string $expected_hash ) {
         try { $saved = $document->save( [ 'elements' => $elements ] ); }
         catch ( Throwable $e ) { return new WP_Error( 'elementize_activity_save_failed', $e->getMessage() ); }
@@ -280,8 +334,14 @@ final class Elementize_Activity {
         self::save_records( array_slice( $records, 0, self::MAX_LOG ) );
     }
 
-    private static function save_records( array $records ): void {
-        update_option( self::OPT_LOG, array_values( array_slice( $records, 0, self::MAX_LOG ) ), false );
+    private static function save_records( array $records ): bool {
+        $normalized = array_values( array_slice( $records, 0, self::MAX_LOG ) );
+        update_option( self::OPT_LOG, $normalized, false );
+        $persisted = get_option( self::OPT_LOG, [] );
+        if ( ! is_array( $persisted ) ) return false;
+        $expected_json = wp_json_encode( $normalized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        $actual_json = wp_json_encode( array_values( $persisted ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        return is_string( $expected_json ) && is_string( $actual_json ) && hash_equals( $expected_json, $actual_json );
     }
 
     private static function find_record_index( array $records, string $activity_id ): ?int {
