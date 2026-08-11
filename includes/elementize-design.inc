@@ -186,7 +186,8 @@ final class Elementize_Design {
     }
 
     private static function dynamic( string $value ): bool {
-        return str_starts_with( ltrim( $value ), '[elementor-tag' );
+        $trimmed = ltrim( $value );
+        return str_starts_with( $trimmed, '[elementor-tag' ) || false !== strpos( $trimmed, '{{' );
     }
 
     private static function bounded_css_value( $value, int $depth ): bool {
