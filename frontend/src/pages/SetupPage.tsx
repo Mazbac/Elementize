@@ -1,9 +1,11 @@
-import { Check, Copy, ExternalLink, KeyRound } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, KeyRound, Terminal } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { copyText, generateConnectionKey } from '../lib/actions';
@@ -27,6 +29,12 @@ function ActionRow({ number, title, description, action }: { number: number; tit
   );
 }
 
+function cloudflareCommand(siteOrigin: string): string {
+  const origin = siteOrigin || 'http://localhost';
+  const noTlsVerify = origin.toLowerCase().startsWith('https://') ? ' --no-tls-verify' : '';
+  return `cloudflared tunnel --url "${origin}"${noTlsVerify}`;
+}
+
 export function SetupPage({ config, onNavigate }: Props) {
   const websiteReady =
     config.requirements.elementor &&
@@ -40,6 +48,7 @@ export function SetupPage({ config, onNavigate }: Props) {
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState('');
   const [copied, setCopied] = useState('');
+  const tunnelCommand = cloudflareCommand(config.environment.siteOrigin);
 
   const requirements = useMemo(
     () => [
@@ -100,93 +109,171 @@ export function SetupPage({ config, onNavigate }: Props) {
                 </div>
               </div>
             ))}
-            {!config.environment.connectionReady && (
-              <Button variant="outline" className="mt-4" onClick={() => onNavigate('connection')}>Set public address</Button>
-            )}
           </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Connect ChatGPT</CardTitle>
-          <CardDescription>Four actions, then send one test message.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ActionRow
-            number={1}
-            title="Open GPT Builder"
-            description="Keep this WordPress page open while you configure the GPT."
-            action={
-              <Button asChild variant="outline" size="sm">
-                <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
-              </Button>
-            }
-          />
-          <Separator className="my-4" />
-          <ActionRow
-            number={2}
-            title="Copy instructions"
-            description="Paste them into the GPT Instructions field."
-            action={<Button size="sm" disabled={!config.instructions} onClick={() => handleCopy(config.instructions, 'instructions')}>{copied === 'instructions' ? <Check /> : <Copy />}{copied === 'instructions' ? 'Copied' : 'Copy instructions'}</Button>}
-          />
-          <Separator className="my-4" />
-          <ActionRow
-            number={3}
-            title="Copy Action schema"
-            description="Create one Action in GPT Builder and paste the schema."
-            action={<Button size="sm" disabled={!config.schema} onClick={() => handleCopy(config.schema, 'schema')}>{copied === 'schema' ? <Check /> : <Copy />}{copied === 'schema' ? 'Copied' : 'Copy schema'}</Button>}
-          />
-          <Separator className="my-4" />
-          <ActionRow
-            number={4}
-            title="Generate connection key"
-            description="Choose API Key → Basic in Action authentication and paste this key."
-            action={<Button size="sm" disabled={keyBusy || !websiteReady} onClick={handleGenerateKey}><KeyRound />{keyBusy ? 'Generating…' : 'Generate key'}</Button>}
-          />
-
-          {connectionKey && (
-            <>
-              <Separator className="my-4" />
-              <div className="space-y-3">
-                <div>
-                  <p className="font-medium">Connection key</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Shown once. Treat it like a password.</p>
-                </div>
-                <Textarea readOnly value={connectionKey} className="min-h-20 resize-none font-mono text-xs" />
-                <Button variant="outline" size="sm" onClick={() => handleCopy(connectionKey, 'key')}>
-                  {copied === 'key' ? <Check /> : <Copy />}
-                  {copied === 'key' ? 'Copied' : 'Copy connection key'}
-                </Button>
+      {!config.environment.connectionReady && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>Set up public HTTPS</CardTitle>
+                <CardDescription className="mt-1">For a local WordPress site, a temporary Cloudflare Quick Tunnel is the easiest way to let ChatGPT reach Elementize.</CardDescription>
               </div>
-            </>
-          )}
+              <Badge variant="secondary" className="w-fit">Development only</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ActionRow
+              number={1}
+              title="Install cloudflared"
+              description="Cloudflare Quick Tunnels do not require a Cloudflare account."
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <a href="https://developers.cloudflare.com/tunnel/downloads/" target="_blank" rel="noreferrer">
+                    <Download /> Download <ExternalLink />
+                  </a>
+                </Button>
+              }
+            />
 
-          {keyError && (
+            <Separator className="my-4" />
+
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary" className="h-7 w-7 shrink-0 justify-center p-0">2</Badge>
+                <div>
+                  <p className="font-medium">Start the temporary tunnel</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Run this command in PowerShell or Command Prompt and keep that terminal open.</p>
+                </div>
+              </div>
+              <Textarea readOnly value={tunnelCommand} className="min-h-16 resize-none font-mono text-xs" />
+              <Button variant="outline" size="sm" onClick={() => handleCopy(tunnelCommand, 'tunnel-command')}>
+                {copied === 'tunnel-command' ? <Check /> : <Terminal />}
+                {copied === 'tunnel-command' ? 'Copied' : 'Copy command'}
+              </Button>
+            </div>
+
+            <Separator className="my-4" />
+
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary" className="h-7 w-7 shrink-0 justify-center p-0">3</Badge>
+                <div>
+                  <p className="font-medium">Paste the Cloudflare URL</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Copy the generated <code>https://…trycloudflare.com</code> address from the terminal and save it here.</p>
+                </div>
+              </div>
+
+              <form method="post" action={config.urls.adminPost} className="space-y-3">
+                <input type="hidden" name="action" value="elementize_save_connection" />
+                <input type="hidden" name="_wpnonce" value={config.nonces.saveConnection} />
+                <div className="space-y-2">
+                  <Label htmlFor="elementize_setup_public_api_origin">Public HTTPS address</Label>
+                  <Input
+                    id="elementize_setup_public_api_origin"
+                    name="elementize_public_api_origin"
+                    type="url"
+                    placeholder="https://random-words.trycloudflare.com"
+                    required
+                  />
+                </div>
+                <Button type="submit" size="sm">Save & continue</Button>
+              </form>
+            </div>
+
             <Alert className="mt-4">
-              <AlertTitle>Could not generate the key</AlertTitle>
-              <AlertDescription>{keyError}</AlertDescription>
+              <AlertTitle>Keep the tunnel running</AlertTitle>
+              <AlertDescription>A Quick Tunnel is temporary. If you stop cloudflared and start a new tunnel later, save the new URL in Elementize before using ChatGPT again.</AlertDescription>
             </Alert>
-          )}
+          </CardContent>
+        </Card>
+      )}
 
-          <Separator className="my-4" />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium">Test the connection</p>
-              <p className="mt-1 text-sm text-muted-foreground">Send one status message from your Custom GPT.</p>
+      {config.environment.connectionReady && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Connect ChatGPT</CardTitle>
+            <CardDescription>Four actions, then send one test message.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ActionRow
+              number={1}
+              title="Open GPT Builder"
+              description="Keep this WordPress page open while you configure the GPT."
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
+                </Button>
+              }
+            />
+            <Separator className="my-4" />
+            <ActionRow
+              number={2}
+              title="Copy instructions"
+              description="Paste them into the GPT Instructions field."
+              action={<Button size="sm" disabled={!config.instructions} onClick={() => handleCopy(config.instructions, 'instructions')}>{copied === 'instructions' ? <Check /> : <Copy />}{copied === 'instructions' ? 'Copied' : 'Copy instructions'}</Button>}
+            />
+            <Separator className="my-4" />
+            <ActionRow
+              number={3}
+              title="Copy Action schema"
+              description="Create one Action in GPT Builder and paste the schema."
+              action={<Button size="sm" disabled={!config.schema} onClick={() => handleCopy(config.schema, 'schema')}>{copied === 'schema' ? <Check /> : <Copy />}{copied === 'schema' ? 'Copied' : 'Copy schema'}</Button>}
+            />
+            <Separator className="my-4" />
+            <ActionRow
+              number={4}
+              title="Generate connection key"
+              description="Choose API Key → Basic in Action authentication and paste this key."
+              action={<Button size="sm" disabled={keyBusy || !websiteReady} onClick={handleGenerateKey}><KeyRound />{keyBusy ? 'Generating…' : 'Generate key'}</Button>}
+            />
+
+            {connectionKey && (
+              <>
+                <Separator className="my-4" />
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-medium">Connection key</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Shown once. Treat it like a password.</p>
+                  </div>
+                  <Textarea readOnly value={connectionKey} className="min-h-20 resize-none font-mono text-xs" />
+                  <Button variant="outline" size="sm" onClick={() => handleCopy(connectionKey, 'key')}>
+                    {copied === 'key' ? <Check /> : <Copy />}
+                    {copied === 'key' ? 'Copied' : 'Copy connection key'}
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {keyError && (
+              <Alert className="mt-4">
+                <AlertTitle>Could not generate the key</AlertTitle>
+                <AlertDescription>{keyError}</AlertDescription>
+              </Alert>
+            )}
+
+            <Separator className="my-4" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-medium">Test the connection</p>
+                <p className="mt-1 text-sm text-muted-foreground">Send one status message from your Custom GPT.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'test')}>
+                  {copied === 'test' ? <Check /> : <Copy />}
+                  {copied === 'test' ? 'Copied' : 'Copy test message'}
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => onNavigate('connection')}>Manage connection</Button>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'test')}>
-                {copied === 'test' ? <Check /> : <Copy />}
-                {copied === 'test' ? 'Copied' : 'Copy test message'}
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
