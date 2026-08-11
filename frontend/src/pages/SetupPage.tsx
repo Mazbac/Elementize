@@ -132,7 +132,7 @@ export function SetupPage({ config, onNavigate }: Props) {
               action={
                 <Button asChild variant="outline" size="sm">
                   <a href="https://developers.cloudflare.com/tunnel/downloads/" target="_blank" rel="noreferrer">
-                    <Download /> Download <ExternalLink />
+                    <Download /> Download cloudflared <ExternalLink />
                   </a>
                 </Button>
               }
