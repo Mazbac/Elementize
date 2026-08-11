@@ -478,7 +478,10 @@ final class Elementize_Context {
     }
 
     private static function add_context_string( array &$strings, string $value ): void {
-        $plain = trim( preg_replace( '/\s+/u', ' ', html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+        $plain = html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        $collapsed = preg_replace( '/\s+/u', ' ', $plain );
+        if ( ! is_string( $collapsed ) ) return;
+        $plain = trim( $collapsed );
         if ( '' === $plain ) return;
         if ( self::length( $plain ) > 220 ) $plain = self::slice( $plain, 0, 217 ) . '...';
         $strings[] = $plain;
@@ -558,15 +561,24 @@ final class Elementize_Context {
             if ( isset( $node['_tokens'][ $token ] ) ) $score += self::length( $token ) >= 7 ? 4 : 3;
         }
 
+        $desc = self::normalize( $query );
         if ( in_array( $node['element_id'], $context_ids, true ) ) $score += 24;
         foreach ( $context_ids as $context_id ) {
             $context_node = $map['nodes'][ $context_id ] ?? null;
             if ( ! is_array( $context_node ) ) continue;
             if ( in_array( $context_id, $node['ancestor_ids'], true ) || in_array( $node['element_id'], (array) $context_node['ancestor_ids'], true ) ) $score += 8;
-            if ( (string) $context_node['parent_id'] === (string) $node['parent_id'] ) $score += 5;
+            if ( (string) $context_node['parent_id'] === (string) $node['parent_id'] ) {
+                $score += 5;
+                $delta = (int) $node['index'] - (int) $context_node['index'];
+                if ( $delta > 0 && ( preg_match( '/\b(below|under|onder)\b/u', $desc ) || false !== strpos( $desc, 'daaronder' ) ) ) {
+                    $score += max( 2, 7 - min( 5, $delta ) );
+                }
+                if ( $delta < 0 && ( preg_match( '/\b(above|over|boven)\b/u', $desc ) || false !== strpos( $desc, 'daarboven' ) ) ) {
+                    $score += max( 2, 7 - min( 5, abs( $delta ) ) );
+                }
+            }
         }
 
-        $desc = self::normalize( $query );
         if ( preg_match( '/\b(first|eerste|top|bovenste)\b/u', $desc ) ) {
             if ( 0 === (int) $node['top_level_index'] ) $score += 5;
             if ( 0 === (int) $node['index'] ) $score += 3;
@@ -792,11 +804,16 @@ final class Elementize_Context {
     }
 
     private static function length( string $value ): int {
-        return function_exists( 'mb_strlen' ) ? mb_strlen( $value, 'UTF-8' ) : strlen( $value );
+        if ( function_exists( 'mb_strlen' ) ) return mb_strlen( $value, 'UTF-8' );
+        $matched = preg_match_all( '/./us', $value, $characters );
+        return false !== $matched ? (int) $matched : strlen( $value );
     }
 
     private static function slice( string $value, int $start, int $length ): string {
-        return function_exists( 'mb_substr' ) ? mb_substr( $value, $start, $length, 'UTF-8' ) : substr( $value, $start, $length );
+        if ( function_exists( 'mb_substr' ) ) return mb_substr( $value, $start, $length, 'UTF-8' );
+        $matched = preg_match_all( '/./us', $value, $characters );
+        if ( false !== $matched ) return implode( '', array_slice( $characters[0], $start, $length ) );
+        return substr( $value, $start, $length );
     }
 
     private static function last_string_key( array $path ): string {
