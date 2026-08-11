@@ -541,7 +541,7 @@ final class Elementize_Context {
     }
 
     private static function node_matches_query( array $node, string $query, array $tokens ): bool {
-        if ( '' !== $query && false !== strpos( $node['_search_text'], $query ) ) return true;
+        if ( '' !== $query && self::contains_phrase( $node['_search_text'], $query ) ) return true;
         foreach ( $tokens as $token ) if ( isset( $node['_tokens'][ $token ] ) ) return true;
         return false;
     }
@@ -550,11 +550,11 @@ final class Elementize_Context {
         $score = 0;
         $haystack = $node['_search_text'];
 
-        if ( '' !== $query && self::length( $query ) >= 4 && false !== strpos( $haystack, $query ) ) $score += 18;
+        if ( '' !== $query && self::length( $query ) >= 4 && self::contains_phrase( $haystack, $query ) ) $score += 18;
 
         foreach ( $visual_clues as $clue ) {
             $normalized = self::normalize( $clue );
-            if ( self::length( $normalized ) >= 3 && false !== strpos( $haystack, $normalized ) ) $score += 12;
+            if ( self::length( $normalized ) >= 3 && self::contains_phrase( $haystack, $normalized ) ) $score += 12;
         }
 
         foreach ( $tokens as $token ) {
@@ -767,6 +767,13 @@ final class Elementize_Context {
             if ( '' !== $item ) $out[] = $item;
         }
         return array_values( array_unique( $out ) );
+    }
+
+    private static function contains_phrase( string $haystack, string $needle ): bool {
+        $haystack = trim( $haystack );
+        $needle = trim( $needle );
+        if ( '' === $haystack || '' === $needle ) return false;
+        return 1 === preg_match( '/(?:^| )' . preg_quote( $needle, '/' ) . '(?: |$)/u', $haystack );
     }
 
     private static function normalize( string $value ): string {
