@@ -1,4 +1,4 @@
-import { ExternalLink, History, RefreshCw, RotateCcw } from 'lucide-react';
+import { ExternalLink, History, RefreshCw, RotateCcw, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,17 @@ const kindLabels: Record<string, string> = {
   link: 'link',
   media: 'image',
   pixfort_icon: 'icon',
+  insert_template: 'template insert',
+  remove_element: 'removal',
+  duplicate_element: 'duplication',
+  move_element: 'move',
+  reorder_children: 'reorder',
+  design_color: 'color change',
+  design_spacing: 'spacing change',
+  design_radius: 'radius change',
+  design_alignment: 'alignment change',
+  design_typography: 'typography change',
+  design_size: 'size change',
 };
 
 function formatKinds(item: ActivityItem): string {
@@ -78,7 +89,7 @@ export function ActivityPage({ config }: Props) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Activity</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Recent Elementize changes, with guarded undo when the page still matches.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Recent verified Elementize edits and creative transactions, with guarded whole-change Undo.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={loading ? 'animate-spin' : ''} />
@@ -99,7 +110,7 @@ export function ActivityPage({ config }: Props) {
             <History className="h-4 w-4 text-primary" />
             <CardTitle>Recent changes</CardTitle>
           </div>
-          <CardDescription>Only successful, verified Elementize content writes appear here.</CardDescription>
+          <CardDescription>Only successful writes that passed persisted verification appear here.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading && !activity ? (
@@ -123,8 +134,10 @@ export function ActivityPage({ config }: Props) {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{title}</p>
                         <Badge variant={undone ? 'secondary' : 'outline'}>{undone ? 'Undone' : 'Verified'}</Badge>
+                        {item.creative && <Badge variant="default" className="gap-1"><Sparkles className="h-3 w-3" /> Creative</Badge>}
                         {item.page_status === 'publish' && <Badge variant="secondary">Live page</Badge>}
                       </div>
+                      {item.creative && item.plan_label && <p className="mt-1 text-sm font-medium">{item.plan_label}</p>}
                       <p className="mt-1 text-sm text-muted-foreground">{formatKinds(item)}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {formatDate(item.created_gmt)}{item.user_name ? ` · ${item.user_name}` : ''} · Revision {item.revision_id}
