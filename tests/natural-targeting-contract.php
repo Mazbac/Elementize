@@ -54,6 +54,12 @@ $copy_cases = [
     [ [ 'settings', 'content_width' ], '1200px', false ],
     [ [ 'settings', 'title' ], 'https://example.com/internal-config', false ],
     [ [ 'settings', 'description' ], '{"layout":"grid"}', false ],
+    [ [ 'settings', 'heading_tag' ], 'h2', false ],
+    [ [ 'settings', 'content_type' ], 'text', false ],
+    [ [ 'settings', 'title_style' ], 'compact', false ],
+    [ [ 'settings', 'description_source' ], 'manual', false ],
+    [ [ 'settings', 'button_text_control' ], 'default', false ],
+    [ [ 'settings', 'subtitle_device' ], 'desktop', false ],
 ];
 
 foreach ( $copy_cases as [ $path, $value, $expected ] ) {
@@ -203,11 +209,21 @@ $ambiguous_map = [
         'b' => [ 'ancestor_ids' => [], 'top_level_id' => 'section2' ],
     ],
     'member_groups' => [],
+    'groups' => [],
 ];
 $ambiguous_scores = [ [ 'id' => 'a', 'score' => 30 ], [ 'id' => 'b', 'score' => 30 ] ];
 assert_same( 'low', invoke_private( Elementize_Context::class, 'confidence', [ $ambiguous_scores, 'a', $ambiguous_map ] ), 'Two equally strong targets in different contexts must require clarification even at high absolute scores.' );
 $clear_scores = [ [ 'id' => 'a', 'score' => 30 ], [ 'id' => 'b', 'score' => 15 ] ];
 assert_same( 'high', invoke_private( Elementize_Context::class, 'confidence', [ $clear_scores, 'a', $ambiguous_map ] ), 'A clearly separated strong target should retain high confidence.' );
+
+$same_group_scores = [ [ 'id' => 'h1', 'score' => 30 ], [ 'id' => 'h2', 'score' => 30 ], [ 'id' => 'h3', 'score' => 30 ] ];
+assert_same( 'high', invoke_private( Elementize_Context::class, 'confidence', [ $same_group_scores, 'h1', $map ] ), 'Equally strong candidates inside one repeated-card group must not be treated as cross-section ambiguity.' );
+
+$many_context_roots = [];
+for ( $i = 1; $i <= 50; $i++ ) $many_context_roots[] = 'root' . $i;
+$capped_context = invoke_private( Elementize_Context::class, 'selection_context_ids', [ 'anchor', $many_context_roots ] );
+assert_same( 30, count( $capped_context ), 'Resolver output context must never exceed the 30 IDs accepted by the follow-up resolver input.' );
+assert_same( 'anchor', $capped_context[0], 'The resolver anchor must be retained when context IDs are capped.' );
 
 $unrelated = [];
 $unrelated_widgets = [ 'heading', 'image', 'button', 'text-editor' ];
