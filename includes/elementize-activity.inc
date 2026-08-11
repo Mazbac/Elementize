@@ -11,6 +11,8 @@ final class Elementize_Activity {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 30 );
         add_filter( 'rest_request_before_callbacks', [ self::class, 'capture_before_write' ], 10, 3 );
         add_filter( 'rest_request_after_callbacks', [ self::class, 'capture_after_write' ], 10, 3 );
+        add_action( 'wp_ajax_elementize_get_activity', [ self::class, 'ajax_list_activity' ] );
+        add_action( 'wp_ajax_elementize_undo_activity', [ self::class, 'ajax_undo_activity' ] );
     }
 
     public static function routes(): void {
@@ -39,6 +41,22 @@ final class Elementize_Activity {
         if ( ! is_user_logged_in() ) return new WP_Error( 'elementize_auth_required', 'Authentication is required.', [ 'status' => 401 ] );
         if ( ! current_user_can( 'manage_options' ) ) return new WP_Error( 'elementize_activity_forbidden', 'Activity history and undo require an administrator.', [ 'status' => 403 ] );
         return true;
+    }
+
+    public static function ajax_list_activity(): void {
+        self::require_ajax_access();
+        $request = new WP_REST_Request( 'GET' );
+        $request->set_param( 'limit', min( 100, max( 1, absint( $_POST['limit'] ?? 20 ) ) ) );
+        self::send_ajax_result( self::list_activity( $request ) );
+    }
+
+    public static function ajax_undo_activity(): void {
+        self::require_ajax_access();
+        $request = new WP_REST_Request( 'POST' );
+        $request->set_param( 'activity_id', sanitize_text_field( (string) wp_unslash( $_POST['activity_id'] ?? '' ) ) );
+        $request->set_param( 'confirm_undo', true );
+        $request->set_param( 'confirm_published_page', '1' === (string) ( $_POST['confirm_published_page'] ?? '' ) );
+        self::send_ajax_result( self::undo( $request ) );
     }
 
     public static function capture_before_write( $response, array $handler, WP_REST_Request $request ) {
@@ -144,7 +162,7 @@ final class Elementize_Activity {
 
     public static function undo( WP_REST_Request $request ) {
         if ( true !== $request->get_param( 'confirm_undo' ) ) return new WP_Error( 'elementize_undo_confirmation_required', 'Explicit confirm_undo=true is required.', [ 'status' => 400 ] );
-        $activity_id = sanitize_text_field( (string) $request['activity_id'] );
+        $activity_id = sanitize_text_field( (string) $request->get_param( 'activity_id' ) );
         $records = self::records();
         $index = self::find_record_index( $records, $activity_id );
         if ( null === $index ) return new WP_Error( 'elementize_activity_not_found', 'Activity record not found.', [ 'status' => 404 ] );
@@ -156,7 +174,7 @@ final class Elementize_Activity {
         $post = get_post( $page_id );
         if ( ! $post || 'page' !== $post->post_type ) return new WP_Error( 'elementize_page_not_found', 'Page not found.', [ 'status' => 404 ] );
         if ( ! current_user_can( 'edit_post', $page_id ) ) return new WP_Error( 'elementize_forbidden', 'You cannot edit this page.', [ 'status' => 403 ] );
-        if ( 'publish' === $post->post_status && true !== $request->get_param( 'confirm_published_page' ) ) return new WP_Error( 'elementize_published_confirmation_required', 'This is a published page. Explicit confirm_published_page=true is required before undoing live content.', [ 'status' => 400 ] );
+        if ( 'publish' === $post->post_status && true !== $request->get_param( 'confirm_published_page' ) ) return new WP_Error( 'elementize_published_confirmation_required', 'This is a published page. Confirm the live-page undo before continuing.', [ 'status' => 400 ] );
 
         $revision_id = absint( $record['revision_id'] ?? 0 );
         $snapshot_json = $revision_id ? (string) get_post_meta( $revision_id, self::SNAPSHOT_META, true ) : '';
@@ -200,6 +218,21 @@ final class Elementize_Activity {
         ], 200 );
     }
 
+    private static function require_ajax_access(): void {
+        if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( [ 'message' => 'Administrator permission is required.' ], 403 );
+        check_ajax_referer( 'elementize_onboarding', 'nonce' );
+    }
+
+    private static function send_ajax_result( $result ): void {
+        if ( is_wp_error( $result ) ) {
+            $data = $result->get_error_data();
+            $status = is_array( $data ) && isset( $data['status'] ) ? absint( $data['status'] ) : 400;
+            wp_send_json_error( [ 'message' => $result->get_error_message(), 'code' => $result->get_error_code(), 'data' => $data ], $status ?: 400 );
+        }
+        $response = rest_ensure_response( $result );
+        wp_send_json_success( $response->get_data(), $response->get_status() );
+    }
+
     private static function content_write_page_id( WP_REST_Request $request ): int {
         if ( ! preg_match( '#^/' . preg_quote( Elementize_Core::NS, '#' ) . '/pages/(\\d+)/content$#', $request->get_route(), $matches ) ) return 0;
         return absint( $matches[1] ?? 0 );
@@ -231,7 +264,7 @@ final class Elementize_Activity {
 
     private static function find_record_index( array $records, string $activity_id ): ?int {
         foreach ( $records as $index => $record ) {
-            if ( is_array( $record ) && hash_equals( (string) ( $record['id'] ?? '' ), $activity_id ) ) return (int) $index;
+            if ( is_array( $record ) && '' !== $activity_id && hash_equals( (string) ( $record['id'] ?? '' ), $activity_id ) ) return (int) $index;
         }
         return null;
     }
