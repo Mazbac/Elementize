@@ -17,6 +17,7 @@ jobs:
           schema="config/gpt/actions.openapi.yaml"
 
           expected_runtime=$(cat <<'EOF'
+          includes/elementize-activity.inc
           includes/elementize-bootstrap.inc
           includes/elementize-content.inc
           includes/elementize-core.inc
@@ -36,12 +37,15 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 6
-          test "$init_count" -eq 6
+          test "$require_count" -eq 7
+          test "$init_count" -eq 7
 
-          for module in core pixfort-icons content media-library media-import onboarding; do
+          for module in core pixfort-icons content media-library media-import activity onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
+
+          grep -q "class Elementize_Activity" includes/elementize-activity.inc || { echo 'Activity runtime class is missing.'; exit 1; }
+          grep -q "elementize_undo_activity" includes/elementize-activity.inc || { echo 'Activity undo admin action is missing.'; exit 1; }
 
           instruction_chars=$(wc -m < "$instructions" | tr -d ' ')
           echo "GPT instruction characters: ${instruction_chars}/8000"
