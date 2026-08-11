@@ -28,6 +28,8 @@ export interface ActivityItem {
     element_id: string;
     setting_path: Array<string | number>;
   }>;
+  creative?: boolean;
+  plan_label?: string;
   undone_at_gmt: string;
   undo_revision_id: number;
   snapshot_available: boolean;
@@ -53,6 +55,25 @@ export interface ConnectionSummary {
   activeCount: number;
   lastSuccessfulCall: number;
   connections: ConnectionItem[];
+}
+
+export interface CreativeCapabilityState {
+  profile: 'standard' | 'creative';
+  creative_enabled: boolean;
+  scope_page_id: number;
+  revision: number;
+  capabilities: Record<string, boolean>;
+}
+
+export interface ElementizeCreativeConfig {
+  state: CreativeCapabilityState;
+  pages: Array<{
+    id: number;
+    title: string;
+    status: string;
+  }>;
+  ajax: string;
+  nonce: string;
 }
 
 export interface ElementizeAdminConfig {
@@ -93,5 +114,6 @@ export interface ElementizeAdminConfig {
 declare global {
   interface Window {
     ElementizeAdminConfig?: ElementizeAdminConfig;
+    ElementizeCreativeConfig?: ElementizeCreativeConfig;
   }
 }
