@@ -7,6 +7,7 @@ require_once __DIR__ . '/elementize-content.inc';
 require_once __DIR__ . '/elementize-context.inc';
 require_once __DIR__ . '/elementize-capabilities.inc';
 require_once __DIR__ . '/elementize-design.inc';
+require_once __DIR__ . '/elementize-tree.inc';
 require_once __DIR__ . '/elementize-templates.inc';
 require_once __DIR__ . '/elementize-creative.inc';
 require_once __DIR__ . '/elementize-media-library.inc';
