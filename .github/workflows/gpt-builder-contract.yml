@@ -97,4 +97,28 @@ jobs:
           test "$header_version" = "$constant_version"
           test "$header_version" = "$schema_version"
 
-          ruby -e "require 'yaml'; YAML.load_file('$schema')" >/dev/null
+          SCHEMA="$schema" ruby <<'RUBY'
+          require 'yaml'
+          doc = YAML.load_file(ENV.fetch('SCHEMA'))
+          violations = []
+          walk = nil
+          walk = lambda do |node, path|
+            if node.is_a?(Hash)
+              node.each do |key, value|
+                next_path = path + [key.to_s]
+                if key.to_s == 'description' && value.is_a?(String) && value.length > 300
+                  violations << [next_path.join('.'), value.length]
+                end
+                walk.call(value, next_path)
+              end
+            elsif node.is_a?(Array)
+              node.each_with_index { |value, index| walk.call(value, path + [index.to_s]) }
+            end
+          end
+          walk.call(doc, [])
+          unless violations.empty?
+            warn 'OpenAPI descriptions exceed ChatGPT 300-character limit:'
+            violations.each { |path, length| warn "#{path}: #{length}" }
+            exit 1
+          end
+          RUBY
