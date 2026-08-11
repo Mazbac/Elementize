@@ -41,6 +41,20 @@ export interface ActivityResponse {
   max_history: number;
 }
 
+export interface ConnectionItem {
+  uuid: string;
+  name: string;
+  created: number;
+  lastSuccessfulCall: number;
+}
+
+export interface ConnectionSummary {
+  connected: boolean;
+  activeCount: number;
+  lastSuccessfulCall: number;
+  connections: ConnectionItem[];
+}
+
 export interface ElementizeAdminConfig {
   version: string;
   requirements: {
