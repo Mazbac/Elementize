@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Elementize Content Actions
-  version: 0.36.0
-  description: Guarded content editing, image replacement/import, generated-image handoff, and Pixfort icon lookup for existing Elementor + Pixfort pages.
+  version: 0.37.0
+  description: Natural-language targeting plus guarded content editing, media handoff, and Pixfort icon lookup for existing Elementor + Pixfort pages.
 servers:
   - url: https://example.invalid
     description: Replaced automatically by the Elementize setup screen.
@@ -26,11 +26,58 @@ paths:
       responses:
         '200': { description: Editable Elementor pages }
 
+  /wp-json/elementize/v1/pages/{id}/structure:
+    get:
+      operationId: getElementizePageStructure
+      summary: Read the semantic Elementor page map
+      description: Returns sections, containers, cards/groups, widgets, snippets, parent/sibling relationships, and optional exact editable fields from the main Elementor document.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: element_id, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 300, default: 120 } }
+        - { name: include_fields, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: Semantic page structure and repeated sibling groups }
+
+  /wp-json/elementize/v1/pages/{id}/resolve:
+    post:
+      operationId: resolveElementizeTargets
+      summary: Resolve natural language or screenshot clues to exact Elementor targets
+      description: Use natural descriptions, visual clues extracted from a screenshot, and prior selection IDs. Can expand one matched item to siblings, its repeated card group, or its whole section.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [description]
+              properties:
+                description: { type: string, minLength: 1, maxLength: 1000 }
+                visual_clues:
+                  type: array
+                  maxItems: 12
+                  items: { type: string, maxLength: 300 }
+                context_element_ids:
+                  type: array
+                  maxItems: 30
+                  items: { type: string, maxLength: 100 }
+                scope_element_id: { type: string, maxLength: 100 }
+                expand: { type: string, enum: [auto, none, siblings, group, section], default: auto }
+                expected_count: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        '200': { description: Ranked candidates, reusable selection context, and exact fresh editable fields }
+        '400': { description: Invalid resolver request }
+        '409': { description: Requested scope no longer exists }
+
   /wp-json/elementize/v1/pages/{id}/content:
     get:
       operationId: getElementizePageContent
       summary: Read editable copy, links, images, and Pixfort icons from one Elementor page
-      description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash. Dynamic/global values and shared template documents are not writable.
+      description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash. Safe human-readable strings are discovered beyond a small fixed field-name list.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: kind, in: query, required: false, schema: { type: string, enum: [all, text, link, media, pixfort_icon], default: all } }
@@ -44,7 +91,7 @@ paths:
     post:
       operationId: updateElementizePageContent
       summary: Guardedly update copy, links, images, or Pixfort icons
-      description: Always read the page immediately before writing. Requires the fresh page status/title/hash and exact setting values. Pixfort icon writes must use an exact value returned by searchElementizePixfortIcons. Live published pages require a second explicit confirmation.
+      description: Use exact fresh fields from resolveElementizeTargets or getElementizePageContent. Requires page status/title/hash and expected values. Live published pages require explicit confirmation.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -86,7 +133,7 @@ paths:
                       attachment_id: { type: integer, minimum: 1 }
       responses:
         '200': { description: Content changes saved and verified in persisted Elementor data }
-        '400': { description: Unsupported content field/value or missing confirmation }
+        '400': { description: Unsafe content field/value or missing confirmation }
         '409': { description: Page, revision capability, or target changed after the fresh read }
 
   /wp-json/elementize/v1/media/images:
@@ -132,7 +179,7 @@ paths:
     post:
       operationId: importElementizeGeneratedImage
       summary: Import the image ChatGPT just generated into WordPress
-      description: 'Use after ChatGPT generates an image the user wants on the page. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Returns a verified WordPress attachment_id for the normal guarded media update.'
+      description: 'Use after ChatGPT generates an image the user wants on the page. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url.'
       requestBody:
         required: true
         content:
@@ -158,14 +205,14 @@ paths:
                 confirm_import: { type: boolean, enum: [true] }
       responses:
         '201': { description: Generated ChatGPT image imported and verified }
-        '400': { description: Missing/ambiguous generated-image source, unsupported image, unsafe host, or confirmation missing }
+        '400': { description: Missing or unsafe generated-image source, unsupported image, or confirmation missing }
         '502': { description: Generated image download failed }
 
   /wp-json/elementize/v1/media/images/import-url:
     post:
       operationId: importElementizeRemoteImage
       summary: Import one public HTTPS image into the WordPress Media Library
-      description: Use after the user supplies an image URL or ChatGPT finds and verifies a suitable image online. The URL must point to a public HTTPS image. Returns a WordPress attachment_id for a later guarded media update.
+      description: Use after the user supplies an image URL or ChatGPT finds and verifies a suitable image online. Returns a WordPress attachment_id for a later guarded media update.
       requestBody:
         required: true
         content:
