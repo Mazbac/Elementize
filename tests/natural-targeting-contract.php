@@ -44,6 +44,11 @@ $copy_cases = [
     [ [ 'settings', 'icon' ], 'Line/pixfort-icon-shield', false ],
     [ [ 'settings', 'layout_mode' ], 'flex', false ],
     [ [ 'settings', 'random_token' ], 'abc123', false ],
+    [ [ 'settings', 'button_text_color' ], '#64379f', false ],
+    [ [ 'settings', 'subtitle_font_size' ], '18px', false ],
+    [ [ 'settings', 'content_width' ], '1200px', false ],
+    [ [ 'settings', 'title' ], 'https://example.com/internal-config', false ],
+    [ [ 'settings', 'description' ], '{"layout":"grid"}', false ],
 ];
 
 foreach ( $copy_cases as [ $path, $value, $expected ] ) {
@@ -70,7 +75,7 @@ for ( $i = 1; $i <= 6; $i++ ) {
         ],
     ];
 
-    // One card intentionally differs so the broad repeated-structural fallback is tested.
+    // One card intentionally differs so the majority-shape structural fallback is tested.
     if ( 4 === $i ) {
         $children[] = [
             'id' => 'icon' . $i,
@@ -100,10 +105,21 @@ $elements = [
 
 $map = invoke_private( Elementize_Context::class, 'build_map', [ $elements ] );
 assert_same( 'card', $map['nodes']['card3']['semantic_role'], 'Repeated structural siblings should be recognized as cards.' );
+assert_same( 'card', $map['nodes']['card4']['semantic_role'], 'A slightly different card should remain part of the repeated card group.' );
 
 $selection = invoke_private( Elementize_Context::class, 'expand_selection', [ 'h3', 'group', 6, $map ] );
 assert_same( [ 'card1', 'card2', 'card3', 'card4', 'card5', 'card6' ], $selection['root_ids'], 'A clue inside one card should expand to all six repeated cards.' );
 assert_true( ! empty( $selection['group_id'] ), 'Six-card expansion should expose a reusable group ID.' );
+
+$auto_group = invoke_private( Elementize_Context::class, 'expand_selection', [ 'h3', 'group', 0, $map ] );
+assert_same( [ 'card1', 'card2', 'card3', 'card4', 'card5', 'card6' ], $auto_group['root_ids'], 'Group expansion without an explicit count should prefer the complete repeated-card group.' );
+
+$sibling_selection = invoke_private( Elementize_Context::class, 'expand_selection', [ 'h3', 'siblings', 0, $map ] );
+assert_same( [ 'card1', 'card2', 'card3', 'card4', 'card5', 'card6' ], $sibling_selection['root_ids'], 'Explicit sibling expansion should return the nearest structural siblings instead of an exact-shape subgroup.' );
+assert_same( null, $sibling_selection['group_id'], 'Explicit sibling expansion should not masquerade as a repeated group.' );
+
+$missing_count = invoke_private( Elementize_Context::class, 'expand_selection', [ 'h3', 'group', 7, $map ] );
+assert_same( [ 'h3' ], $missing_count['root_ids'], 'A missing expected group size should fail closed so the resolver can ask for clarification.' );
 
 assert_same( 'group', invoke_private( Elementize_Context::class, 'effective_expand', [ 'auto', 'pas alle zes kaarten aan', 6, [] ] ), 'Dutch all-card request should resolve to group expansion.' );
 assert_same( 'group', invoke_private( Elementize_Context::class, 'effective_expand', [ 'auto', 'do the rest too', 0, [ 'h3' ] ] ), 'Follow-up context should resolve “the rest” to the repeated group.' );
@@ -116,11 +132,63 @@ assert_same( [ 'card1', 'card2', 'card3', 'card4', 'card5', 'card6' ], array_val
 
 $query = invoke_private( Elementize_Context::class, 'normalize', [ 'Card 3' ] );
 $tokens = invoke_private( Elementize_Context::class, 'tokens', [ $query ] );
+assert_true( in_array( '3', $tokens, true ), 'Numeric screenshot/location clues should remain usable as exact resolver tokens.' );
 $scores = [];
 foreach ( $map['order'] as $node_id ) {
     $scores[ $node_id ] = invoke_private( Elementize_Context::class, 'score_node', [ $map['nodes'][ $node_id ], $query, $tokens, [ 'Card 3' ], [], $map ] );
 }
 arsort( $scores );
 assert_same( 'h3', array_key_first( $scores ), 'Visible screenshot/text clue should rank the matching card heading first.' );
+
+$substring_node = [ '_search_text' => 'brisket overview', '_tokens' => [ 'brisket' => true ] ];
+assert_false( invoke_private( Elementize_Context::class, 'node_matches_query', [ $substring_node, 'risk', [ 'risk' ] ] ), 'Resolver token matching must not match tokens only because they are substrings of another word.' );
+
+$ambiguous_map = [
+    'nodes' => [
+        'a' => [ 'ancestor_ids' => [], 'top_level_id' => 'section1' ],
+        'b' => [ 'ancestor_ids' => [], 'top_level_id' => 'section2' ],
+    ],
+    'member_groups' => [],
+];
+$ambiguous_scores = [ [ 'id' => 'a', 'score' => 30 ], [ 'id' => 'b', 'score' => 30 ] ];
+assert_same( 'low', invoke_private( Elementize_Context::class, 'confidence', [ $ambiguous_scores, 'a', $ambiguous_map ] ), 'Two equally strong targets in different contexts must require clarification even at high absolute scores.' );
+$clear_scores = [ [ 'id' => 'a', 'score' => 30 ], [ 'id' => 'b', 'score' => 15 ] ];
+assert_same( 'high', invoke_private( Elementize_Context::class, 'confidence', [ $clear_scores, 'a', $ambiguous_map ] ), 'A clearly separated strong target should retain high confidence.' );
+
+$unrelated = [];
+$unrelated_widgets = [ 'heading', 'image', 'button', 'text-editor' ];
+foreach ( $unrelated_widgets as $index => $widget_type ) {
+    $unrelated[] = [
+        'id' => 'unrelated' . ( $index + 1 ),
+        'elType' => 'container',
+        'settings' => [],
+        'elements' => [
+            [
+                'id' => 'unrelated-widget-' . ( $index + 1 ),
+                'elType' => 'widget',
+                'widgetType' => $widget_type,
+                'settings' => [],
+                'elements' => [],
+            ],
+        ],
+    ];
+}
+$unrelated_map = invoke_private( Elementize_Context::class, 'build_map', [ [
+    'id' => 'sectionB',
+    'elType' => 'container',
+    'settings' => [],
+    'elements' => $unrelated,
+] ] );
+foreach ( $unrelated as $item ) {
+    assert_same( 'container', $unrelated_map['nodes'][ $item['id'] ]['semantic_role'], 'Unrelated same-type containers must not be falsely promoted to repeated cards.' );
+}
+foreach ( $unrelated_map['groups'] as $group ) {
+    assert_false( 'sectionB' === $group['parent_id'] && 4 === count( $group['member_ids'] ), 'Unrelated sibling containers must not be grouped merely because their Elementor element type matches.' );
+}
+
+$utf8_context = invoke_private( Elementize_Context::class, 'context_strings', [ [ 'title' => str_repeat( 'é', 230 ) ], [] ] );
+assert_true( isset( $utf8_context[0] ), 'Long UTF-8 context should still produce a resolver snippet.' );
+assert_same( 1, preg_match( '//u', $utf8_context[0] ), 'Resolver context truncation must preserve valid UTF-8.' );
+assert_true( strlen( $utf8_context[0] ) < strlen( str_repeat( 'é', 230 ) ), 'Long resolver context should be truncated.' );
 
 fwrite( STDOUT, "Natural targeting contract OK\n" );
