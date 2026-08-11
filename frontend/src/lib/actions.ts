@@ -1,4 +1,4 @@
-import type { ActivityResponse, ElementizeAdminConfig } from '../types';
+import type { ActivityResponse, ConnectionSummary, ElementizeAdminConfig } from '../types';
 
 export async function copyText(text: string): Promise<void> {
   if (navigator.clipboard && window.isSecureContext) {
@@ -45,6 +45,18 @@ export async function generateConnectionKey(config: ElementizeAdminConfig): Prom
   const data = await postAdminAjax<{ connection_key?: string }>(config, 'elementize_generate_connection_key');
   if (!data.connection_key) throw new Error('Could not generate the connection key.');
   return data.connection_key;
+}
+
+export async function getConnections(config: ElementizeAdminConfig): Promise<ConnectionSummary> {
+  return postAdminAjax<ConnectionSummary>(config, 'elementize_get_connections');
+}
+
+export async function revokeConnection(config: ElementizeAdminConfig, uuid: string): Promise<ConnectionSummary> {
+  return postAdminAjax<ConnectionSummary>(config, 'elementize_revoke_connection', { uuid });
+}
+
+export async function revokeAllConnections(config: ElementizeAdminConfig): Promise<ConnectionSummary> {
+  return postAdminAjax<ConnectionSummary>(config, 'elementize_revoke_all_connections');
 }
 
 export async function getActivity(config: ElementizeAdminConfig, limit = 20): Promise<ActivityResponse> {
