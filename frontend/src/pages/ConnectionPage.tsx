@@ -1,4 +1,4 @@
-import { Check, Copy, KeyRound, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, Copy, KeyRound, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -130,33 +130,31 @@ export function ConnectionPage({ config }: Props) {
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle>ChatGPT connection</CardTitle>
-              <CardDescription className="mt-1">{statusDescription}</CardDescription>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <PlugZap className="h-4 w-4 text-primary" />
+                <CardTitle>ChatGPT connection</CardTitle>
+              </div>
+              <CardDescription className="mt-2">{statusDescription}</CardDescription>
             </div>
             <Badge variant={summary?.connected ? 'default' : 'secondary'}>{statusLabel}</Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <p className="text-xs text-muted-foreground">Last successful call</p>
-              <p className="mt-1 font-medium">{summary ? formatTime(summary.lastSuccessfulCall) : '—'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Active connection keys</p>
-              <p className="mt-1 font-medium">{summary?.activeCount ?? '—'}</p>
-            </div>
+
+        <CardContent>
+          <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            <p><span className="text-muted-foreground">Last successful call</span> <span className="ml-1 font-medium">{summary ? formatTime(summary.lastSuccessfulCall) : '—'}</span></p>
+            <p><span className="text-muted-foreground">Active keys</span> <span className="ml-1 font-medium">{summary?.activeCount ?? '—'}</span></p>
           </div>
 
           {error && (
-            <Alert>
+            <Alert className="mt-4">
               <AlertTitle>Connection check failed</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          <Separator />
+          <Separator className="my-4" />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -190,7 +188,7 @@ export function ConnectionPage({ config }: Props) {
           </div>
 
           {connectionKey && (
-            <Alert variant="accent">
+            <Alert variant="accent" className="mt-4">
               <AlertTitle>New connection key</AlertTitle>
               <AlertDescription className="space-y-3">
                 <p>Shown once. Replace the API key in GPT Builder only if you intend to use this new connection.</p>
@@ -203,40 +201,42 @@ export function ConnectionPage({ config }: Props) {
             </Alert>
           )}
 
-          {summary && summary.connections.length === 0 && (
-            <p className="text-sm text-muted-foreground">No Elementize connection keys exist yet.</p>
-          )}
+          <div className="mt-4">
+            {summary && summary.connections.length === 0 && (
+              <p className="text-sm text-muted-foreground">No Elementize connection keys exist yet.</p>
+            )}
 
-          {summary?.connections.map((connection, index) => (
-            <div key={connection.uuid}>
-              {index > 0 && <Separator className="mb-4" />}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium">Elementize key</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Created {formatTime(connection.created)} · Last Elementize call {formatTime(connection.lastSuccessfulCall)}
-                  </p>
+            {summary?.connections.map((connection, index) => (
+              <div key={connection.uuid}>
+                {index > 0 && <Separator className="my-3" />}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-medium">Elementize key {index + 1}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Created {formatTime(connection.created)} · Last call {formatTime(connection.lastSuccessfulCall)}
+                    </p>
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="sm" disabled={busy === connection.uuid}><Trash2 />Revoke</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Revoke this connection?</AlertDialogTitle>
+                        <AlertDialogDescription>This key will immediately stop authenticating your Custom GPT.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void handleRevoke(connection.uuid)}>Revoke key</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm" disabled={busy === connection.uuid}><Trash2 />Revoke</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Revoke this connection?</AlertDialogTitle>
-                      <AlertDialogDescription>This key will immediately stop authenticating your Custom GPT.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => void handleRevoke(connection.uuid)}>Revoke key</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
 
-          <Separator />
+          <Separator className="my-4" />
 
           <Accordion type="single" collapsible>
             <AccordionItem value="address" className="border-0">
