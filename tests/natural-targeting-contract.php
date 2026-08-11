@@ -178,12 +178,15 @@ foreach ( $unrelated_widgets as $index => $widget_type ) {
         ],
     ];
 }
-$unrelated_map = invoke_private( Elementize_Context::class, 'build_map', [ [
-    'id' => 'sectionB',
-    'elType' => 'container',
-    'settings' => [],
-    'elements' => $unrelated,
-] ] );
+$unrelated_elements = [
+    [
+        'id' => 'sectionB',
+        'elType' => 'container',
+        'settings' => [],
+        'elements' => $unrelated,
+    ],
+];
+$unrelated_map = invoke_private( Elementize_Context::class, 'build_map', [ $unrelated_elements ] );
 foreach ( $unrelated as $item ) {
     assert_same( 'container', $unrelated_map['nodes'][ $item['id'] ]['semantic_role'], 'Unrelated same-type containers must not be falsely promoted to repeated cards.' );
 }
