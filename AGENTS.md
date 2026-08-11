@@ -5,11 +5,12 @@ Elementize has one narrow product scope: guarded content editing for existing El
 ## In scope
 
 - Read existing Elementor pages.
-- Read/write recognized text/copy fields.
-- Read/write recognized link destinations.
+- Read/write recognized text and link fields.
 - Swap recognized image fields with verified WordPress image attachments.
-- Swap recognized Pixfort icon fields.
-- Media Library lookup and current-conversation image import.
+- Search the Media Library.
+- Import one current-conversation image from an allowed OpenAI file host.
+- Import one direct public HTTPS image with safe URL/MIME/size/dimension checks and provenance metadata.
+- Search the installed Pixfort icon library and write exact verified Line, Duotone, or Solid values.
 - Setup/onboarding for a Custom GPT.
 - Stale-state guards, mandatory revisions, persisted save verification, and verified rollback attempts.
 
@@ -19,25 +20,15 @@ Do not add page generation, template selection/insertion, section removal, page 
 
 ## Mutation rules
 
-Never expose unrestricted Elementor JSON writes. A content mutation must be based on a fresh read and preserve:
+Never expose unrestricted Elementor JSON writes. A mutation must use a fresh page read, exact page identity/state, exact element ID and setting path, expected current value/attachment, a successful pre-change revision, persisted `_elementor_data` verification, and verified rollback attempts. Reject duplicate targets, dynamic/global values, and shared template writes.
 
-1. exact page ID;
-2. expected page title/status;
-3. fresh Elementor content hash;
-4. exact element ID;
-5. exact setting path;
-6. expected current value/attachment;
-7. a successful pre-change WordPress revision;
-8. verification against persisted Elementor `_elementor_data`, not only an in-memory document object;
-9. rollback attempt and rollback verification when save verification fails.
-
-Reject duplicate targets in a single mutation request. Do not mutate shared/global/embedded template documents or dynamic/global values. If revisions are unavailable, fail closed instead of writing without a recovery point.
+Pixfort icon mutations must use values verified against the installed Pixfort icon index. Remote image imports must be public HTTPS only, use WordPress safe HTTP validation, and remain bounded by file-size/dimension limits.
 
 ## Repository rules
 
-- `main` is the current product state.
-- Keep the runtime small; remove dead experiments instead of leaving dormant feature stacks.
-- Keep the public GPT contract at the minimum action surface needed for the product.
-- Never commit credentials, Application Passwords, connection keys, nonces, purchase codes, tunnel secrets, or local audit output.
-- Update the GPT schema and instructions when the public REST contract changes.
+- `main` is the accepted minimal product state.
+- Feature work must stay on its requested branch until explicitly merged.
+- Keep the runtime and GPT action surface minimal.
+- Never commit credentials, Application Passwords, connection keys, nonces, purchase codes, tunnel secrets, or local output.
+- Update GPT schema/instructions whenever the public REST contract changes.
 - Run PHP syntax lint and the Elementize contract checks before considering a change complete.

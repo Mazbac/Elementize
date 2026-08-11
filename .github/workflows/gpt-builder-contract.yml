@@ -9,22 +9,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Validate minimal runtime and GPT contract
         shell: bash
         run: |
           set -euo pipefail
-
           instructions="config/gpt/wp-builder-instructions.md"
           schema="config/gpt/actions.openapi.yaml"
 
           expected_runtime=$(cat <<'EOF'
           includes/elementize-bootstrap.inc
-          includes/elementize-chat-media.inc
           includes/elementize-content.inc
           includes/elementize-core.inc
+          includes/elementize-media-import.inc
           includes/elementize-media-library.inc
           includes/elementize-onboarding.inc
+          includes/elementize-pixfort-icons.inc
           EOF
           )
           actual_runtime=$(find includes -maxdepth 1 -type f -print | sort)
@@ -37,10 +36,10 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 5
-          test "$init_count" -eq 5
+          test "$require_count" -eq 6
+          test "$init_count" -eq 6
 
-          for module in core content media-library chat-media onboarding; do
+          for module in core pixfort-icons content media-library media-import onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
 
@@ -49,8 +48,8 @@ jobs:
           test "$instruction_chars" -le 8000
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
-          echo "GPT Action operations: ${operation_count}/6"
-          test "$operation_count" -eq 6
+          echo "GPT Action operations: ${operation_count}/9"
+          test "$operation_count" -eq 9
 
           required_operations=(
             getElementizeStatus
@@ -59,6 +58,9 @@ jobs:
             updateElementizePageContent
             searchElementizeMediaImages
             importElementizeConversationImage
+            importElementizeGeneratedImage
+            importElementizeRemoteImage
+            searchElementizePixfortIcons
           )
           for operation in "${required_operations[@]}"; do
             grep -q "operationId: ${operation}" "$schema" || { echo "Missing operation: ${operation}"; exit 1; }
@@ -81,7 +83,11 @@ jobs:
           done
 
           grep -q 'url: https://example.invalid' "$schema" || { echo 'Committed schema must keep the neutral placeholder server URL.'; exit 1; }
-          grep -q 'openaiFileIdRefs:' "$schema" || { echo 'Conversation-image file parameter is missing.'; exit 1; }
+          grep -q 'openaiFileIdRefs:' "$schema" || { echo 'ChatGPT image file parameter is missing.'; exit 1; }
+          grep -q 'import-generated:' "$schema" || { echo 'Generated-image import route is missing.'; exit 1; }
+          grep -q 'generated_image_url:' "$schema" || { echo 'Generated-image OpenAI URL fallback is missing.'; exit 1; }
+          grep -q 'import-url:' "$schema" || { echo 'Remote-image import route is missing.'; exit 1; }
+          grep -q 'pixfort/icons:' "$schema" || { echo 'Pixfort icon search route is missing.'; exit 1; }
 
           header_version=$(sed -n 's/^ \* Version: //p' elementize.php | head -1)
           constant_version=$(sed -n "s/^define( 'ELEMENTIZE_VERSION', '\([^']*\)' );/\1/p" elementize.php | head -1)
@@ -91,4 +97,28 @@ jobs:
           test "$header_version" = "$constant_version"
           test "$header_version" = "$schema_version"
 
-          ruby -e "require 'yaml'; YAML.load_file('$schema')" >/dev/null
+          SCHEMA="$schema" ruby <<'RUBY'
+          require 'yaml'
+          doc = YAML.load_file(ENV.fetch('SCHEMA'))
+          violations = []
+          walk = nil
+          walk = lambda do |node, path|
+            if node.is_a?(Hash)
+              node.each do |key, value|
+                next_path = path + [key.to_s]
+                if key.to_s == 'description' && value.is_a?(String) && value.length > 300
+                  violations << [next_path.join('.'), value.length]
+                end
+                walk.call(value, next_path)
+              end
+            elsif node.is_a?(Array)
+              node.each_with_index { |value, index| walk.call(value, path + [index.to_s]) }
+            end
+          end
+          walk.call(doc, [])
+          unless violations.empty?
+            warn 'OpenAPI descriptions exceed ChatGPT 300-character limit:'
+            violations.each { |path, length| warn "#{path}: #{length}" }
+            exit 1
+          end
+          RUBY
