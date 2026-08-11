@@ -20,7 +20,12 @@ function invoke_private( string $class, string $method, array $args = [] ) {
 
 function assert_same( $expected, $actual, string $message ): void {
     if ( $expected === $actual ) return;
-    fwrite( STDERR, $message . "\nExpected: " . var_export( $expected, true ) . "\nActual: " . var_export( $actual, true ) . "\n" );
+    $details = $message . "\nExpected: " . var_export( $expected, true ) . "\nActual: " . var_export( $actual, true );
+    fwrite( STDERR, $details . "\n" );
+    if ( 'true' === getenv( 'GITHUB_ACTIONS' ) ) {
+        $annotation = str_replace( [ '%', "\r", "\n" ], [ '%25', '%0D', '%0A' ], $details );
+        fwrite( STDOUT, '::error title=Natural targeting contract::' . $annotation . "\n" );
+    }
     exit( 1 );
 }
 
