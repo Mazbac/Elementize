@@ -1,8 +1,9 @@
-import { CircleAlert, CircleCheck, Home, Plug, Settings, Sparkles } from 'lucide-react';
+import { CircleAlert, CircleCheck, History, Home, Plug, Settings, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ActivityPage } from '../pages/ActivityPage';
 import { ConnectionPage } from '../pages/ConnectionPage';
 import { HomePage } from '../pages/HomePage';
 import { SettingsPage } from '../pages/SettingsPage';
@@ -14,6 +15,7 @@ type Props = { config: ElementizeAdminConfig };
 const navItems = [
   { key: 'home' as const, label: 'Home', icon: Home },
   { key: 'setup' as const, label: 'Setup', icon: Sparkles },
+  { key: 'activity' as const, label: 'Activity', icon: History },
   { key: 'connection' as const, label: 'Connection', icon: Plug },
   { key: 'settings' as const, label: 'Settings', icon: Settings },
 ];
@@ -81,6 +83,7 @@ export function App({ config }: Props) {
         <main className="mt-5">
           {page === 'home' && <HomePage config={config} onNavigate={setPage} />}
           {page === 'setup' && <SetupPage config={config} onNavigate={setPage} />}
+          {page === 'activity' && <ActivityPage config={config} />}
           {page === 'connection' && <ConnectionPage config={config} />}
           {page === 'settings' && <SettingsPage config={config} />}
         </main>
