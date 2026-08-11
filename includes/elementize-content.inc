@@ -49,14 +49,23 @@ final class Elementize_Content {
         ] );
     }
 
+    public static function discover_items( array $elements ): array {
+        $items = [];
+        self::collect_elements( $elements, $items );
+        return $items;
+    }
+
+    public static function is_writable_text( array $path, string $value ): bool {
+        return self::copy_field( $path, $value );
+    }
+
     public static function read( WP_REST_Request $request ) {
         $id = absint( $request['id'] );
         $loaded = Elementize_Core::elements( $id );
         if ( is_wp_error( $loaded ) ) return $loaded;
         $kind = strtolower( trim( (string) $request->get_param( 'kind' ) ) ) ?: 'all';
         if ( 'all' !== $kind && ! in_array( $kind, self::KINDS, true ) ) return new WP_Error( 'elementize_invalid_content_kind', 'kind must be all, text, link, media, or pixfort_icon.', [ 'status' => 400 ] );
-        $items = [];
-        self::collect_elements( $loaded['elements'], $items );
+        $items = self::discover_items( $loaded['elements'] );
         $filters = [
             'kind' => $kind,
             'element_id' => trim( (string) $request->get_param( 'element_id' ) ),
@@ -76,6 +85,7 @@ final class Elementize_Content {
             'shared_or_embedded_template_writes' => false,
             'dynamic_values_writable' => false,
             'global_style_values_writable' => false,
+            'generic_safe_text_detection' => true,
             'supported_kinds' => self::KINDS,
             'counts' => $counts,
             'total_item_count' => count( $items ),
@@ -180,7 +190,10 @@ final class Elementize_Content {
 
     private static function item( string $kind, string $id, string $top, string $type, string $widget, array $path, $value ): array {
         $item = [ 'kind' => $kind, 'element_id' => $id, 'top_level_id' => $top, 'element_type' => $type, 'widget_type' => $widget, 'setting_path' => array_values( $path ), 'setting_key' => self::last_key( $path ), 'value' => $value, 'writable' => true ];
-        if ( 'text' === $kind ) $item['format'] = wp_strip_all_tags( (string) $value ) === $value ? 'text' : 'html';
+        if ( 'text' === $kind ) {
+            $item['format'] = wp_strip_all_tags( (string) $value ) === $value ? 'text' : 'html';
+            $item['text_detection'] = self::known_copy_key( self::last_key( $path ) ) ? 'known_copy_field' : 'generic_safe_string';
+        }
         if ( 'media' === $kind ) $item['attachment_id'] = absint( $value['id'] ?? 0 );
         return $item;
     }
@@ -247,7 +260,7 @@ final class Elementize_Content {
     }
 
     private static function apply_text( &$cursor, array $update, &$old, &$new ) {
-        if ( ! is_string( $cursor ) || ! self::copy_field( $update['setting_path'], $cursor ) ) return new WP_Error( 'elementize_not_text_field', 'Elementize only permits text writes to recognized copy fields.', [ 'status' => 400 ] );
+        if ( ! is_string( $cursor ) || ! self::copy_field( $update['setting_path'], $cursor ) ) return new WP_Error( 'elementize_not_text_field', 'Elementize only permits text writes to safe human-readable content fields.', [ 'status' => 400 ] );
         if ( $cursor !== $update['expected_value'] ) return new WP_Error( 'elementize_value_changed', 'The target text changed after the fresh content read.', [ 'status' => 409 ] );
         $old = $cursor;
         $cursor = $new = wp_kses_post( $update['value'] );
@@ -355,10 +368,59 @@ final class Elementize_Content {
     }
 
     private static function copy_field( array $path, string $value ): bool {
-        if ( '' === trim( $value ) || strlen( $value ) > self::MAX_TEXT || self::dynamic( $value ) ) return false;
+        if ( '' === trim( $value ) || strlen( $value ) > self::MAX_TEXT || self::dynamic( $value ) || self::path_has( $path, '__globals__' ) ) return false;
         $key = self::last_key( $path );
-        if ( '' === $key || preg_match( '/(^|_)(url|link|href|src|id|class|selector|shortcode|icon|image|media|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow)(_|$)/i', $key ) ) return false;
-        return (bool) preg_match( '/(^|_)(title|text|content|editor|description|heading|headline|subtitle|sub_title|label|caption|button_text|btn_text|placeholder|prefix|suffix|message)(_|$)/i', $key );
+        if ( '' === $key ) return false;
+
+        if ( self::known_copy_key( $key ) ) return ! self::known_technical_copy_collision( $path, $key );
+        if ( self::technical_path( $path ) ) return false;
+        return self::looks_like_human_copy( $value, $path, $key );
+    }
+
+    private static function known_copy_key( string $key ): bool {
+        return (bool) preg_match( '/(^|_)(title|text|content|editor|description|heading|headline|subtitle|sub_title|label|caption|button_text|btn_text|button_label|cta_text|placeholder|prefix|suffix|message|quote|author|client|person|eyebrow|kicker|overline|tagline|question|answer|testimonial|review|feature|service|intro|body|paragraph|copy|notice|note|html)(_|$)/i', $key );
+    }
+
+    private static function known_technical_copy_collision( array $path, string $key ): bool {
+        if ( preg_match( '/(^|_)(css|custom_css|selector|class|classes|shortcode|template|template_id|html_tag|aria|attribute|attributes)(_|$)/i', $key ) ) return true;
+        $joined = strtolower( implode( '_', array_map( static fn( $part ) => is_string( $part ) ? $part : '', $path ) ) );
+        if ( preg_match( '/(^|_)(form_fields|form_field|input|select|textarea|validation|webhook|action_after_submit)(_|$)/', $joined ) && preg_match( '/(^|_)(name|label|placeholder)(_|$)/', $key ) ) {
+            return false;
+        }
+        return false;
+    }
+
+    private static function technical_path( array $path ): bool {
+        foreach ( $path as $segment ) {
+            if ( ! is_string( $segment ) ) continue;
+            $segment = strtolower( $segment );
+            if ( preg_match( '/(^|_)(url|link|href|src|id|element_id|html_id|class|classes|css|selector|shortcode|icon|image|media|logo|photo|thumbnail|poster|video|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow|breakpoint|responsive|visibility|motion|mask|filter|blend|shadow|template|template_id|menu_id|form_id|role|rel|target|html_tag)(_|$)/i', $segment ) ) return true;
+        }
+        return false;
+    }
+
+    private static function looks_like_human_copy( string $value, array $path, string $key ): bool {
+        $plain = trim( html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+        if ( '' === $plain ) return false;
+        if ( is_serialized( $plain ) ) return false;
+        $decoded = json_decode( $plain, true );
+        if ( is_array( $decoded ) && JSON_ERROR_NONE === json_last_error() ) return false;
+        if ( preg_match( '#^(https?://|mailto:|tel:)#i', $plain ) ) return false;
+        if ( preg_match( '#^(Line|Duotone|Solid)/pixfort-icon-#', $plain ) ) return false;
+        if ( preg_match( '/^#[0-9a-f]{3,8}$/i', $plain ) || preg_match( '/^(rgb|rgba|hsl|hsla)\\(/i', $plain ) ) return false;
+        if ( preg_match( '/^-?\\d+(?:\\.\\d+)?(?:px|em|rem|%|vh|vw|deg|s|ms)?$/i', $plain ) ) return false;
+
+        $enum = strtolower( $plain );
+        if ( in_array( $enum, [ 'yes','no','default','none','inherit','initial','auto','left','right','center','top','bottom','middle','solid','dashed','dotted','cover','contain','fixed','absolute','relative','sticky','row','column','nowrap','wrap','flex','grid','block','inline','hidden','visible' ], true ) ) return false;
+
+        $joined = strtolower( implode( '_', array_map( static fn( $part ) => is_string( $part ) ? $part : '', $path ) ) );
+        if ( preg_match( '/(^|_)(form|input|field|validation|webhook)(_|$)/', $joined ) && in_array( $key, [ 'name', 'value' ], true ) ) return false;
+        if ( in_array( $key, [ 'name', 'author_name', 'client_name', 'person_name' ], true ) ) return true;
+
+        if ( false !== strpos( $plain, ' ' ) ) return true;
+        if ( preg_match( '/[.!?,:;]/', $plain ) ) return true;
+        if ( preg_match( '/<[^>]+>/', $value ) ) return true;
+        return strlen( $plain ) >= 24;
     }
 
     private static function link_path( array $path, string $widget ): bool {
