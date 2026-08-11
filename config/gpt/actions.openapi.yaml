@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: Elementize Content Actions
-  version: 0.38.0
-  description: Fast, retry-safe natural-language targeting plus guarded content editing, media handoff, and Pixfort icon lookup for existing Elementor + Pixfort pages.
+  title: Elementize Actions
+  version: 0.40.0
+  description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
     description: Replaced automatically by the Elementize setup screen.
@@ -11,9 +11,9 @@ paths:
   /wp-json/elementize/v1/status:
     get:
       operationId: getElementizeStatus
-      summary: Check Elementize, Elementor, and Pixfort readiness
+      summary: Check readiness and active editing capabilities
       responses:
-        '200': { description: Elementize status and supported content-editing scope }
+        '200': { description: Elementize status, editing profile, capability revision, and supported operations }
 
   /wp-json/elementize/v1/pages:
     get:
@@ -30,7 +30,7 @@ paths:
     get:
       operationId: getElementizePageStructure
       summary: Read the semantic Elementor page map
-      description: Returns sections, containers, cards/groups, widgets, snippets, parent/sibling relationships, and optional exact editable fields from the main Elementor document.
+      description: Returns sections, containers, cards/groups, widgets, snippets, parent/sibling relationships, and optional exact editable content fields from the main Elementor document.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: q, in: query, required: false, schema: { type: string } }
@@ -44,7 +44,7 @@ paths:
     post:
       operationId: resolveElementizeTargets
       summary: Resolve natural language or screenshot clues to exact Elementor targets
-      description: Use natural descriptions, visual clues extracted from a screenshot, and prior selection IDs. Can expand one matched item to siblings, its repeated card group, or its whole section.
+      description: Uses natural descriptions, screenshot clues, and prior selection IDs. Can expand one match to siblings, its repeated group, or its whole section.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -69,15 +69,15 @@ paths:
                 expand: { type: string, enum: [auto, none, siblings, group, section], default: auto }
                 expected_count: { type: integer, minimum: 1, maximum: 50 }
       responses:
-        '200': { description: Ranked candidates, reusable selection context, and exact fresh editable fields }
+        '200': { description: Ranked targets, reusable context, exact writable fields, and a fresh content hash }
         '400': { description: Invalid resolver request }
         '409': { description: Requested scope no longer exists }
 
   /wp-json/elementize/v1/pages/{id}/content:
     get:
       operationId: getElementizePageContent
-      summary: Read editable copy, links, images, and Pixfort icons from one Elementor page
-      description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash. Safe human-readable strings are discovered beyond a small fixed field-name list.
+      summary: Read editable copy, links, images, and Pixfort icons
+      description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash for safe content fields.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: kind, in: query, required: false, schema: { type: string, enum: [all, text, link, media, pixfort_icon], default: all } }
@@ -91,7 +91,7 @@ paths:
     post:
       operationId: updateElementizePageContent
       summary: Guardedly update copy, links, images, or Pixfort icons
-      description: Use exact fresh fields from resolveElementizeTargets or getElementizePageContent. Requires page status/title/hash and expected values. Live published pages require explicit confirmation.
+      description: Content-only fast path. Uses exact fresh fields and page state. Standard editing may use this even when Creative Control is off.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -136,6 +136,112 @@ paths:
         '400': { description: Unsafe content field/value or missing confirmation }
         '409': { description: Page, revision capability, or target changed after the fresh read }
 
+  /wp-json/elementize/v1/pages/{id}/design-profile:
+    get:
+      operationId: getElementizePageDesignProfile
+      summary: Read the page design language and creative controls
+      description: Returns observed palette, spacing, radius and typography tokens plus exact writable design controls, Creative Control state, capability revision, and design guidelines.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: element_id, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1200, default: 300 } }
+      responses:
+        '200': { description: Fresh design profile, capability state, and exact safe design controls }
+
+  /wp-json/elementize/v1/templates:
+    get:
+      operationId: searchElementizeTemplates
+      summary: Search detected Pixfort and local Elementor template sources
+      description: Pixfort-native sources are discovered at runtime when registered with Elementor. Local Elementor templates are available as a safe fallback. Prefer Pixfort-native matches when available.
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: type, in: query, required: false, schema: { type: string, enum: [all, page, section, container], default: all } }
+        - { name: provider, in: query, required: false, schema: { type: string, enum: [all, pixfort, local], default: all } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+      responses:
+        '200': { description: Matching templates and detected template-source metadata }
+
+  /wp-json/elementize/v1/templates/{source_id}/{template_id}:
+    get:
+      operationId: getElementizeTemplate
+      summary: Inspect one template before insertion
+      description: Returns template structure, editable content fields, design controls, warnings, and whether it is eligible for managed local insertion.
+      parameters:
+        - { name: source_id, in: path, required: true, schema: { type: string } }
+        - { name: template_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Template structure and exact pre-insertion fields }
+        '400': { description: Unsafe embedded/global template dependency }
+        '404': { description: Template source or item not found }
+        '503': { description: Template provider did not return usable Elementor data }
+
+  /wp-json/elementize/v1/pages/{id}/creative:
+    post:
+      operationId: applyElementizeCreativePlan
+      summary: Apply one atomic guarded creative transaction
+      description: Creative Control only. Inserts templates, removes/duplicates/moves/reorders elements, changes approved design controls, and edits content in one revision-backed verified transaction.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_status, expected_title, content_hash, expected_capability_revision, operations, confirm_creative_write]
+              properties:
+                expected_status: { type: string }
+                expected_title: { type: string }
+                content_hash: { type: string }
+                expected_capability_revision: { type: integer, minimum: 1 }
+                plan_label: { type: string, maxLength: 200 }
+                confirm_creative_write: { type: boolean, enum: [true] }
+                confirm_published_page: { type: boolean, default: false }
+                operations:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [type]
+                    properties:
+                      type: { type: string, enum: [insert_template, remove_element, duplicate_element, move_element, reorder_children, style, content] }
+                      alias: { type: string, maxLength: 60 }
+                      source_id: { type: string, maxLength: 100 }
+                      template_id: { type: string, maxLength: 200 }
+                      contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic] }
+                      element_ref: { type: string, maxLength: 160, description: Existing element ID or alias:originalTemplateElementId from an earlier insert_template operation in this transaction. }
+                      anchor_ref: { type: string, maxLength: 160 }
+                      parent_ref: { type: string, maxLength: 160 }
+                      position: { type: string, enum: [before, after, inside_start, inside_end, page_start, page_end] }
+                      ordered_refs:
+                        type: array
+                        maxItems: 100
+                        items: { type: string, maxLength: 160 }
+                      kind: { type: string, enum: [text, link, media, pixfort_icon] }
+                      setting_path:
+                        type: array
+                        minItems: 1
+                        maxItems: 30
+                        items:
+                          anyOf:
+                            - { type: string, maxLength: 200 }
+                            - { type: integer }
+                      expected_value: { type: string }
+                      value: { type: string }
+                      expected_attachment_id: { type: integer, minimum: 0 }
+                      attachment_id: { type: integer, minimum: 1 }
+                      expected_json: { type: string, description: Exact value_json returned for an approved design control. }
+                      value_json: { type: string, description: JSON-encoded replacement value using the same Elementor value shape. }
+      responses:
+        '200': { description: Entire creative transaction persisted and verified, with aliases, activity ID, managed roots, and deterministic quality summary }
+        '400': { description: Invalid, unsafe, structurally inconsistent, or unconfirmed creative plan }
+        '403': { description: Creative Control disabled or enabled for a different page }
+        '409': { description: Page content or capability revision changed after the creative read }
+
   /wp-json/elementize/v1/media/images:
     get:
       operationId: searchElementizeMediaImages
@@ -166,7 +272,7 @@ paths:
                   type: array
                   minItems: 1
                   maxItems: 1
-                  description: Exactly one user-supplied image from the current ChatGPT conversation. At runtime ChatGPT expands the file reference into file metadata for Elementize.
+                  description: Exactly one user-supplied image from the current ChatGPT conversation. ChatGPT expands the file reference into file metadata at runtime.
                   items: { type: string }
                 title: { type: string }
                 alt: { type: string }
@@ -179,7 +285,7 @@ paths:
     post:
       operationId: importElementizeGeneratedImage
       summary: Import the image ChatGPT just generated into WordPress
-      description: 'Use after ChatGPT generates an image. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Retries are deduplicated when possible.'
+      description: Use exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Retries are deduplicated when possible.
       requestBody:
         required: true
         content:
@@ -193,18 +299,13 @@ paths:
                   type: array
                   minItems: 1
                   maxItems: 1
-                  description: Exactly one image generated in the current ChatGPT conversation, when ChatGPT can pass it as a file reference.
                   items: { type: string }
-                generated_image_url:
-                  type: string
-                  format: uri
-                  maxLength: 8192
-                  description: Fallback direct HTTPS URL for the generated image. Elementize accepts this only from an allowed OpenAI file host.
+                generated_image_url: { type: string, format: uri, maxLength: 8192 }
                 title: { type: string }
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201': { description: Generated ChatGPT image imported or safely deduplicated and verified }
+        '201': { description: Generated image imported or safely deduplicated and verified }
         '400': { description: Missing or unsafe generated-image source, unsupported image, or confirmation missing }
         '502': { description: Generated image download failed }
 
@@ -223,7 +324,7 @@ paths:
               required: [url, confirm_import]
               properties:
                 url: { type: string, format: uri, maxLength: 8192 }
-                source_page_url: { type: string, format: uri, maxLength: 8192, description: Optional page where the image was found for provenance. }
+                source_page_url: { type: string, format: uri, maxLength: 8192 }
                 title: { type: string }
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
@@ -235,8 +336,8 @@ paths:
   /wp-json/elementize/v1/pixfort/icons:
     get:
       operationId: searchElementizePixfortIcons
-      summary: Search the Pixfort icon library discovered from the installed Pixfort/theme assets
-      description: Returns exact Pixfort icon values suitable for a later guarded pixfort_icon content update. Do not invent icon identifiers; use an exact returned value.
+      summary: Search the installed Pixfort icon library
+      description: Returns exact verified Pixfort icon values. Never construct an icon identifier yourself.
       parameters:
         - { name: q, in: query, required: false, schema: { type: string } }
         - { name: style, in: query, required: false, schema: { type: string, enum: [all, line, duotone, solid], default: all } }
