@@ -21,6 +21,7 @@ jobs:
           includes/elementize-bootstrap.inc
           includes/elementize-connections.inc
           includes/elementize-content.inc
+          includes/elementize-context.inc
           includes/elementize-core.inc
           includes/elementize-media-import.inc
           includes/elementize-media-library.inc
@@ -38,12 +39,18 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 8
-          test "$init_count" -eq 8
+          test "$require_count" -eq 9
+          test "$init_count" -eq 9
 
-          for module in core pixfort-icons content media-library media-import activity connections onboarding; do
+          for module in core pixfort-icons content context media-library media-import activity connections onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
+
+          grep -q "class Elementize_Context" includes/elementize-context.inc || { echo 'Context resolver runtime class is missing.'; exit 1; }
+          grep -q "'/pages/(?P<id>.*)/structure'" includes/elementize-context.inc || { echo 'Semantic structure route is missing.'; exit 1; }
+          grep -q "'/pages/(?P<id>.*)/resolve'" includes/elementize-context.inc || { echo 'Natural target resolver route is missing.'; exit 1; }
+          grep -q "discover_items" includes/elementize-content.inc || { echo 'Context resolver must use the shared content discovery contract.'; exit 1; }
+          grep -q "generic_safe_string" includes/elementize-content.inc || { echo 'Generic safe text discovery is missing.'; exit 1; }
 
           grep -q "class Elementize_Activity" includes/elementize-activity.inc || { echo 'Activity runtime class is missing.'; exit 1; }
           grep -q "elementize_undo_activity" includes/elementize-activity.inc || { echo 'Activity undo admin action is missing.'; exit 1; }
@@ -54,14 +61,18 @@ jobs:
           instruction_chars=$(wc -m < "$instructions" | tr -d ' ')
           echo "GPT instruction characters: ${instruction_chars}/8000"
           test "$instruction_chars" -le 8000
+          grep -qi 'screenshot' "$instructions" || { echo 'Screenshot grounding instructions are missing.'; exit 1; }
+          grep -q 'context_element_ids' "$instructions" || { echo 'Conversation context reuse instructions are missing.'; exit 1; }
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
-          echo "GPT Action operations: ${operation_count}/9"
-          test "$operation_count" -eq 9
+          echo "GPT Action operations: ${operation_count}/11"
+          test "$operation_count" -eq 11
 
           required_operations=(
             getElementizeStatus
             listElementizePages
+            getElementizePageStructure
+            resolveElementizeTargets
             getElementizePageContent
             updateElementizePageContent
             searchElementizeMediaImages
@@ -96,6 +107,8 @@ jobs:
           grep -q 'generated_image_url:' "$schema" || { echo 'Generated-image OpenAI URL fallback is missing.'; exit 1; }
           grep -q 'import-url:' "$schema" || { echo 'Remote-image import route is missing.'; exit 1; }
           grep -q 'pixfort/icons:' "$schema" || { echo 'Pixfort icon search route is missing.'; exit 1; }
+          grep -q 'visual_clues:' "$schema" || { echo 'Screenshot clue parameter is missing.'; exit 1; }
+          grep -q 'expand:.*group' "$schema" || { echo 'Repeated group expansion contract is missing.'; exit 1; }
 
           header_version=$(sed -n 's/^ \* Version: //p' elementize.php | head -1)
           constant_version=$(sed -n "s/^define( 'ELEMENTIZE_VERSION', '\([^']*\)' );/\1/p" elementize.php | head -1)
