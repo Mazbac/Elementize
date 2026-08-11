@@ -51,6 +51,7 @@ jobs:
           grep -q "'/pages/(?P<id>.*)/resolve'" includes/elementize-context.inc || { echo 'Natural target resolver route is missing.'; exit 1; }
           grep -q "discover_items" includes/elementize-content.inc || { echo 'Context resolver must use the shared content discovery contract.'; exit 1; }
           grep -q "generic_safe_string" includes/elementize-content.inc || { echo 'Generic safe text discovery is missing.'; exit 1; }
+          php tests/natural-targeting-contract.php
 
           grep -q "class Elementize_Activity" includes/elementize-activity.inc || { echo 'Activity runtime class is missing.'; exit 1; }
           grep -q "elementize_undo_activity" includes/elementize-activity.inc || { echo 'Activity undo admin action is missing.'; exit 1; }
