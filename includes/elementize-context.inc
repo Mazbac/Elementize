@@ -537,6 +537,7 @@ final class Elementize_Context {
         if ( false !== strpos( $widget, 'image' ) ) $words[] = 'image afbeelding photo foto';
         if ( preg_match( '/heading|headline|title/', $widget ) ) $words[] = 'heading title titel kop';
         if ( preg_match( '/text|editor/', $widget ) ) $words[] = 'text tekst copy paragraph paragraaf';
+        if ( false !== strpos( $widget, 'icon' ) ) $words[] = 'icon icoon';
         return implode( ' ', $words );
     }
 
@@ -562,20 +563,30 @@ final class Elementize_Context {
         }
 
         $desc = self::normalize( $query );
-        if ( in_array( $node['element_id'], $context_ids, true ) ) $score += 24;
+        $below_request = (bool) preg_match( '/\b(below|under|onder)\b/u', $desc ) || false !== strpos( $desc, 'daaronder' );
+        $above_request = (bool) preg_match( '/\b(above|over|boven)\b/u', $desc ) || false !== strpos( $desc, 'daarboven' );
+        $relative_request = $below_request || $above_request;
+        $role_tokens = [ 'button','knop','cta','image','afbeelding','photo','foto','heading','title','titel','kop','text','tekst','icon','icoon' ];
+        $requested_roles = array_values( array_intersect( $tokens, $role_tokens ) );
+        $self_matches_requested_role = ! $requested_roles;
+        foreach ( $requested_roles as $role_token ) {
+            if ( isset( $node['_tokens'][ $role_token ] ) ) {
+                $self_matches_requested_role = true;
+                break;
+            }
+        }
+        $context_should_yield = $relative_request || ! $self_matches_requested_role;
+
+        if ( in_array( $node['element_id'], $context_ids, true ) ) $score += $context_should_yield ? 2 : 24;
         foreach ( $context_ids as $context_id ) {
             $context_node = $map['nodes'][ $context_id ] ?? null;
             if ( ! is_array( $context_node ) ) continue;
             if ( in_array( $context_id, $node['ancestor_ids'], true ) || in_array( $node['element_id'], (array) $context_node['ancestor_ids'], true ) ) $score += 8;
             if ( (string) $context_node['parent_id'] === (string) $node['parent_id'] ) {
-                $score += 5;
+                $score += $relative_request ? 1 : 5;
                 $delta = (int) $node['index'] - (int) $context_node['index'];
-                if ( $delta > 0 && ( preg_match( '/\b(below|under|onder)\b/u', $desc ) || false !== strpos( $desc, 'daaronder' ) ) ) {
-                    $score += max( 2, 7 - min( 5, $delta ) );
-                }
-                if ( $delta < 0 && ( preg_match( '/\b(above|over|boven)\b/u', $desc ) || false !== strpos( $desc, 'daarboven' ) ) ) {
-                    $score += max( 2, 7 - min( 5, abs( $delta ) ) );
-                }
+                if ( $delta > 0 && $below_request ) $score += max( 10, 18 - min( 8, $delta ) );
+                if ( $delta < 0 && $above_request ) $score += max( 10, 18 - min( 8, abs( $delta ) ) );
             }
         }
 
