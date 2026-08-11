@@ -69,6 +69,12 @@ final class Elementize_Core {
             'pixfort_version' => $pixfort_loaded ? $pixfort['version'] : null,
             'page_revisions_enabled' => $revisions_enabled,
             'supported_content_types' => [ 'text', 'link', 'media', 'pixfort_icon' ],
+            'semantic_page_structure' => true,
+            'natural_target_resolver' => true,
+            'repeated_group_resolution' => true,
+            'conversation_context_reuse' => true,
+            'screenshot_grounding_via_chatgpt' => true,
+            'generic_safe_text_detection' => true,
             'media_library_search' => true,
             'conversation_image_import' => true,
             'page_creation' => false,
@@ -99,7 +105,7 @@ final class Elementize_Core {
             return new WP_REST_Response( [ 'q' => '', 'page' => 1, 'per_page' => 0, 'total' => 0, 'total_pages' => 0, 'pages' => [], 'warning' => 'Elementor is not active.' ], 200 );
         }
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
         $search = trim( (string) $request->get_param( 'q' ) );
         $args = [
             'post_type' => 'page',
