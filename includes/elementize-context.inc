@@ -4,9 +4,10 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 final class Elementize_Context {
     private const MAX_NODES = 1500;
     private const MAX_STRUCTURE_RETURN = 300;
-    private const MAX_GROUPS_RETURN = 200;
-    private const MAX_FIELDS_RETURN = 250;
+    private const MAX_GROUPS_RETURN = 160;
+    private const MAX_FIELDS_RETURN = 200;
     private const MAX_CONTEXT_STRINGS = 24;
+    private const MAX_PROFILE_WIDGETS = 24;
     private const MAX_CLUES = 12;
     private const MAX_CONTEXT_IDS = 30;
     private const MAX_DEPTH = 80;
@@ -53,17 +54,20 @@ final class Elementize_Context {
         $include_fields = true === $request->get_param( 'include_fields' );
 
         $nodes = [];
+        $matched_node_ids = [];
         foreach ( $map['order'] as $node_id ) {
             $node = $map['nodes'][ $node_id ];
             if ( '' !== $element_id && $node_id !== $element_id ) continue;
             if ( '' !== $query && ! self::node_matches_query( $node, $query, $query_tokens ) ) continue;
             $nodes[] = self::public_node( $node, $include_fields ? ( $map['editable_by_element'][ $node_id ] ?? [] ) : [] );
+            $matched_node_ids[] = $node_id;
             if ( count( $nodes ) >= $limit ) break;
         }
 
         $all_groups = array_values( $map['groups'] );
-        $groups_truncated = count( $all_groups ) > self::MAX_GROUPS_RETURN;
-        $groups = $groups_truncated ? array_slice( $all_groups, 0, self::MAX_GROUPS_RETURN ) : $all_groups;
+        $groups_source = ( '' !== $query || '' !== $element_id ) ? self::groups_for_nodes( $matched_node_ids, $map ) : $all_groups;
+        $groups_truncated = count( $groups_source ) > self::MAX_GROUPS_RETURN;
+        $groups = $groups_truncated ? array_slice( $groups_source, 0, self::MAX_GROUPS_RETURN ) : $groups_source;
 
         return new WP_REST_Response( [
             'page' => Elementize_Core::page_identity( $id, $loaded['document'] ),
@@ -120,14 +124,11 @@ final class Elementize_Context {
 
         $valid_context_ids = [];
         foreach ( $context_ids as $context_id ) {
-            if ( ! isset( $map['nodes'][ $context_id ] ) ) continue;
-            $valid_context_ids[] = $context_id;
-            $map['context_ids'][ $context_id ] = true;
+            if ( isset( $map['nodes'][ $context_id ] ) ) $valid_context_ids[] = $context_id;
         }
         $context_ids = array_values( array_unique( $valid_context_ids ) );
 
-        $query_parts = array_merge( [ $description ], $visual_clues );
-        $query = self::normalize( implode( ' ', $query_parts ) );
+        $query = self::normalize( implode( ' ', array_merge( [ $description ], $visual_clues ) ) );
         $query_tokens = self::tokens( $query );
         $scored = [];
         foreach ( $map['order'] as $order_index => $node_id ) {
@@ -143,27 +144,10 @@ final class Elementize_Context {
         } );
 
         if ( ! $scored && $context_ids ) {
-            foreach ( $context_ids as $context_id ) {
-                if ( isset( $map['nodes'][ $context_id ] ) ) $scored[] = [ 'id' => $context_id, 'score' => 5, 'order' => 0 ];
-            }
+            foreach ( $context_ids as $context_id ) $scored[] = [ 'id' => $context_id, 'score' => 5, 'order' => 0 ];
         }
 
-        if ( ! $scored ) {
-            return new WP_REST_Response( [
-                'page' => Elementize_Core::page_identity( $id, $loaded['document'] ),
-                'content_hash' => Elementize_Core::hash_elements( $loaded['elements'] ),
-                'scope' => 'main_elementor_document_only',
-                'resolved' => false,
-                'confidence' => 'low',
-                'requires_clarification' => true,
-                'clarification_reason' => 'No page element matched the supplied description or visual clues.',
-                'candidates' => [],
-                'selection' => null,
-                'editable_field_count' => 0,
-                'editable_fields_truncated' => false,
-                'editable_fields' => [],
-            ], 200 );
-        }
+        if ( ! $scored ) return self::unresolved_response( $id, $loaded, 'No page element matched the supplied description or visual clues.' );
 
         $anchor_id = $scored[0]['id'];
         $anchor = $map['nodes'][ $anchor_id ];
@@ -215,7 +199,7 @@ final class Elementize_Context {
             'expand' => $effective_expand,
             'selected_root_ids' => $selected_roots,
             'selected_count' => count( $selected_roots ),
-            'context_element_ids' => array_values( array_unique( array_merge( [ $anchor_id ], $selected_roots ) ) ),
+            'context_element_ids' => self::selection_context_ids( $anchor_id, $selected_roots ),
         ];
 
         return new WP_REST_Response( [
@@ -234,30 +218,46 @@ final class Elementize_Context {
         ], 200 );
     }
 
+    private static function unresolved_response( int $id, array $loaded, string $reason ): WP_REST_Response {
+        return new WP_REST_Response( [
+            'page' => Elementize_Core::page_identity( $id, $loaded['document'] ),
+            'content_hash' => Elementize_Core::hash_elements( $loaded['elements'] ),
+            'scope' => 'main_elementor_document_only',
+            'resolved' => false,
+            'confidence' => 'low',
+            'requires_clarification' => true,
+            'clarification_reason' => $reason,
+            'candidates' => [],
+            'selection' => null,
+            'editable_field_count' => 0,
+            'editable_fields_truncated' => false,
+            'editable_fields' => [],
+        ], 200 );
+    }
+
     private static function build_map( array $elements ): array {
         $map = [
             'nodes' => [],
             'order' => [],
             'groups' => [],
             'member_groups' => [],
+            'children_by_parent' => [],
             'editable_by_element' => [],
-            'context_ids' => [],
             'group_member_sets' => [],
+            'profile_cache' => [],
         ];
 
-        $editable = Elementize_Content::discover_items( $elements );
-        foreach ( $editable as $item ) {
+        foreach ( Elementize_Content::discover_items( $elements ) as $item ) {
             $element_id = (string) ( $item['element_id'] ?? '' );
-            if ( '' === $element_id ) continue;
-            $map['editable_by_element'][ $element_id ][] = $item;
+            if ( '' !== $element_id ) $map['editable_by_element'][ $element_id ][] = $item;
         }
 
         self::walk_elements( $elements, '', '', 0, [], 0, $map );
+        unset( $map['profile_cache'] );
         self::build_groups( $map );
 
         foreach ( $map['nodes'] as $node_id => &$node ) {
-            if ( empty( $map['member_groups'][ $node_id ] ) ) continue;
-            foreach ( $map['member_groups'][ $node_id ] as $group_id ) {
+            foreach ( (array) ( $map['member_groups'][ $node_id ] ?? [] ) as $group_id ) {
                 $group = $map['groups'][ $group_id ] ?? null;
                 if ( is_array( $group ) && count( $group['member_ids'] ) >= 3 && 'widget' !== $node['base_role'] ) {
                     $node['semantic_role'] = 'card';
@@ -266,7 +266,6 @@ final class Elementize_Context {
             }
         }
         unset( $node );
-
         return $map;
     }
 
@@ -279,26 +278,23 @@ final class Elementize_Context {
             if ( ! is_array( $element ) ) continue;
 
             $id = trim( (string) ( $element['id'] ?? '' ) );
-            $current_top = '' !== $top_id ? $top_id : $id;
-            $current_top_index = '' !== $top_id ? $top_index : $index;
-            $type = is_string( $element['elType'] ?? null ) ? strtolower( $element['elType'] ) : '';
-            $widget = is_string( $element['widgetType'] ?? null ) ? strtolower( $element['widgetType'] ) : '';
             $children = is_array( $element['elements'] ?? null ) ? $element['elements'] : [];
-
             if ( '' === $id ) {
                 self::walk_elements( $children, $parent_id, $top_id, $depth + 1, $ancestors, $top_index, $map );
                 continue;
             }
 
+            $current_top = '' !== $top_id ? $top_id : $id;
+            $current_top_index = '' !== $top_id ? $top_index : $index;
+            $type = is_string( $element['elType'] ?? null ) ? strtolower( $element['elType'] ) : '';
+            $widget = is_string( $element['widgetType'] ?? null ) ? strtolower( $element['widgetType'] ) : '';
             $base_role = self::base_role( $type, $widget, $depth );
-            $snippets = self::context_strings( is_array( $element['settings'] ?? null ) ? $element['settings'] : [], $map['editable_by_element'][ $id ] ?? [] );
-            $widget_profile = self::widget_profile( $element );
+            $editable_items = $map['editable_by_element'][ $id ] ?? [];
+            $snippets = self::context_strings( is_array( $element['settings'] ?? null ) ? $element['settings'] : [], $editable_items );
+            $widget_profile = self::widget_profile( $element, $map['profile_cache'] );
             $shape = self::shape_signature( $type, $widget, $widget_profile );
-            $semantic_words = self::semantic_words( $base_role, $widget, $type );
-            $search_parts = array_merge( [ $id, $type, $widget, $base_role, $semantic_words ], $snippets );
-            foreach ( (array) ( $map['editable_by_element'][ $id ] ?? [] ) as $item ) {
-                $search_parts[] = (string) ( $item['setting_key'] ?? '' );
-            }
+            $search_parts = array_merge( [ $id, $type, $widget, $base_role, self::semantic_words( $base_role, $widget, $type ) ], $snippets );
+            foreach ( $editable_items as $item ) $search_parts[] = (string) ( $item['setting_key'] ?? '' );
 
             $child_ids = [];
             foreach ( $children as $child ) {
@@ -321,41 +317,26 @@ final class Elementize_Context {
                 'base_role' => $base_role,
                 'semantic_role' => $base_role,
                 'snippets' => $snippets,
-                'editable_field_count' => count( $map['editable_by_element'][ $id ] ?? [] ),
+                'editable_field_count' => count( $editable_items ),
                 '_shape' => $shape,
                 '_widget_profile' => $widget_profile,
                 '_search_text' => $search_text,
                 '_tokens' => array_fill_keys( self::tokens( $search_text ), true ),
             ];
             $map['order'][] = $id;
+            if ( '' !== $parent_id ) $map['children_by_parent'][ $parent_id ][] = $id;
 
             self::walk_elements( $children, $id, $current_top, $depth + 1, array_merge( $ancestors, [ $id ] ), $current_top_index, $map );
         }
     }
 
     private static function build_groups( array &$map ): void {
-        $parents = [];
-        foreach ( $map['nodes'] as $node_id => $node ) {
-            $parent = (string) $node['parent_id'];
-            if ( '' === $parent ) continue;
-            $parents[ $parent ][] = $node_id;
-        }
-
-        foreach ( $parents as $parent_id => $child_ids ) {
+        foreach ( $map['children_by_parent'] as $parent_id => $child_ids ) {
             if ( count( $child_ids ) < 2 ) continue;
-
             $clusters = [];
-            foreach ( $child_ids as $child_id ) {
-                $shape = (string) $map['nodes'][ $child_id ]['_shape'];
-                $clusters[ $shape ][] = $child_id;
-            }
-
-            foreach ( $clusters as $shape => $members ) {
-                if ( count( $members ) >= 2 ) self::add_group( $parent_id, $shape, $members, $map );
-            }
-
-            if ( count( $child_ids ) < 3 || ! self::cohesive_structural_siblings( $child_ids, $clusters, $map ) ) continue;
-            self::add_group( $parent_id, 'structural-siblings', $child_ids, $map );
+            foreach ( $child_ids as $child_id ) $clusters[ (string) $map['nodes'][ $child_id ]['_shape'] ][] = $child_id;
+            foreach ( $clusters as $shape => $members ) if ( count( $members ) >= 2 ) self::add_group( $parent_id, $shape, $members, $map );
+            if ( count( $child_ids ) >= 3 && self::cohesive_structural_siblings( $child_ids, $clusters, $map ) ) self::add_group( $parent_id, 'structural-siblings', $child_ids, $map );
         }
     }
 
@@ -370,16 +351,11 @@ final class Elementize_Context {
 
         $largest = [];
         foreach ( $clusters as $members ) if ( count( $members ) > count( $largest ) ) $largest = $members;
-        $minimum_majority = max( 2, (int) ceil( count( $child_ids ) * 0.6 ) );
-        if ( count( $largest ) < $minimum_majority ) return false;
+        if ( count( $largest ) < max( 2, (int) ceil( count( $child_ids ) * 0.6 ) ) ) return false;
 
         $representative = $map['nodes'][ $largest[0] ]['_widget_profile'] ?? [];
         if ( ! $representative ) return false;
-
-        foreach ( $child_ids as $child_id ) {
-            $profile = $map['nodes'][ $child_id ]['_widget_profile'] ?? [];
-            if ( ! self::profiles_similar( $representative, $profile ) ) return false;
-        }
+        foreach ( $child_ids as $child_id ) if ( ! self::profiles_similar( $representative, $map['nodes'][ $child_id ]['_widget_profile'] ?? [] ) ) return false;
         return true;
     }
 
@@ -394,7 +370,6 @@ final class Elementize_Context {
     private static function add_group( string $parent_id, string $shape, array $members, array &$map ): void {
         $members = array_values( array_unique( $members ) );
         if ( count( $members ) < 2 ) return;
-
         $set = $members;
         sort( $set, SORT_STRING );
         $set_key = hash( 'sha256', $parent_id . '|' . implode( ',', $set ) );
@@ -414,32 +389,40 @@ final class Elementize_Context {
         foreach ( $members as $member ) $map['member_groups'][ $member ][] = $group_id;
     }
 
+    private static function groups_for_nodes( array $node_ids, array $map ): array {
+        if ( ! $node_ids ) return [];
+        $wanted = [];
+        foreach ( $node_ids as $node_id ) {
+            $node = $map['nodes'][ $node_id ] ?? null;
+            if ( ! is_array( $node ) ) continue;
+            foreach ( array_merge( [ $node_id ], $node['ancestor_ids'] ) as $candidate_id ) {
+                foreach ( (array) ( $map['member_groups'][ $candidate_id ] ?? [] ) as $group_id ) $wanted[ $group_id ] = true;
+            }
+        }
+        $groups = [];
+        foreach ( array_keys( $wanted ) as $group_id ) if ( isset( $map['groups'][ $group_id ] ) ) $groups[] = $map['groups'][ $group_id ];
+        return $groups;
+    }
+
     private static function context_strings( array $settings, array $editable_items ): array {
         $strings = [];
         foreach ( $editable_items as $item ) {
             $value = $item['value'] ?? '';
             if ( is_array( $value ) ) {
-                foreach ( [ 'alt', 'title', 'url' ] as $key ) {
-                    if ( is_string( $value[ $key ] ?? null ) ) self::add_context_string( $strings, (string) $value[ $key ] );
-                }
-            } elseif ( is_scalar( $value ) ) {
-                self::add_context_string( $strings, (string) $value );
-            }
+                foreach ( [ 'alt', 'title', 'url' ] as $key ) if ( is_string( $value[ $key ] ?? null ) ) self::add_context_string( $strings, (string) $value[ $key ] );
+            } elseif ( is_scalar( $value ) ) self::add_context_string( $strings, (string) $value );
             if ( count( $strings ) >= self::MAX_CONTEXT_STRINGS ) break;
         }
 
-        $state = [ 'visits' => 0 ];
-        self::scan_context_settings( $settings, [], $strings, $state );
+        if ( count( $strings ) < self::MAX_CONTEXT_STRINGS ) {
+            $state = [ 'visits' => 0 ];
+            self::scan_context_settings( $settings, [], $strings, $state );
+        }
         return array_slice( array_values( array_unique( $strings ) ), 0, self::MAX_CONTEXT_STRINGS );
     }
 
     private static function scan_context_settings( $value, array $path, array &$strings, array &$state ): void {
-        if (
-            count( $strings ) >= self::MAX_CONTEXT_STRINGS ||
-            count( $path ) > self::MAX_DEPTH ||
-            (int) $state['visits'] >= self::MAX_SCAN_VISITS
-        ) return;
-
+        if ( count( $strings ) >= self::MAX_CONTEXT_STRINGS || count( $path ) > self::MAX_DEPTH || (int) $state['visits'] >= self::MAX_SCAN_VISITS ) return;
         $state['visits'] = (int) $state['visits'] + 1;
 
         if ( is_array( $value ) ) {
@@ -456,7 +439,6 @@ final class Elementize_Context {
                 $basename = wp_basename( (string) $value['url'] );
                 if ( '' !== $basename ) self::add_context_string( $strings, $basename );
             }
-
             foreach ( $value as $key => $child ) {
                 self::scan_context_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $strings, $state );
                 if ( count( $strings ) >= self::MAX_CONTEXT_STRINGS || (int) $state['visits'] >= self::MAX_SCAN_VISITS ) return;
@@ -467,7 +449,6 @@ final class Elementize_Context {
         if ( ! is_string( $value ) ) return;
         $trimmed = trim( $value );
         if ( '' === $trimmed || str_starts_with( ltrim( $trimmed ), '[elementor-tag' ) ) return;
-
         $key = self::last_string_key( $path );
         if ( preg_match( '#^(Line|Duotone|Solid)/pixfort-icon-([A-Za-z0-9_-]+)$#', $trimmed, $matches ) ) {
             self::add_context_string( $strings, $trimmed );
@@ -497,26 +478,28 @@ final class Elementize_Context {
         return false !== strpos( $plain, ' ' ) || self::length( $plain ) >= 24;
     }
 
-    private static function widget_profile( array $element ): array {
+    private static function widget_profile( array $element, array &$cache, int $depth = 0 ): array {
+        if ( $depth > self::MAX_DEPTH ) return [];
+        $id = trim( (string) ( $element['id'] ?? '' ) );
+        if ( '' !== $id && isset( $cache[ $id ] ) ) return $cache[ $id ];
+
         $widgets = [];
-        self::descendant_widget_types( is_array( $element['elements'] ?? null ) ? $element['elements'] : [], $widgets, 24, 0 );
+        foreach ( (array) ( is_array( $element['elements'] ?? null ) ? $element['elements'] : [] ) as $child ) {
+            if ( count( $widgets ) >= self::MAX_PROFILE_WIDGETS || ! is_array( $child ) ) break;
+            $widget = strtolower( (string) ( $child['widgetType'] ?? '' ) );
+            if ( '' !== $widget ) $widgets[] = $widget;
+            foreach ( self::widget_profile( $child, $cache, $depth + 1 ) as $nested ) {
+                if ( count( $widgets ) >= self::MAX_PROFILE_WIDGETS ) break;
+                $widgets[] = $nested;
+            }
+        }
         sort( $widgets, SORT_STRING );
+        if ( '' !== $id ) $cache[ $id ] = $widgets;
         return $widgets;
     }
 
     private static function shape_signature( string $type, string $widget, array $widgets ): string {
         return hash( 'sha256', $type . '|' . $widget . '|' . implode( ',', $widgets ) );
-    }
-
-    private static function descendant_widget_types( array $elements, array &$widgets, int $limit, int $depth ): void {
-        if ( $depth > self::MAX_DEPTH ) return;
-        foreach ( $elements as $element ) {
-            if ( count( $widgets ) >= $limit ) return;
-            if ( ! is_array( $element ) ) continue;
-            $widget = strtolower( (string) ( $element['widgetType'] ?? '' ) );
-            if ( '' !== $widget ) $widgets[] = $widget;
-            if ( is_array( $element['elements'] ?? null ) ) self::descendant_widget_types( $element['elements'], $widgets, $limit, $depth + 1 );
-        }
     }
 
     private static function base_role( string $type, string $widget, int $depth ): string {
@@ -550,17 +533,12 @@ final class Elementize_Context {
     private static function score_node( array $node, string $query, array $tokens, array $visual_clues, array $context_ids, array $map ): int {
         $score = 0;
         $haystack = $node['_search_text'];
-
         if ( '' !== $query && self::length( $query ) >= 4 && self::contains_phrase( $haystack, $query ) ) $score += 18;
-
         foreach ( $visual_clues as $clue ) {
             $normalized = self::normalize( $clue );
             if ( self::length( $normalized ) >= 3 && self::contains_phrase( $haystack, $normalized ) ) $score += 12;
         }
-
-        foreach ( $tokens as $token ) {
-            if ( isset( $node['_tokens'][ $token ] ) ) $score += self::length( $token ) >= 7 ? 4 : 3;
-        }
+        foreach ( $tokens as $token ) if ( isset( $node['_tokens'][ $token ] ) ) $score += self::length( $token ) >= 7 ? 4 : 3;
 
         $desc = self::normalize( $query );
         $below_request = (bool) preg_match( '/\b(below|under|onder)\b/u', $desc ) || false !== strpos( $desc, 'daaronder' );
@@ -569,12 +547,7 @@ final class Elementize_Context {
         $role_tokens = [ 'button','knop','cta','image','afbeelding','photo','foto','heading','title','titel','kop','text','tekst','icon','icoon' ];
         $requested_roles = array_values( array_intersect( $tokens, $role_tokens ) );
         $self_matches_requested_role = ! $requested_roles;
-        foreach ( $requested_roles as $role_token ) {
-            if ( isset( $node['_tokens'][ $role_token ] ) ) {
-                $self_matches_requested_role = true;
-                break;
-            }
-        }
+        foreach ( $requested_roles as $role_token ) if ( isset( $node['_tokens'][ $role_token ] ) ) { $self_matches_requested_role = true; break; }
         $context_should_yield = $relative_request || ! $self_matches_requested_role;
 
         if ( in_array( $node['element_id'], $context_ids, true ) ) $score += $context_should_yield ? 2 : 24;
@@ -594,12 +567,9 @@ final class Elementize_Context {
             if ( 0 === (int) $node['top_level_index'] ) $score += 5;
             if ( 0 === (int) $node['index'] ) $score += 3;
         }
-        if ( preg_match( '/\b(last|laatste|bottom|onderste)\b/u', $desc ) ) {
-            if ( (int) $node['index'] === max( 0, (int) $node['sibling_count'] - 1 ) ) $score += 4;
-        }
+        if ( preg_match( '/\b(last|laatste|bottom|onderste)\b/u', $desc ) && (int) $node['index'] === max( 0, (int) $node['sibling_count'] - 1 ) ) $score += 4;
         if ( preg_match( '/\b(left|links)\b/u', $desc ) && 0 === (int) $node['index'] ) $score += 3;
         if ( preg_match( '/\b(right|rechts)\b/u', $desc ) && (int) $node['index'] === max( 0, (int) $node['sibling_count'] - 1 ) ) $score += 3;
-
         if ( $node['editable_field_count'] > 0 ) $score += 1;
         return $score;
     }
@@ -616,13 +586,11 @@ final class Elementize_Context {
 
     private static function expand_selection( string $anchor_id, string $expand, int $expected_count, array $map ): array {
         if ( ! isset( $map['nodes'][ $anchor_id ] ) ) return [ 'root_ids' => [], 'group_id' => null ];
-
         $anchor = $map['nodes'][ $anchor_id ];
         if ( 'none' === $expand ) return [ 'root_ids' => [ $anchor_id ], 'group_id' => null ];
         if ( 'section' === $expand ) return [ 'root_ids' => [ $anchor['top_level_id'] ], 'group_id' => null ];
 
         $lineage = array_reverse( array_merge( $anchor['ancestor_ids'], [ $anchor_id ] ) );
-
         if ( 'siblings' === $expand ) {
             $siblings = self::nearest_siblings( $lineage, $map );
             return $siblings ? [ 'root_ids' => $siblings, 'group_id' => null ] : [ 'root_ids' => [ $anchor_id ], 'group_id' => null ];
@@ -632,23 +600,16 @@ final class Elementize_Context {
         $seen_groups = [];
         foreach ( $lineage as $lineage_id ) {
             foreach ( (array) ( $map['member_groups'][ $lineage_id ] ?? [] ) as $group_id ) {
-                if ( isset( $seen_groups[ $group_id ] ) ) continue;
-                $group = $map['groups'][ $group_id ] ?? null;
-                if ( ! is_array( $group ) ) continue;
+                if ( isset( $seen_groups[ $group_id ] ) || ! isset( $map['groups'][ $group_id ] ) ) continue;
                 $seen_groups[ $group_id ] = true;
-                $group_candidates[] = [ 'group_id' => $group_id, 'group' => $group, 'lineage_id' => $lineage_id ];
+                $group_candidates[] = [ 'group_id' => $group_id, 'group' => $map['groups'][ $group_id ], 'lineage_id' => $lineage_id ];
             }
         }
 
         if ( $expected_count > 0 ) {
-            foreach ( $group_candidates as $candidate ) {
-                if ( count( $candidate['group']['member_ids'] ) === $expected_count ) {
-                    return [ 'root_ids' => $candidate['group']['member_ids'], 'group_id' => $candidate['group_id'] ];
-                }
-            }
+            foreach ( $group_candidates as $candidate ) if ( count( $candidate['group']['member_ids'] ) === $expected_count ) return [ 'root_ids' => $candidate['group']['member_ids'], 'group_id' => $candidate['group_id'] ];
             $siblings = self::nearest_siblings( $lineage, $map );
-            if ( count( $siblings ) === $expected_count ) return [ 'root_ids' => $siblings, 'group_id' => null ];
-            return [ 'root_ids' => [ $anchor_id ], 'group_id' => null ];
+            return count( $siblings ) === $expected_count ? [ 'root_ids' => $siblings, 'group_id' => null ] : [ 'root_ids' => [ $anchor_id ], 'group_id' => null ];
         }
 
         if ( $group_candidates ) {
@@ -664,20 +625,17 @@ final class Elementize_Context {
         }
 
         $siblings = self::nearest_siblings( $lineage, $map );
-        if ( count( $siblings ) >= 2 ) return [ 'root_ids' => $siblings, 'group_id' => null ];
-        return [ 'root_ids' => [ $anchor_id ], 'group_id' => null ];
+        return count( $siblings ) >= 2 ? [ 'root_ids' => $siblings, 'group_id' => null ] : [ 'root_ids' => [ $anchor_id ], 'group_id' => null ];
     }
 
     private static function nearest_siblings( array $lineage, array $map ): array {
         foreach ( $lineage as $lineage_id ) {
             $node = $map['nodes'][ $lineage_id ] ?? null;
             if ( ! is_array( $node ) || '' === $node['parent_id'] ) continue;
-
             $siblings = [];
-            foreach ( $map['nodes'] as $candidate_id => $candidate ) {
-                if ( $candidate['parent_id'] !== $node['parent_id'] ) continue;
-                if ( $candidate['el_type'] !== $node['el_type'] ) continue;
-                if ( $candidate['widget_type'] !== $node['widget_type'] ) continue;
+            foreach ( (array) ( $map['children_by_parent'][ $node['parent_id'] ] ?? [] ) as $candidate_id ) {
+                $candidate = $map['nodes'][ $candidate_id ] ?? null;
+                if ( ! is_array( $candidate ) || $candidate['el_type'] !== $node['el_type'] || $candidate['widget_type'] !== $node['widget_type'] ) continue;
                 $siblings[] = $candidate_id;
             }
             if ( count( $siblings ) >= 2 ) return $siblings;
@@ -690,15 +648,8 @@ final class Elementize_Context {
         foreach ( $map['order'] as $element_id ) {
             $node = $map['nodes'][ $element_id ];
             $owner = '';
-
-            foreach ( $root_ids as $root_id ) {
-                if ( self::node_within( $node, $root_id ) ) {
-                    $owner = $root_id;
-                    break;
-                }
-            }
+            foreach ( $root_ids as $root_id ) if ( self::node_within( $node, $root_id ) ) { $owner = $root_id; break; }
             if ( '' === $owner ) continue;
-
             foreach ( (array) ( $map['editable_by_element'][ $element_id ] ?? [] ) as $item ) {
                 $field = $item;
                 $field['owner_root_id'] = $owner;
@@ -712,18 +663,10 @@ final class Elementize_Context {
 
     private static function public_node( array $node, array $fields ): array {
         $out = [
-            'element_id' => $node['element_id'],
-            'parent_id' => $node['parent_id'],
-            'top_level_id' => $node['top_level_id'],
-            'depth' => $node['depth'],
-            'index' => $node['index'],
-            'sibling_count' => $node['sibling_count'],
-            'el_type' => $node['el_type'],
-            'widget_type' => $node['widget_type'],
-            'semantic_role' => $node['semantic_role'],
-            'child_ids' => $node['child_ids'],
-            'snippets' => $node['snippets'],
-            'editable_field_count' => $node['editable_field_count'],
+            'element_id' => $node['element_id'], 'parent_id' => $node['parent_id'], 'top_level_id' => $node['top_level_id'],
+            'depth' => $node['depth'], 'index' => $node['index'], 'sibling_count' => $node['sibling_count'],
+            'el_type' => $node['el_type'], 'widget_type' => $node['widget_type'], 'semantic_role' => $node['semantic_role'],
+            'child_ids' => $node['child_ids'], 'snippets' => $node['snippets'], 'editable_field_count' => $node['editable_field_count'],
         ];
         if ( $fields ) $out['editable_fields'] = $fields;
         return $out;
@@ -732,7 +675,6 @@ final class Elementize_Context {
     private static function confidence( array $scored, string $anchor_id, array $map ): string {
         $best = (int) ( $scored[0]['score'] ?? 0 );
         if ( $best < 5 ) return 'low';
-
         $best_context = self::context_root( $anchor_id, $map );
         $second_distinct = 0;
         foreach ( array_slice( $scored, 1 ) as $candidate ) {
@@ -740,9 +682,7 @@ final class Elementize_Context {
             $second_distinct = (int) $candidate['score'];
             break;
         }
-
         if ( 0 === $second_distinct ) return $best >= 8 ? 'high' : 'medium';
-
         $gap = $best - $second_distinct;
         if ( $gap <= 1 ) return 'low';
         if ( $gap <= 3 ) return 'medium';
@@ -753,12 +693,21 @@ final class Elementize_Context {
     private static function context_root( string $node_id, array $map ): string {
         $node = $map['nodes'][ $node_id ] ?? null;
         if ( ! is_array( $node ) ) return $node_id;
-
         $lineage = array_reverse( array_merge( $node['ancestor_ids'], [ $node_id ] ) );
         foreach ( $lineage as $lineage_id ) {
-            if ( ! empty( $map['member_groups'][ $lineage_id ] ) ) return $lineage_id;
+            $groups = (array) ( $map['member_groups'][ $lineage_id ] ?? [] );
+            if ( ! $groups ) continue;
+            usort( $groups, static function( string $a, string $b ) use ( $map ): int {
+                $size = count( $map['groups'][ $b ]['member_ids'] ?? [] ) <=> count( $map['groups'][ $a ]['member_ids'] ?? [] );
+                return 0 !== $size ? $size : strcmp( $a, $b );
+            } );
+            return (string) $groups[0];
         }
         return $node['top_level_id'] ?: $node_id;
+    }
+
+    private static function selection_context_ids( string $anchor_id, array $selected_roots ): array {
+        return array_slice( array_values( array_unique( array_merge( [ $anchor_id ], $selected_roots ) ) ), 0, self::MAX_CONTEXT_IDS );
     }
 
     private static function node_within( array $node, string $root_id ): bool {
@@ -769,7 +718,6 @@ final class Elementize_Context {
         if ( null === $value || '' === $value ) return [];
         if ( ! is_array( $value ) ) return new WP_Error( 'elementize_resolver_invalid_array', 'Resolver list parameters must be arrays.', [ 'status' => 400 ] );
         if ( count( $value ) > $max_items ) return new WP_Error( 'elementize_resolver_too_many_items', 'Too many resolver list items were supplied.', [ 'status' => 400 ] );
-
         $out = [];
         foreach ( $value as $item ) {
             if ( ! is_string( $item ) ) return new WP_Error( 'elementize_resolver_invalid_item', 'Resolver list items must be strings.', [ 'status' => 400 ] );
@@ -835,9 +783,7 @@ final class Elementize_Context {
     }
 
     private static function last_string_key( array $path ): string {
-        for ( $i = count( $path ) - 1; $i >= 0; $i-- ) {
-            if ( is_string( $path[ $i ] ) ) return strtolower( $path[ $i ] );
-        }
+        for ( $i = count( $path ) - 1; $i >= 0; $i-- ) if ( is_string( $path[ $i ] ) ) return strtolower( $path[ $i ] );
         return '';
     }
 }
