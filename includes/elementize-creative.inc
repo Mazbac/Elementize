@@ -67,7 +67,7 @@ final class Elementize_Creative {
         $managed = $managed_before;
         $aliases = [];
         $changes = [];
-        $used_ids = self::all_ids( $working );
+        $used_ids = self::all_reserved_ids( $working );
 
         foreach ( array_values( $operations ) as $index => $operation ) {
             if ( ! is_array( $operation ) ) return self::operation_error( $index, 'Each creative operation must be an object.' );
@@ -75,6 +75,7 @@ final class Elementize_Creative {
             if ( ! in_array( $type, [ 'insert_template', 'remove_element', 'duplicate_element', 'move_element', 'reorder_children', 'style', 'content' ], true ) ) return self::operation_error( $index, 'Unsupported creative operation type.' );
             $result = self::apply_operation( $working, $operation, $index, $aliases, $used_ids, $managed, $changes );
             if ( is_wp_error( $result ) ) return $result;
+            if ( true !== $result ) return self::operation_error( $index, 'The creative operation could not be applied to the current page state.' );
         }
 
         $tree_check = self::validate_tree( $working );
@@ -84,7 +85,9 @@ final class Elementize_Creative {
 
         $revision = Elementize_Core::save_revision( $id );
         if ( is_wp_error( $revision ) ) return $revision;
-        self::store_revision_snapshots( (int) $revision, $before, $managed_before );
+        if ( ! self::store_revision_snapshots( (int) $revision, $before, $managed_before ) ) {
+            return new WP_Error( 'elementize_creative_snapshot_failed', 'Elementize could not persist the pre-change creative snapshot, so the page was not modified.', [ 'status' => 500, 'revision_id' => $revision ] );
+        }
 
         try { $saved = $document->save( [ 'elements' => $working ] ); }
         catch ( Throwable $e ) {
@@ -102,11 +105,21 @@ final class Elementize_Creative {
             return new WP_Error( 'elementize_creative_verification_failed', 'Persisted Elementor data did not exactly match the validated creative transaction, so Elementize attempted to restore the pre-change page.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
 
-        self::save_managed_roots( $id, $managed );
+        if ( ! self::save_managed_roots( $id, $managed ) ) {
+            $rollback = self::restore_page( $document, $id, $before, $before_hash );
+            self::save_managed_roots( $id, $managed_before );
+            return new WP_Error( 'elementize_creative_metadata_failed', 'The page changed but Elementize could not verify its managed-section metadata, so it attempted to restore the exact pre-change page.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
+        }
+
         Elementize_Core::regenerate_css( $id );
         clean_post_cache( $id );
         $after_hash = Elementize_Core::hash_elements( $persisted );
         $activity_id = self::record_activity( $id, (int) $revision, $before_hash, $after_hash, $changes, sanitize_text_field( (string) $request->get_param( 'plan_label' ) ) );
+        if ( is_wp_error( $activity_id ) ) {
+            $rollback = self::restore_page( $document, $id, $before, $before_hash );
+            self::save_managed_roots( $id, $managed_before );
+            return new WP_Error( 'elementize_creative_activity_failed', 'Elementize could not persist the creative Activity record, so it attempted to restore the exact pre-change page.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
+        }
         $quality = self::quality_summary( $persisted, $managed );
 
         return new WP_REST_Response( [
@@ -175,9 +188,10 @@ final class Elementize_Creative {
         if ( is_wp_error( $anchor_id ) ) return $anchor_id;
         $inserted = self::insert_nodes( $elements, $anchor_id, $nodes, $position );
         if ( is_wp_error( $inserted ) ) return self::operation_error( $index, $inserted->get_error_message(), $inserted->get_error_data() );
+        if ( true !== $inserted ) return self::operation_error( $index, 'The insertion anchor no longer exists. Refresh page structure and rebuild the plan.' );
 
         $roots = array_values( array_filter( array_map( static fn( $node ) => is_array( $node ) ? (string) ( $node['id'] ?? '' ) : '', $nodes ) ) );
-        $aliases[ $alias ] = [ 'map' => $map, 'roots' => $roots ];
+        $aliases[ $alias ] = [ 'map' => $map, 'roots' => $roots, 'direct' => 1 === count( $roots ) ? $roots[0] : '' ];
         $contract = sanitize_key( (string) ( $op['contract'] ?? 'generic' ) );
         if ( ! in_array( $contract, [ 'feature_grid', 'content_split', 'testimonial_grid', 'cta', 'generic' ], true ) ) $contract = 'generic';
         foreach ( $roots as $root_id ) {
@@ -201,13 +215,13 @@ final class Elementize_Creative {
         if ( is_wp_error( $id ) ) return $id;
         $removed = null; $parent = ''; $position = -1;
         if ( ! self::remove_node( $elements, $id, $removed, $parent, $position ) || ! is_array( $removed ) ) return self::operation_error( $index, 'The element to remove no longer exists.' );
-        $removed_ids = self::all_ids( [ $removed ] );
+        $removed_ids = self::all_element_ids( [ $removed ] );
         foreach ( array_keys( $managed ) as $root_id ) if ( isset( $removed_ids[ $root_id ] ) ) unset( $managed[ $root_id ] );
         $changes[] = [ 'kind' => 'remove_element', 'element_id' => $id, 'setting_path' => [], 'parent_id' => $parent, 'index' => $position ];
         return true;
     }
 
-    private static function op_duplicate( array &$elements, array $op, int $index, array $aliases, array &$used_ids, array &$managed, array &$changes ) {
+    private static function op_duplicate( array &$elements, array $op, int $index, array &$aliases, array &$used_ids, array &$managed, array &$changes ) {
         $id = self::required_ref( $op, 'element_ref', $aliases, $index );
         if ( is_wp_error( $id ) ) return $id;
         $node = self::find_node( $elements, $id );
@@ -220,16 +234,15 @@ final class Elementize_Creative {
         if ( ! in_array( $position, [ 'before', 'after' ], true ) ) return self::operation_error( $index, 'duplicate_element position must be before or after.' );
         $inserted = self::insert_nodes( $elements, $id, [ $clone ], $position );
         if ( is_wp_error( $inserted ) ) return self::operation_error( $index, $inserted->get_error_message() );
+        if ( true !== $inserted ) return self::operation_error( $index, 'The element to duplicate no longer exists at its expected location.' );
         $new_id = (string) ( $clone['id'] ?? '' );
-        if ( isset( $managed[ $id ] ) && '' !== $new_id ) {
-            $managed[ $new_id ] = array_merge( $managed[ $id ], [ 'source_type' => 'duplicate', 'created_gmt' => gmdate( 'Y-m-d H:i:s' ) ] );
-        }
+        if ( isset( $managed[ $id ] ) && '' !== $new_id ) $managed[ $new_id ] = array_merge( $managed[ $id ], [ 'source_type' => 'duplicate', 'created_gmt' => gmdate( 'Y-m-d H:i:s' ) ] );
         $alias = sanitize_key( (string) ( $op['alias'] ?? '' ) );
         if ( '' !== $alias ) {
-            if ( isset( $GLOBALS['elementize_creative_duplicate_aliases'][ $alias ] ) ) return self::operation_error( $index, 'Duplicate alias is already in use.' );
-            $GLOBALS['elementize_creative_duplicate_aliases'][ $alias ] = $new_id;
+            if ( strlen( $alias ) > 60 || isset( $aliases[ $alias ] ) ) return self::operation_error( $index, 'duplicate_element alias must be unique and at most 60 characters.' );
+            $aliases[ $alias ] = [ 'map' => $map, 'roots' => [ $new_id ], 'direct' => $new_id ];
         }
-        $changes[] = [ 'kind' => 'duplicate_element', 'element_id' => $id, 'setting_path' => [], 'new_element_id' => $new_id ];
+        $changes[] = [ 'kind' => 'duplicate_element', 'element_id' => $id, 'setting_path' => [], 'new_element_id' => $new_id, 'alias' => $alias ];
         return true;
     }
 
@@ -243,12 +256,13 @@ final class Elementize_Creative {
         if ( $id === $anchor_id ) return self::operation_error( $index, 'An element cannot be moved relative to itself.' );
         $node = self::find_node( $elements, $id );
         if ( ! is_array( $node ) ) return self::operation_error( $index, 'The element to move no longer exists.' );
-        $descendants = self::all_ids( [ $node ] );
+        $descendants = self::all_element_ids( [ $node ] );
         if ( '' !== $anchor_id && isset( $descendants[ $anchor_id ] ) ) return self::operation_error( $index, 'An element cannot be moved inside or relative to its own descendant.' );
         $removed = null; $old_parent = ''; $old_index = -1;
         if ( ! self::remove_node( $elements, $id, $removed, $old_parent, $old_index ) || ! is_array( $removed ) ) return self::operation_error( $index, 'The element could not be detached for moving.' );
         $inserted = self::insert_nodes( $elements, $anchor_id, [ $removed ], $position );
         if ( is_wp_error( $inserted ) ) return self::operation_error( $index, $inserted->get_error_message() );
+        if ( true !== $inserted ) return self::operation_error( $index, 'The move anchor no longer exists. Refresh page structure and rebuild the plan.' );
         $changes[] = [ 'kind' => 'move_element', 'element_id' => $id, 'setting_path' => [], 'old_parent_id' => $old_parent, 'old_index' => $old_index, 'anchor_id' => $anchor_id, 'position' => $position ];
         return true;
     }
@@ -269,6 +283,7 @@ final class Elementize_Creative {
         if ( count( array_unique( $ids ) ) !== count( $ids ) ) return self::operation_error( $index, 'ordered_refs may not contain duplicate elements.' );
         $result = self::reorder_children( $elements, $parent_id, $ids );
         if ( is_wp_error( $result ) ) return self::operation_error( $index, $result->get_error_message() );
+        if ( true !== $result ) return self::operation_error( $index, 'The reorder parent no longer exists.' );
         $changes[] = [ 'kind' => 'reorder_children', 'element_id' => $parent_id, 'setting_path' => [], 'ordered_ids' => $ids ];
         return true;
     }
@@ -284,9 +299,9 @@ final class Elementize_Creative {
         $new_ok = false; $new = Elementize_Design::decode_json_value( $op['value_json'], $new_ok );
         if ( ! $new_ok ) return self::operation_error( $index, 'style value_json is invalid JSON.' );
         $old = null;
-        $result = self::mutate_setting( $elements, $id, $path, static function( &$cursor ) use ( $expected, $new, &$old ) {
+        $result = self::mutate_setting( $elements, $id, $path, static function( &$cursor ) use ( $expected, $new, $path, &$old ) {
             if ( Elementize_Design::canonical_json( $cursor ) !== Elementize_Design::canonical_json( $expected ) ) return new WP_Error( 'elementize_design_value_changed', 'The design setting changed after the creative read.', [ 'status' => 409 ] );
-            $category = Elementize_Design::classify_control( $GLOBALS['elementize_creative_path'], $cursor );
+            $category = Elementize_Design::classify_control( $path, $cursor );
             if ( false === $category ) return new WP_Error( 'elementize_design_control_invalid', 'This setting is not an approved creative design control.', [ 'status' => 400 ] );
             $validated = Elementize_Design::validate_control_value( $category, $new, $cursor );
             if ( is_wp_error( $validated ) ) return $validated;
@@ -294,7 +309,6 @@ final class Elementize_Creative {
             $cursor = $validated;
             return [ 'category' => $category, 'new' => $validated ];
         } );
-        unset( $GLOBALS['elementize_creative_path'] );
         if ( is_wp_error( $result ) ) return $result;
         if ( ! is_array( $result ) ) return self::operation_error( $index, 'The design target no longer exists.' );
         $changes[] = [ 'kind' => 'design_' . $result['category'], 'element_id' => $id, 'setting_path' => $path, 'old_value' => $old, 'new_value' => $result['new'] ];
@@ -362,7 +376,6 @@ final class Elementize_Creative {
                     if ( ! is_array( $cursor ) || ! array_key_exists( $segment, $cursor ) ) return new WP_Error( 'elementize_setting_not_found', 'The requested setting no longer exists.', [ 'status' => 409 ] );
                     $cursor =& $cursor[ $segment ];
                 }
-                $GLOBALS['elementize_creative_path'] = $path;
                 return $callback( $cursor );
             }
             if ( is_array( $element['elements'] ?? null ) ) {
@@ -375,8 +388,8 @@ final class Elementize_Creative {
     }
 
     private static function insert_nodes( array &$elements, string $anchor_id, array $nodes, string $position, int $depth = 0 ) {
-        if ( 'page_start' === $position ) { array_splice( $elements, 0, 0, $nodes ); return true; }
-        if ( 'page_end' === $position ) { array_splice( $elements, count( $elements ), 0, $nodes ); return true; }
+        if ( 0 === $depth && 'page_start' === $position ) { array_splice( $elements, 0, 0, $nodes ); return true; }
+        if ( 0 === $depth && 'page_end' === $position ) { array_splice( $elements, count( $elements ), 0, $nodes ); return true; }
         if ( '' === $anchor_id ) return new WP_Error( 'elementize_creative_anchor_required', 'A valid anchor_ref is required unless position is page_start or page_end.', [ 'status' => 400 ] );
         if ( $depth > self::MAX_DEPTH ) return false;
         for ( $i = 0; $i < count( $elements ); $i++ ) {
@@ -444,17 +457,35 @@ final class Elementize_Creative {
     }
 
     private static function clone_with_fresh_ids( array $elements, array &$used_ids, array &$map ): array {
-        self::collect_mappable_ids( $elements, $map, $used_ids );
+        self::collect_element_and_repeater_ids( $elements, $map, $used_ids, true );
         return self::replace_mapped_ids( $elements, $map );
     }
 
-    private static function collect_mappable_ids( $value, array &$map, array &$used_ids ): void {
+    private static function collect_element_and_repeater_ids( $value, array &$map, array &$used_ids, bool $element_list = false ): void {
         if ( ! is_array( $value ) ) return;
-        foreach ( $value as $key => $child ) {
-            if ( in_array( (string) $key, [ 'id', '_id' ], true ) && is_string( $child ) && preg_match( '/^[A-Za-z0-9_-]{4,40}$/', $child ) ) {
-                if ( ! isset( $map[ $child ] ) ) $map[ $child ] = self::fresh_id( $used_ids );
+        if ( $element_list ) {
+            foreach ( $value as $node ) {
+                if ( ! is_array( $node ) ) continue;
+                $looks_like_element = isset( $node['elType'] ) || isset( $node['widgetType'] ) || array_key_exists( 'elements', $node );
+                $node_id = $looks_like_element && is_string( $node['id'] ?? null ) ? trim( $node['id'] ) : '';
+                if ( '' !== $node_id && preg_match( '/^[A-Za-z0-9_-]{4,40}$/', $node_id ) && ! isset( $map[ $node_id ] ) ) $map[ $node_id ] = self::fresh_id( $used_ids );
+                self::collect_repeater_ids( $node['settings'] ?? [], $map, $used_ids, 0 );
+                if ( is_array( $node['elements'] ?? null ) ) self::collect_element_and_repeater_ids( $node['elements'], $map, $used_ids, true );
+                foreach ( $node as $key => $child ) {
+                    if ( in_array( (string) $key, [ 'settings', 'elements', 'id' ], true ) ) continue;
+                    if ( is_array( $child ) ) self::collect_repeater_ids( $child, $map, $used_ids, 0 );
+                }
             }
-            if ( is_array( $child ) ) self::collect_mappable_ids( $child, $map, $used_ids );
+            return;
+        }
+        self::collect_repeater_ids( $value, $map, $used_ids, 0 );
+    }
+
+    private static function collect_repeater_ids( $value, array &$map, array &$used_ids, int $depth ): void {
+        if ( ! is_array( $value ) || $depth > 30 ) return;
+        foreach ( $value as $key => $child ) {
+            if ( '_id' === (string) $key && is_string( $child ) && preg_match( '/^[A-Za-z0-9_-]{4,40}$/', $child ) && ! isset( $map[ $child ] ) ) $map[ $child ] = self::fresh_id( $used_ids );
+            if ( is_array( $child ) ) self::collect_repeater_ids( $child, $map, $used_ids, $depth + 1 );
         }
     }
 
@@ -479,19 +510,33 @@ final class Elementize_Creative {
         return $id;
     }
 
-    private static function all_ids( array $elements ): array {
+    private static function all_element_ids( array $elements ): array {
         $ids = [];
-        self::collect_ids( $elements, $ids, 0 );
+        self::collect_element_ids( $elements, $ids, 0 );
         return $ids;
     }
 
-    private static function collect_ids( array $elements, array &$ids, int $depth ): void {
+    private static function all_reserved_ids( array $elements ): array {
+        $ids = self::all_element_ids( $elements );
+        self::collect_existing_repeater_ids( $elements, $ids, 0 );
+        return $ids;
+    }
+
+    private static function collect_element_ids( array $elements, array &$ids, int $depth ): void {
         if ( $depth > self::MAX_DEPTH ) return;
         foreach ( $elements as $element ) {
             if ( ! is_array( $element ) ) continue;
             $id = (string) ( $element['id'] ?? '' );
             if ( '' !== $id ) $ids[ $id ] = true;
-            if ( is_array( $element['elements'] ?? null ) ) self::collect_ids( $element['elements'], $ids, $depth + 1 );
+            if ( is_array( $element['elements'] ?? null ) ) self::collect_element_ids( $element['elements'], $ids, $depth + 1 );
+        }
+    }
+
+    private static function collect_existing_repeater_ids( $value, array &$ids, int $depth ): void {
+        if ( ! is_array( $value ) || $depth > 50 ) return;
+        foreach ( $value as $key => $child ) {
+            if ( '_id' === (string) $key && is_string( $child ) && '' !== $child ) $ids[ $child ] = true;
+            if ( is_array( $child ) ) self::collect_existing_repeater_ids( $child, $ids, $depth + 1 );
         }
     }
 
@@ -507,10 +552,9 @@ final class Elementize_Creative {
 
     private static function validate_tree( array $elements ) {
         if ( ! $elements ) return new WP_Error( 'elementize_creative_empty_page', 'Creative Control will not save an empty Elementor page.', [ 'status' => 400 ] );
-        $seen = []; $count = 0; $max_depth = 0;
-        $walk = function( array $nodes, int $depth ) use ( &$walk, &$seen, &$count, &$max_depth ) {
+        $seen = []; $count = 0;
+        $walk = function( array $nodes, int $depth ) use ( &$walk, &$seen, &$count ) {
             if ( $depth > self::MAX_DEPTH ) return new WP_Error( 'elementize_creative_depth_limit', 'The resulting Elementor tree is too deeply nested.', [ 'status' => 400 ] );
-            $max_depth = max( $max_depth, $depth );
             foreach ( $nodes as $node ) {
                 if ( ! is_array( $node ) ) return new WP_Error( 'elementize_creative_tree_invalid', 'The resulting Elementor tree contains an invalid element.', [ 'status' => 400 ] );
                 $count++;
@@ -532,16 +576,24 @@ final class Elementize_Creative {
         return is_array( $value ) ? $value : [];
     }
 
-    private static function save_managed_roots( int $page_id, array $managed ): void {
+    private static function save_managed_roots( int $page_id, array $managed ): bool {
         if ( $managed ) update_post_meta( $page_id, self::MANAGED_META, $managed );
         else delete_post_meta( $page_id, self::MANAGED_META );
+        $persisted = get_post_meta( $page_id, self::MANAGED_META, true );
+        $persisted = is_array( $persisted ) ? $persisted : [];
+        return Elementize_Design::canonical_json( $persisted ) === Elementize_Design::canonical_json( $managed );
     }
 
-    private static function store_revision_snapshots( int $revision_id, array $elements, array $managed ): void {
+    private static function store_revision_snapshots( int $revision_id, array $elements, array $managed ): bool {
         $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-        if ( is_string( $json ) && '' !== $json ) update_metadata( 'post', $revision_id, self::ACTIVITY_SNAPSHOT_META, base64_encode( $json ) );
         $managed_json = wp_json_encode( $managed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-        if ( is_string( $managed_json ) ) update_metadata( 'post', $revision_id, self::MANAGED_SNAPSHOT_META, base64_encode( $managed_json ) );
+        if ( ! is_string( $json ) || '' === $json || ! is_string( $managed_json ) ) return false;
+        $snapshot = base64_encode( $json );
+        $managed_snapshot = base64_encode( $managed_json );
+        update_metadata( 'post', $revision_id, self::ACTIVITY_SNAPSHOT_META, $snapshot );
+        update_metadata( 'post', $revision_id, self::MANAGED_SNAPSHOT_META, $managed_snapshot );
+        return hash_equals( $snapshot, (string) get_metadata( 'post', $revision_id, self::ACTIVITY_SNAPSHOT_META, true ) )
+            && hash_equals( $managed_snapshot, (string) get_metadata( 'post', $revision_id, self::MANAGED_SNAPSHOT_META, true ) );
     }
 
     private static function restore_page( $document, int $id, array $before, string $before_hash ): bool {
@@ -553,7 +605,7 @@ final class Elementize_Creative {
         return $ok;
     }
 
-    private static function record_activity( int $page_id, int $revision_id, string $before_hash, string $after_hash, array $changes, string $label ): string {
+    private static function record_activity( int $page_id, int $revision_id, string $before_hash, string $after_hash, array $changes, string $label ) {
         $records = get_option( self::ACTIVITY_LOG, [] );
         if ( ! is_array( $records ) ) $records = [];
         $post = get_post( $page_id );
@@ -574,14 +626,32 @@ final class Elementize_Creative {
             'after_hash' => $after_hash,
             'updated_count' => count( $changes ),
             'kinds' => $kinds,
-            'changes' => array_slice( $changes, 0, 50 ),
+            'changes' => self::activity_changes( $changes ),
             'creative' => true,
             'plan_label' => $label,
             'undone_at_gmt' => '',
             'undo_revision_id' => 0,
         ] );
-        update_option( self::ACTIVITY_LOG, array_slice( $records, 0, 100 ), false );
+        $records = array_slice( $records, 0, 100 );
+        update_option( self::ACTIVITY_LOG, $records, false );
+        $verify = get_option( self::ACTIVITY_LOG, [] );
+        if ( ! is_array( $verify ) || ! isset( $verify[0]['id'] ) || (string) $verify[0]['id'] !== $activity_id ) return new WP_Error( 'elementize_activity_persist_failed', 'Creative Activity history could not be persisted.', [ 'status' => 500 ] );
         return $activity_id;
+    }
+
+    private static function activity_changes( array $changes ): array {
+        $out = [];
+        foreach ( array_slice( $changes, 0, 50 ) as $change ) {
+            if ( ! is_array( $change ) ) continue;
+            $entry = [
+                'kind' => sanitize_key( (string) ( $change['kind'] ?? '' ) ),
+                'element_id' => sanitize_text_field( (string) ( $change['element_id'] ?? '' ) ),
+                'setting_path' => array_values( array_map( static fn( $part ) => is_int( $part ) ? $part : sanitize_text_field( (string) $part ), (array) ( $change['setting_path'] ?? [] ) ) ),
+            ];
+            foreach ( [ 'new_element_id', 'alias', 'source_id', 'template_id', 'position', 'anchor_id', 'parent_id' ] as $key ) if ( isset( $change[ $key ] ) && is_scalar( $change[ $key ] ) ) $entry[ $key ] = sanitize_text_field( (string) $change[ $key ] );
+            $out[] = $entry;
+        }
+        return $out;
     }
 
     private static function activity_record( string $activity_id ): ?array {
@@ -625,10 +695,13 @@ final class Elementize_Creative {
     private static function resolve_ref( string $ref, array $aliases ) {
         $ref = trim( $ref );
         if ( '' === $ref || strlen( $ref ) > 160 ) return new WP_Error( 'elementize_creative_ref_invalid', 'Element reference is missing or too long.', [ 'status' => 400 ] );
-        if ( false === strpos( $ref, ':' ) ) return $ref;
+        if ( false === strpos( $ref, ':' ) ) {
+            if ( isset( $aliases[ $ref ]['direct'] ) && '' !== (string) $aliases[ $ref ]['direct'] ) return (string) $aliases[ $ref ]['direct'];
+            return $ref;
+        }
         [ $alias, $old_id ] = array_pad( explode( ':', $ref, 2 ), 2, '' );
         $alias = sanitize_key( $alias );
-        if ( '' === $alias || '' === $old_id || ! isset( $aliases[ $alias ]['map'][ $old_id ] ) ) return new WP_Error( 'elementize_creative_ref_unknown', 'The creative plan references an inserted template element that is not available yet.', [ 'status' => 400, 'element_ref' => $ref ] );
+        if ( '' === $alias || '' === $old_id || ! isset( $aliases[ $alias ]['map'][ $old_id ] ) ) return new WP_Error( 'elementize_creative_ref_unknown', 'The creative plan references an inserted or duplicated element that is not available yet.', [ 'status' => 400, 'element_ref' => $ref ] );
         return (string) $aliases[ $alias ]['map'][ $old_id ];
     }
 
@@ -661,7 +734,7 @@ final class Elementize_Creative {
 
     private static function public_aliases( array $aliases ): array {
         $out = [];
-        foreach ( $aliases as $alias => $data ) $out[ $alias ] = [ 'root_ids' => array_values( (array) ( $data['roots'] ?? [] ) ), 'mapped_element_count' => count( (array) ( $data['map'] ?? [] ) ) ];
+        foreach ( $aliases as $alias => $data ) $out[ $alias ] = [ 'root_ids' => array_values( (array) ( $data['roots'] ?? [] ) ), 'direct_element_id' => (string) ( $data['direct'] ?? '' ), 'mapped_element_count' => count( (array) ( $data['map'] ?? [] ) ) ];
         return $out;
     }
 }
