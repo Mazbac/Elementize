@@ -148,6 +148,55 @@ assert_same( 'h3', array_key_first( $scores ), 'Visible screenshot/text clue sho
 $substring_node = [ '_search_text' => 'brisket overview', '_tokens' => [ 'brisket' => true ] ];
 assert_false( invoke_private( Elementize_Context::class, 'node_matches_query', [ $substring_node, 'risk', [ 'risk' ] ] ), 'Resolver token matching must not match tokens only because they are substrings of another word.' );
 
+$role_query = invoke_private( Elementize_Context::class, 'normalize', [ 'change the title in this card' ] );
+$role_tokens = invoke_private( Elementize_Context::class, 'tokens', [ $role_query ] );
+$role_scores = [];
+foreach ( $map['order'] as $node_id ) {
+    $role_scores[ $node_id ] = invoke_private( Elementize_Context::class, 'score_node', [ $map['nodes'][ $node_id ], $role_query, $role_tokens, [], [ 'card3' ], $map ] );
+}
+arsort( $role_scores );
+assert_same( 'h3', array_key_first( $role_scores ), 'A requested child role inside prior context should outrank the context container itself.' );
+
+$relative_elements = [
+    [
+        'id' => 'sectionRelative',
+        'elType' => 'container',
+        'settings' => [],
+        'elements' => [
+            [
+                'id' => 'contextCopy',
+                'elType' => 'widget',
+                'widgetType' => 'text-editor',
+                'settings' => [ 'editor' => 'Current selection' ],
+                'elements' => [],
+            ],
+            [
+                'id' => 'buttonBelow',
+                'elType' => 'widget',
+                'widgetType' => 'button',
+                'settings' => [ 'button_text' => 'Learn more', 'button_link' => '#learn-more' ],
+                'elements' => [],
+            ],
+            [
+                'id' => 'otherCopy',
+                'elType' => 'widget',
+                'widgetType' => 'text-editor',
+                'settings' => [ 'editor' => 'Other content' ],
+                'elements' => [],
+            ],
+        ],
+    ],
+];
+$relative_map = invoke_private( Elementize_Context::class, 'build_map', [ $relative_elements ] );
+$relative_query = invoke_private( Elementize_Context::class, 'normalize', [ 'de knop daaronder' ] );
+$relative_tokens = invoke_private( Elementize_Context::class, 'tokens', [ $relative_query ] );
+$relative_scores = [];
+foreach ( $relative_map['order'] as $node_id ) {
+    $relative_scores[ $node_id ] = invoke_private( Elementize_Context::class, 'score_node', [ $relative_map['nodes'][ $node_id ], $relative_query, $relative_tokens, [], [ 'contextCopy' ], $relative_map ] );
+}
+arsort( $relative_scores );
+assert_same( 'buttonBelow', array_key_first( $relative_scores ), '“De knop daaronder” should resolve to the nearby button below prior context, not the context element itself.' );
+
 $ambiguous_map = [
     'nodes' => [
         'a' => [ 'ancestor_ids' => [], 'top_level_id' => 'section1' ],
