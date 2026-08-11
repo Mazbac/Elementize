@@ -213,7 +213,7 @@ paths:
                       source_id: { type: string, maxLength: 100 }
                       template_id: { type: string, maxLength: 200 }
                       contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic] }
-                      element_ref: { type: string, maxLength: 160, description: Existing element ID or alias:originalTemplateElementId from an earlier insert_template operation in this transaction. }
+                      element_ref: { type: string, maxLength: 160, description: 'Existing element ID or alias:originalTemplateElementId from an earlier insert_template operation in this transaction.' }
                       anchor_ref: { type: string, maxLength: 160 }
                       parent_ref: { type: string, maxLength: 160 }
                       position: { type: string, enum: [before, after, inside_start, inside_end, page_start, page_end] }
@@ -285,7 +285,7 @@ paths:
     post:
       operationId: importElementizeGeneratedImage
       summary: Import the image ChatGPT just generated into WordPress
-      description: Use exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Retries are deduplicated when possible.
+      description: 'Use exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Retries are deduplicated when possible.'
       requestBody:
         required: true
         content:
