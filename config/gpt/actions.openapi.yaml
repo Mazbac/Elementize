@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Content Actions
-  version: 0.37.0
+  version: 0.37.1
   description: Natural-language targeting plus guarded content editing, media handoff, and Pixfort icon lookup for existing Elementor + Pixfort pages.
 servers:
   - url: https://example.invalid
