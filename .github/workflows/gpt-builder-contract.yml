@@ -48,8 +48,8 @@ jobs:
           test "$instruction_chars" -le 8000
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
-          echo "GPT Action operations: ${operation_count}/8"
-          test "$operation_count" -eq 8
+          echo "GPT Action operations: ${operation_count}/9"
+          test "$operation_count" -eq 9
 
           required_operations=(
             getElementizeStatus
@@ -58,6 +58,7 @@ jobs:
             updateElementizePageContent
             searchElementizeMediaImages
             importElementizeConversationImage
+            importElementizeGeneratedImage
             importElementizeRemoteImage
             searchElementizePixfortIcons
           )
@@ -82,7 +83,9 @@ jobs:
           done
 
           grep -q 'url: https://example.invalid' "$schema" || { echo 'Committed schema must keep the neutral placeholder server URL.'; exit 1; }
-          grep -q 'openaiFileIdRefs:' "$schema" || { echo 'Conversation-image file parameter is missing.'; exit 1; }
+          grep -q 'openaiFileIdRefs:' "$schema" || { echo 'ChatGPT image file parameter is missing.'; exit 1; }
+          grep -q 'import-generated:' "$schema" || { echo 'Generated-image import route is missing.'; exit 1; }
+          grep -q 'generated_image_url:' "$schema" || { echo 'Generated-image OpenAI URL fallback is missing.'; exit 1; }
           grep -q 'import-url:' "$schema" || { echo 'Remote-image import route is missing.'; exit 1; }
           grep -q 'pixfort/icons:' "$schema" || { echo 'Pixfort icon search route is missing.'; exit 1; }
 

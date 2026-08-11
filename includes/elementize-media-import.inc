@@ -32,6 +32,19 @@ final class Elementize_Media_Import {
             ],
         ] );
 
+        register_rest_route( Elementize_Core::NS, '/media/images/import-generated', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [ self::class, 'import_generated_image' ],
+            'permission_callback' => [ self::class, 'can_import' ],
+            'args' => [
+                'openaiFileIdRefs' => [ 'type' => 'array', 'required' => false, 'default' => [] ],
+                'generated_image_url' => [ 'type' => 'string', 'required' => false, 'default' => '' ],
+                'title' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
+                'alt' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
+                'confirm_import' => [ 'type' => 'boolean', 'required' => true ],
+            ],
+        ] );
+
         register_rest_route( Elementize_Core::NS, '/media/images/import-url', [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => [ self::class, 'import_remote_image' ],
@@ -57,31 +70,45 @@ final class Elementize_Media_Import {
     public static function import_chat_image( WP_REST_Request $request ) {
         $confirm = self::require_confirmation( $request );
         if ( is_wp_error( $confirm ) ) return $confirm;
+        return self::import_openai_ref( $request, 'chatgpt_conversation', 'conversation image' );
+    }
+
+    public static function import_generated_image( WP_REST_Request $request ) {
+        $confirm = self::require_confirmation( $request );
+        if ( is_wp_error( $confirm ) ) return $confirm;
 
         $refs = $request->get_param( 'openaiFileIdRefs' );
-        if ( ! is_array( $refs ) || 1 !== count( $refs ) ) return new WP_Error( 'elementize_chat_media_file_count', 'Exactly one conversation image file is required.', [ 'status' => 400 ] );
-        $ref = reset( $refs );
-        if ( ! is_array( $ref ) ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The conversation file reference was not expanded into file metadata.', [ 'status' => 400 ] );
+        $refs = is_array( $refs ) ? array_values( $refs ) : [];
+        $generated_url = trim( (string) $request->get_param( 'generated_image_url' ) );
+        $has_ref = 1 === count( $refs );
+        $has_url = '' !== $generated_url;
 
-        $source_name = sanitize_file_name( (string) ( $ref['name'] ?? '' ) );
-        $source_id = sanitize_text_field( (string) ( $ref['id'] ?? '' ) );
-        $source_mime = strtolower( trim( (string) ( $ref['mime_type'] ?? '' ) ) );
-        $download_url = trim( (string) ( $ref['download_link'] ?? '' ) );
-        if ( '' === $source_name || '' === $source_id || '' === $source_mime || '' === $download_url ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The conversation file reference is missing name, id, mime_type, or download_link.', [ 'status' => 400 ] );
-        if ( strlen( $source_id ) > self::MAX_SOURCE_ID || strlen( $download_url ) > self::MAX_URL ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The conversation file reference exceeds Elementize safety limits.', [ 'status' => 400 ] );
-        if ( ! str_starts_with( $source_mime, 'image/' ) ) return new WP_Error( 'elementize_chat_media_not_image', 'The supplied conversation file is not an image.', [ 'status' => 400 ] );
-        if ( ! self::openai_file_url( $download_url ) ) return new WP_Error( 'elementize_chat_media_source_forbidden', 'The conversation image URL is not on an allowed OpenAI file host.', [ 'status' => 400 ] );
+        if ( count( $refs ) > 1 ) {
+            return new WP_Error( 'elementize_generated_media_file_count', 'Exactly one generated ChatGPT image may be imported at a time.', [ 'status' => 400 ] );
+        }
+        if ( $has_ref === $has_url ) {
+            return new WP_Error( 'elementize_generated_media_source_invalid', 'Provide exactly one generated-image source: one openaiFileIdRefs item or generated_image_url.', [ 'status' => 400 ] );
+        }
+
+        if ( $has_ref ) {
+            return self::import_openai_ref( $request, 'chatgpt_generated', 'generated ChatGPT image' );
+        }
+
+        if ( strlen( $generated_url ) > self::MAX_URL || ! self::openai_file_url( $generated_url ) ) {
+            return new WP_Error( 'elementize_generated_media_url_invalid', 'generated_image_url must be an HTTPS image URL on an allowed OpenAI file host.', [ 'status' => 400 ] );
+        }
+
+        $path = (string) wp_parse_url( $generated_url, PHP_URL_PATH );
+        $source_name = sanitize_file_name( wp_basename( $path ) );
+        if ( '' === $source_name || '.' === $source_name ) $source_name = 'chatgpt-generated-image';
 
         $meta = [
-            '_elementize_import_source' => 'chatgpt_conversation',
-            '_elementize_chat_file_id' => $source_id,
-            '_elementize_chat_file_name' => $source_name,
+            '_elementize_import_source' => 'chatgpt_generated',
+            '_elementize_generated_source' => 'openai_url',
         ];
-        $result = self::sideload( $download_url, $source_name, $request, $meta, 'conversation image' );
+        $result = self::sideload( $generated_url, $source_name, $request, $meta, 'generated ChatGPT image' );
         if ( is_wp_error( $result ) ) return $result;
-        $result['source_file_id'] = $source_id;
-        $result['source_name'] = $source_name;
-        $result['source_mime_type'] = $source_mime;
+        $result['source_type'] = 'openai_generated_url';
         return new WP_REST_Response( $result, 201 );
     }
 
@@ -117,12 +144,45 @@ final class Elementize_Media_Import {
         $data = $response->get_data();
         if ( ! is_array( $data ) ) return $response;
         $data['conversation_image_import'] = true;
+        $data['generated_image_import'] = true;
+        $data['generated_image_import_openai_only'] = true;
         $data['remote_image_import'] = true;
         $data['remote_image_import_https_only'] = true;
         $data['media_import_max_bytes'] = self::MAX_IMAGE_BYTES;
         $data['media_import_allowed_mime_types'] = array_keys( self::ALLOWED_MIMES );
         $response->set_data( $data );
         return $response;
+    }
+
+    private static function import_openai_ref( WP_REST_Request $request, string $source_type, string $label ) {
+        $refs = $request->get_param( 'openaiFileIdRefs' );
+        if ( ! is_array( $refs ) || 1 !== count( $refs ) ) return new WP_Error( 'elementize_chat_media_file_count', 'Exactly one ChatGPT image file is required.', [ 'status' => 400 ] );
+        $ref = reset( $refs );
+        if ( ! is_array( $ref ) ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The ChatGPT image reference was not expanded into file metadata.', [ 'status' => 400 ] );
+
+        $source_name = sanitize_file_name( (string) ( $ref['name'] ?? '' ) );
+        $source_id = sanitize_text_field( (string) ( $ref['id'] ?? '' ) );
+        $source_mime = strtolower( trim( (string) ( $ref['mime_type'] ?? '' ) ) );
+        $download_url = trim( (string) ( $ref['download_link'] ?? '' ) );
+        if ( '' === $source_name || '' === $source_id || '' === $source_mime || '' === $download_url ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The ChatGPT image reference is missing name, id, mime_type, or download_link.', [ 'status' => 400 ] );
+        if ( strlen( $source_id ) > self::MAX_SOURCE_ID || strlen( $download_url ) > self::MAX_URL ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The ChatGPT image reference exceeds Elementize safety limits.', [ 'status' => 400 ] );
+        if ( ! str_starts_with( $source_mime, 'image/' ) ) return new WP_Error( 'elementize_chat_media_not_image', 'The supplied ChatGPT file is not an image.', [ 'status' => 400 ] );
+        if ( ! self::openai_file_url( $download_url ) ) return new WP_Error( 'elementize_chat_media_source_forbidden', 'The ChatGPT image URL is not on an allowed OpenAI file host.', [ 'status' => 400 ] );
+
+        $meta = [
+            '_elementize_import_source' => $source_type,
+            '_elementize_chat_file_id' => $source_id,
+            '_elementize_chat_file_name' => $source_name,
+        ];
+        if ( 'chatgpt_generated' === $source_type ) $meta['_elementize_generated_source'] = 'openai_file_ref';
+
+        $result = self::sideload( $download_url, $source_name, $request, $meta, $label );
+        if ( is_wp_error( $result ) ) return $result;
+        $result['source_file_id'] = $source_id;
+        $result['source_name'] = $source_name;
+        $result['source_mime_type'] = $source_mime;
+        $result['source_type'] = $source_type;
+        return new WP_REST_Response( $result, 201 );
     }
 
     private static function require_confirmation( WP_REST_Request $request ) {

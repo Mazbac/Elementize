@@ -12,7 +12,7 @@ type Props = {
 
 const capabilities = [
   { title: 'Copy & links', body: 'Recognized text, buttons and destinations.', icon: Type },
-  { title: 'Images', body: 'Media Library, ChatGPT uploads and permitted public images.', icon: Image },
+  { title: 'Images', body: 'Media Library, uploads, ChatGPT-generated images and permitted public images.', icon: Image },
   { title: 'Pixfort icons', body: 'Exact icons from the installed Pixfort library.', icon: Shapes },
   { title: 'Protected changes', body: 'Fresh state, revisions and persisted verification.', icon: ShieldCheck },
 ] as const;
