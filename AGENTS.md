@@ -1,42 +1,75 @@
 # Elementize development rules
 
-Elementize has one narrow product scope: guarded content editing for existing Elementor + Pixfort pages.
+Elementize is a guarded editing bridge for **existing Elementor + Pixfort pages**. It has two capability profiles: Standard editing (default) and optional page-scoped Creative Control. Safety is never disabled by either profile.
 
-## In scope
+## Standard editing
 
-- Read existing Elementor pages.
-- Resolve natural-language references to exact safe Elementor targets.
-- Use screenshot clues interpreted by ChatGPT to locate existing page content; Elementize itself does not capture or visually analyze screenshots.
-- Reuse prior selection context and recognize repeated sibling/card groups.
-- Read/write recognized text and link fields.
-- Swap recognized image fields with verified WordPress image attachments.
-- Search the Media Library.
-- Import one current-conversation image from an allowed OpenAI file host.
-- Import one ChatGPT-generated image through the dedicated generated-image handoff.
-- Import one direct public HTTPS image with safe URL/MIME/size/dimension checks and provenance metadata.
-- Search the installed Pixfort icon library and write exact verified Line, Duotone, or Solid values.
-- Setup/onboarding for a Custom GPT.
-- Stale-state guards, mandatory revisions, persisted save verification, and verified rollback attempts.
-- Retry-safe behavior where possible, including media-import deduplication and bounded recovery instructions for the Custom GPT.
+Always in scope:
+- Read existing Elementor pages and semantic structure.
+- Resolve natural-language references and screenshot clues interpreted by ChatGPT.
+- Reuse conversation selection context and repeated groups/cards.
+- Read/write recognized safe text, links, Media Library images, and verified Pixfort icons.
+- Search/import/deduplicate supported media.
+- Custom GPT onboarding, connection status, Activity and guarded Undo.
 
-## Out of scope
+Standard editing must not change page structure or design controls.
 
-Do not add page generation, template selection/insertion, section removal, page lifecycle controls, design settings, color/typography/spacing controls, browser automation, plugin-internal screenshot capture/vision, Ollama, aesthetic scoring, visual QA, repair loops, autonomous design ranking, or autonomous layout/design behavior unless the product owner explicitly changes scope.
+## Creative Control
+
+Creative Control is explicitly enabled by an administrator for exactly one editable Elementor page at a time. The plugin, not GPT instructions, enforces the profile, page scope and capability revision.
+
+When enabled for that page, Elementize may additionally:
+- Search detected Pixfort-native and local Elementor templates.
+- Inspect template structure/content/design controls before insertion.
+- Insert an eligible template as local page elements.
+- Remove, duplicate, move and reorder local page elements.
+- Change only explicitly recognized local design controls such as color, spacing, radius, alignment, typography and size.
+- Combine structural, design and normal content edits into one guarded creative transaction.
+- Track Elementize-managed inserted roots and preserve that metadata through guarded Undo.
+
+Creative Control uses templates as structural building blocks. The target page's observed design language is authoritative. Prefer existing palette/spacing/radius/typography tokens, consistent repeated components, simple hierarchy and bounded complexity. Do not create visually unrelated template collages.
+
+## Still out of scope
+
+Do not add page creation, publishing/unpublishing/trash/restore, unrestricted Elementor JSON writes, site-wide/global design mutation, Elementor dynamic-value writes, shared/global/embedded template mutation, Theme Builder/header/footer mutation, plugin-internal browser automation, Ollama, autonomous aesthetic scoring, or claims of rendered visual QA without a real render/vision pipeline.
+
+ChatGPT may use screenshots supplied by the user as locating context. Elementize itself does not capture or visually analyze screenshots.
 
 ## Mutation rules
 
-Never expose unrestricted Elementor JSON writes. A mutation must use a fresh page read, exact page identity/state, exact element ID and setting path, expected current value/attachment, a successful pre-change revision, persisted `_elementor_data` verification, and verified rollback attempts. Reject duplicate targets, dynamic/global values, and shared template writes.
+Every mutation must fail closed and use fresh exact state. Never weaken these rules in Creative Control.
 
-Never blindly repeat a mutation after an unknown result. Fresh-read first, recognize already-persisted desired state, and rebuild from fresh state before any bounded retry. Multi-batch edits must get a fresh hash after each successful batch.
+Content-only writes require fresh page identity/hash, exact target IDs/paths/current values, a pre-change revision, one verified save, persisted `_elementor_data` verification and rollback on failure.
 
-Pixfort icon mutations must use values verified against the installed Pixfort icon index. Remote image imports must be public HTTPS only, use WordPress safe HTTP validation, and remain bounded by file-size/dimension limits. Media imports should be idempotent/deduplicated when a stable source identity or content hash is available.
+Creative transactions additionally require:
+- active Creative Control for the exact target page;
+- exact `expected_capability_revision`;
+- complete plan validation before save;
+- in-memory structural mutation before touching persistence;
+- unique Elementor element IDs and regenerated IDs for inserted/duplicated structures;
+- preservation of unknown Elementor node properties;
+- one pre-change revision and one Elementor save for the related transaction;
+- exact persisted full-tree verification;
+- verified managed-root metadata;
+- Activity snapshot/record so the whole transaction can be undone safely.
+
+Never blindly retry a mutation after an unknown result. Fresh-read first, recognize already-persisted desired state, and rebuild from fresh state before one bounded retry. Any successful batch/transaction invalidates the previous content hash.
+
+Global style references and dynamic Elementor values remain read-only. Embedded/global template dependencies are not eligible for managed insertion. Pixfort icons must use exact installed-library values. Remote media must keep HTTPS, MIME, size, dimension and provenance safeguards.
+
+## Template provider rules
+
+Do not hard-code undocumented Pixfort IDs or database tables. Discover Elementor-registered template sources at runtime. Prefer detected Pixfort-native sources; local Elementor templates are a supported fallback. If a provider cannot return usable Elementor data, fail with a controlled error rather than guessing.
+
+Template cloning must treat Elementor nodes as opaque structured data: preserve unknown fields, regenerate actual Elementor element IDs and repeater `_id` values, and remap known local ID references without treating media attachment IDs as element IDs.
 
 ## Repository rules
 
 - `main` is the accepted minimal product state.
-- Feature work must stay on its requested branch until explicitly merged.
-- Keep the runtime and GPT action surface minimal.
-- Never commit credentials, Application Passwords, connection keys, nonces, purchase codes, tunnel secrets, or local output.
+- Feature work stays on its requested branch until explicitly merged.
+- Keep the runtime and GPT Action surface intentional and documented.
+- Never commit credentials, Application Passwords, connection keys, nonces, purchase codes, tunnel secrets or local output.
 - Update GPT schema/instructions whenever the public REST contract changes.
-- Keep plugin version, GPT Action schema version, and runtime contract synchronized.
-- Run PHP syntax lint and the Elementize contract checks before considering a change complete.
+- Keep plugin version, GPT Action schema version and runtime contract synchronized.
+- PHP syntax lint, contract tests and frontend build must pass before a change is considered complete.
+- Do not describe deterministic structural checks as rendered visual QA.
