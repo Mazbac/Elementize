@@ -8,7 +8,7 @@ jobs:
   validate-contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate minimal runtime and GPT contract
         shell: bash
         run: |
@@ -51,7 +51,12 @@ jobs:
           grep -q "'/pages/(?P<id>.*)/resolve'" includes/elementize-context.inc || { echo 'Natural target resolver route is missing.'; exit 1; }
           grep -q "discover_items" includes/elementize-content.inc || { echo 'Context resolver must use the shared content discovery contract.'; exit 1; }
           grep -q "generic_safe_string" includes/elementize-content.inc || { echo 'Generic safe text discovery is missing.'; exit 1; }
+          grep -q "technical_key_pattern" includes/elementize-content.inc || { echo 'Technical text-field fail-closed guard is missing.'; exit 1; }
           php tests/natural-targeting-contract.php
+
+          grep -q "_elementize_sha256" includes/elementize-media-import.inc || { echo 'Media import SHA-256 deduplication is missing.'; exit 1; }
+          grep -q "deduplicated" includes/elementize-media-import.inc || { echo 'Media import retry result contract is missing.'; exit 1; }
+          grep -q "find_existing_attachment" includes/elementize-media-import.inc || { echo 'Media import idempotency lookup is missing.'; exit 1; }
 
           grep -q "class Elementize_Activity" includes/elementize-activity.inc || { echo 'Activity runtime class is missing.'; exit 1; }
           grep -q "elementize_undo_activity" includes/elementize-activity.inc || { echo 'Activity undo admin action is missing.'; exit 1; }
@@ -64,6 +69,10 @@ jobs:
           test "$instruction_chars" -le 8000
           grep -qi 'screenshot' "$instructions" || { echo 'Screenshot grounding instructions are missing.'; exit 1; }
           grep -q 'context_element_ids' "$instructions" || { echo 'Conversation context reuse instructions are missing.'; exit 1; }
+          grep -q 'after every successful batch' "$instructions" || { echo 'Multi-batch fresh-state instructions are missing.'; exit 1; }
+          grep -q 'Unknown result after a mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
+          grep -q '401/403' "$instructions" || { echo 'Authentication failure recovery instructions are missing.'; exit 1; }
+          grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
           echo "GPT Action operations: ${operation_count}/11"
