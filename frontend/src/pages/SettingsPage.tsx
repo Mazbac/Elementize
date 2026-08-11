@@ -151,7 +151,7 @@ export function SettingsPage({ config }: Props) {
               </div>
 
               {error && (
-                <Alert variant="destructive">
+                <Alert>
                   <AlertTitle>Could not change editing control</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
