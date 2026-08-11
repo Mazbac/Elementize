@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Validate minimal runtime and GPT contract
+      - name: Validate runtime and GPT contract
         shell: bash
         run: |
           set -euo pipefail
@@ -19,14 +19,19 @@ jobs:
           expected_runtime=$(cat <<'EOF'
           includes/elementize-activity.inc
           includes/elementize-bootstrap.inc
+          includes/elementize-capabilities.inc
           includes/elementize-connections.inc
           includes/elementize-content.inc
           includes/elementize-context.inc
           includes/elementize-core.inc
+          includes/elementize-creative.inc
+          includes/elementize-design.inc
           includes/elementize-media-import.inc
           includes/elementize-media-library.inc
           includes/elementize-onboarding.inc
           includes/elementize-pixfort-icons.inc
+          includes/elementize-templates.inc
+          includes/elementize-tree.inc
           EOF
           )
           actual_runtime=$(find includes -maxdepth 1 -type f -print | sort)
@@ -39,20 +44,34 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 9
-          test "$init_count" -eq 9
+          test "$require_count" -eq 14
+          test "$init_count" -eq 13
 
-          for module in core pixfort-icons content context media-library media-import activity connections onboarding; do
+          for module in core pixfort-icons content context capabilities design tree templates creative media-library media-import activity connections onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
 
           grep -q "class Elementize_Context" includes/elementize-context.inc || { echo 'Context resolver runtime class is missing.'; exit 1; }
           grep -q "'/pages/(?P<id>.*)/structure'" includes/elementize-context.inc || { echo 'Semantic structure route is missing.'; exit 1; }
           grep -q "'/pages/(?P<id>.*)/resolve'" includes/elementize-context.inc || { echo 'Natural target resolver route is missing.'; exit 1; }
-          grep -q "discover_items" includes/elementize-content.inc || { echo 'Context resolver must use the shared content discovery contract.'; exit 1; }
+          grep -q "discover_items" includes/elementize-content.inc || { echo 'Context resolver must use shared content discovery.'; exit 1; }
           grep -q "generic_safe_string" includes/elementize-content.inc || { echo 'Generic safe text discovery is missing.'; exit 1; }
-          grep -q "technical_key_pattern" includes/elementize-content.inc || { echo 'Technical text-field fail-closed guard is missing.'; exit 1; }
+          grep -q "technical_key_pattern" includes/elementize-content.inc || { echo 'Technical text fail-closed guard is missing.'; exit 1; }
           php tests/natural-targeting-contract.php
+
+          grep -q "class Elementize_Capabilities" includes/elementize-capabilities.inc || { echo 'Creative capability state is missing.'; exit 1; }
+          grep -q "PROFILE_STANDARD = 'standard'" includes/elementize-capabilities.inc || { echo 'Standard editing must remain the default profile.'; exit 1; }
+          grep -q "require_creative" includes/elementize-capabilities.inc || { echo 'Server-enforced creative guard is missing.'; exit 1; }
+          grep -q "elementize_capabilities_changed" includes/elementize-capabilities.inc || { echo 'Capability revision stale-state guard is missing.'; exit 1; }
+          grep -q "class Elementize_Tree" includes/elementize-tree.inc || { echo 'Guarded tree primitives are missing.'; exit 1; }
+          grep -q "class Elementize_Design" includes/elementize-design.inc || { echo 'Design profile runtime is missing.'; exit 1; }
+          grep -q "class Elementize_Templates" includes/elementize-templates.inc || { echo 'Template provider runtime is missing.'; exit 1; }
+          grep -q "class Elementize_Creative" includes/elementize-creative.inc || { echo 'Creative transaction runtime is missing.'; exit 1; }
+          grep -q "expected_capability_revision" includes/elementize-creative.inc || { echo 'Creative writes must use capability revision.'; exit 1; }
+          grep -q "confirm_creative_write" includes/elementize-creative.inc || { echo 'Creative writes must require confirmation.'; exit 1; }
+          grep -q "ACTIVITY_SNAPSHOT_META" includes/elementize-creative.inc || { echo 'Creative Activity/Undo snapshot integration is missing.'; exit 1; }
+          grep -q "embedded_template_references" includes/elementize-templates.inc || { echo 'Shared/embedded template dependency guard is missing.'; exit 1; }
+          php tests/creative-control-contract.php
 
           grep -q "_elementize_sha256" includes/elementize-media-import.inc || { echo 'Media import SHA-256 deduplication is missing.'; exit 1; }
           grep -q "deduplicated" includes/elementize-media-import.inc || { echo 'Media import retry result contract is missing.'; exit 1; }
@@ -61,7 +80,6 @@ jobs:
           grep -q "class Elementize_Activity" includes/elementize-activity.inc || { echo 'Activity runtime class is missing.'; exit 1; }
           grep -q "elementize_undo_activity" includes/elementize-activity.inc || { echo 'Activity undo admin action is missing.'; exit 1; }
           grep -q "class Elementize_Connections" includes/elementize-connections.inc || { echo 'Connection manager runtime class is missing.'; exit 1; }
-          grep -q "elementize_revoke_connection" includes/elementize-connections.inc || { echo 'Connection revoke admin action is missing.'; exit 1; }
           grep -q "rest_get_authenticated_app_password" includes/elementize-connections.inc || { echo 'Connection verification must bind to the authenticated Application Password.'; exit 1; }
 
           instruction_chars=$(wc -m < "$instructions" | tr -d ' ')
@@ -69,14 +87,16 @@ jobs:
           test "$instruction_chars" -le 8000
           grep -qi 'screenshot' "$instructions" || { echo 'Screenshot grounding instructions are missing.'; exit 1; }
           grep -q 'context_element_ids' "$instructions" || { echo 'Conversation context reuse instructions are missing.'; exit 1; }
-          grep -q 'after every successful batch' "$instructions" || { echo 'Multi-batch fresh-state instructions are missing.'; exit 1; }
-          grep -q 'Unknown result after a mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
-          grep -q '401/403' "$instructions" || { echo 'Authentication failure recovery instructions are missing.'; exit 1; }
+          grep -q 'Never enable, disable, or change Creative Control yourself' "$instructions" || { echo 'GPT must not toggle Creative Control.'; exit 1; }
+          grep -q 'Avoid Frankenstein pages' "$instructions" || { echo 'Design-coherence planning rules are missing.'; exit 1; }
+          grep -q 'expected_capability_revision' "$instructions" || { echo 'Creative stale-state instructions are missing.'; exit 1; }
+          grep -q 'visual_render_verified=false' "$instructions" || { echo 'Visual QA overclaim guard is missing.'; exit 1; }
+          grep -q 'Unknown result after any mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
-          echo "GPT Action operations: ${operation_count}/11"
-          test "$operation_count" -eq 11
+          echo "GPT Action operations: ${operation_count}/15"
+          test "$operation_count" -eq 15
 
           required_operations=(
             getElementizeStatus
@@ -85,6 +105,10 @@ jobs:
             resolveElementizeTargets
             getElementizePageContent
             updateElementizePageContent
+            getElementizePageDesignProfile
+            searchElementizeTemplates
+            getElementizeTemplate
+            applyElementizeCreativePlan
             searchElementizeMediaImages
             importElementizeConversationImage
             importElementizeGeneratedImage
@@ -101,24 +125,23 @@ jobs:
             insertPixfortTemplate
             getPixfortVisualProbe
             createElementorDraft
-            aesthetic
             ollama
           )
           for term in "${forbidden_terms[@]}"; do
             if grep -qi "$term" "$schema"; then
-              echo "Removed capability still present in GPT schema: $term"
+              echo "Removed legacy capability still present in GPT schema: $term"
               exit 1
             fi
           done
 
-          grep -q 'url: https://example.invalid' "$schema" || { echo 'Committed schema must keep the neutral placeholder server URL.'; exit 1; }
+          grep -q 'url: https://example.invalid' "$schema" || { echo 'Committed schema must keep neutral placeholder server URL.'; exit 1; }
           grep -q 'openaiFileIdRefs:' "$schema" || { echo 'ChatGPT image file parameter is missing.'; exit 1; }
-          grep -q 'import-generated:' "$schema" || { echo 'Generated-image import route is missing.'; exit 1; }
-          grep -q 'generated_image_url:' "$schema" || { echo 'Generated-image OpenAI URL fallback is missing.'; exit 1; }
-          grep -q 'import-url:' "$schema" || { echo 'Remote-image import route is missing.'; exit 1; }
-          grep -q 'pixfort/icons:' "$schema" || { echo 'Pixfort icon search route is missing.'; exit 1; }
+          grep -q 'generated_image_url:' "$schema" || { echo 'Generated-image URL fallback is missing.'; exit 1; }
           grep -q 'visual_clues:' "$schema" || { echo 'Screenshot clue parameter is missing.'; exit 1; }
-          grep -q 'expand:.*group' "$schema" || { echo 'Repeated group expansion contract is missing.'; exit 1; }
+          grep -q 'expected_capability_revision:' "$schema" || { echo 'Creative capability revision schema is missing.'; exit 1; }
+          grep -q 'confirm_creative_write:' "$schema" || { echo 'Creative confirmation schema is missing.'; exit 1; }
+          grep -q 'alias:originalTemplateElementId' "$schema" || { echo 'Inserted-template alias reference contract is missing.'; exit 1; }
+          grep -q 'provider=pixfort' "$instructions" || { echo 'GPT must prefer Pixfort-native templates when suitable.'; exit 1; }
 
           header_version=$(sed -n 's/^ \* Version: //p' elementize.php | head -1)
           constant_version=$(sed -n "s/^define( 'ELEMENTIZE_VERSION', '\([^']*\)' );/\1/p" elementize.php | head -1)
