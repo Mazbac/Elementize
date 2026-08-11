@@ -59,11 +59,15 @@ export function App({ config }: Props) {
         </header>
 
         <Tabs value={page} onValueChange={(value) => setPage(value as PageKey)} className="mt-4">
-          <TabsList>
+          <TabsList className="h-auto gap-1 bg-transparent p-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
-                <TabsTrigger key={item.key} value={item.key} className="gap-2">
+                <TabsTrigger
+                  key={item.key}
+                  value={item.key}
+                  className="gap-2 rounded-md px-3 py-2 shadow-none data-[state=active]:bg-secondary data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
                   <Icon className="h-4 w-4" />
                   {item.label}
                 </TabsTrigger>
