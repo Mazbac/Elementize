@@ -9,6 +9,7 @@ final class Elementize_Capabilities {
     private const PROFILE_CREATIVE = 'creative';
 
     public static function init(): void {
+        add_filter( 'rest_request_before_callbacks', [ self::class, 'preflight_creative_request' ], 5, 3 );
         add_filter( 'rest_request_after_callbacks', [ self::class, 'annotate_status' ], 80, 3 );
         add_action( 'admin_enqueue_scripts', [ self::class, 'inject_admin_config' ], 99 );
         add_action( 'wp_ajax_elementize_set_editing_profile', [ self::class, 'ajax_set_profile' ] );
@@ -73,6 +74,36 @@ final class Elementize_Capabilities {
         return true;
     }
 
+    public static function preflight_creative_request( $response, array $handler, WP_REST_Request $request ) {
+        if ( null !== $response || 'POST' !== strtoupper( $request->get_method() ) ) return $response;
+        if ( ! preg_match( '#^/' . preg_quote( Elementize_Core::NS, '#' ) . '/pages/(\d+)/creative$#', $request->get_route() ) ) return $response;
+
+        $operations = $request->get_param( 'operations' );
+        if ( ! is_array( $operations ) ) return $response;
+
+        foreach ( array_values( $operations ) as $index => $operation ) {
+            if ( ! is_array( $operation ) ) continue;
+            $type = sanitize_key( (string) ( $operation['type'] ?? '' ) );
+            if ( 'content' === $type && 'media' === sanitize_key( (string) ( $operation['kind'] ?? '' ) ) ) {
+                if ( ! array_key_exists( 'expected_attachment_id', $operation ) || ! array_key_exists( 'attachment_id', $operation ) ) {
+                    return new WP_Error( 'elementize_creative_media_guard_missing', 'Creative media operations require both expected_attachment_id and attachment_id.', [ 'status' => 400, 'operation_index' => $index ] );
+                }
+                if ( ! is_numeric( $operation['expected_attachment_id'] ) || (int) $operation['expected_attachment_id'] < 0 || ! is_numeric( $operation['attachment_id'] ) || (int) $operation['attachment_id'] < 1 ) {
+                    return new WP_Error( 'elementize_creative_media_guard_invalid', 'Creative media attachment guards must be non-negative expected_attachment_id and positive attachment_id integers.', [ 'status' => 400, 'operation_index' => $index ] );
+                }
+            }
+            if ( 'style' === $type ) {
+                foreach ( [ 'expected_json', 'value_json' ] as $key ) {
+                    $value = $operation[ $key ] ?? null;
+                    if ( is_string( $value ) && ( false !== strpos( $value, '{{' ) || false !== stripos( $value, '[elementor-tag' ) ) ) {
+                        return new WP_Error( 'elementize_creative_dynamic_design_read_only', 'Dynamic Elementor design values remain read-only in Creative Control.', [ 'status' => 400, 'operation_index' => $index ] );
+                    }
+                }
+            }
+        }
+        return $response;
+    }
+
     public static function annotate_status( $response, $handler, WP_REST_Request $request ) {
         if ( '/' . Elementize_Core::NS . '/status' !== $request->get_route() ) return $response;
         if ( is_wp_error( $response ) || ! $response instanceof WP_REST_Response ) return $response;
@@ -104,6 +135,7 @@ final class Elementize_Capabilities {
             'single_transaction_save' => true,
             'persisted_full_tree_verification' => true,
             'activity_snapshot_and_undo' => true,
+            'media_expected_attachment_guard' => true,
             'global_dynamic_shared_values_read_only' => true,
         ];
         $response->set_data( $data );
