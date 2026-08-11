@@ -80,6 +80,7 @@ final class Elementize_Capabilities {
         if ( ! is_array( $data ) ) return $response;
         $state = self::state();
         $creative = (bool) $state['creative_enabled'];
+        $data['scope'] = $creative ? 'elementor_pixfort_page_scoped_creative_control' : 'elementor_pixfort_content_only';
         $data['editing_profile'] = $state['profile'];
         $data['creative_control_available'] = true;
         $data['creative_control_default'] = self::PROFILE_STANDARD;
@@ -94,6 +95,17 @@ final class Elementize_Capabilities {
         $data['color_controls'] = $creative;
         $data['structural_element_controls'] = $creative;
         $data['global_design_controls'] = false;
+        $data['creative_write_guards'] = [
+            'server_enforced_profile' => true,
+            'single_page_scope' => true,
+            'capability_revision' => true,
+            'fresh_content_hash' => true,
+            'pre_change_revision_required' => true,
+            'single_transaction_save' => true,
+            'persisted_full_tree_verification' => true,
+            'activity_snapshot_and_undo' => true,
+            'global_dynamic_shared_values_read_only' => true,
+        ];
         $response->set_data( $data );
         return $response;
     }
