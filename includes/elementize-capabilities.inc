@@ -18,18 +18,29 @@ final class Elementize_Capabilities {
         $profile = (string) get_option( self::OPT_PROFILE, self::PROFILE_STANDARD );
         if ( ! in_array( $profile, [ self::PROFILE_STANDARD, self::PROFILE_CREATIVE ], true ) ) $profile = self::PROFILE_STANDARD;
         $page_id = self::PROFILE_CREATIVE === $profile ? absint( get_option( self::OPT_SCOPE_PAGE, 0 ) ) : 0;
+        if ( self::PROFILE_CREATIVE === $profile ) {
+            $post = $page_id > 0 ? get_post( $page_id ) : null;
+            if ( ! $post || 'page' !== $post->post_type ) {
+                $profile = self::PROFILE_STANDARD;
+                $page_id = 0;
+            }
+        }
         $revision = max( 1, absint( get_option( self::OPT_REVISION, 1 ) ) );
+        $creative = self::PROFILE_CREATIVE === $profile && $page_id > 0;
         return [
             'profile' => $profile,
-            'creative_enabled' => self::PROFILE_CREATIVE === $profile,
-            'scope_page_id' => $page_id,
+            'creative_enabled' => $creative,
+            'scope_page_id' => $creative ? $page_id : 0,
             'revision' => $revision,
             'capabilities' => self::capability_map( $profile ),
         ];
     }
 
     public static function capability_map( ?string $profile = null ): array {
-        $profile = $profile ?: (string) ( self::state()['profile'] ?? self::PROFILE_STANDARD );
+        if ( null === $profile ) {
+            $stored = (string) get_option( self::OPT_PROFILE, self::PROFILE_STANDARD );
+            $profile = in_array( $stored, [ self::PROFILE_STANDARD, self::PROFILE_CREATIVE ], true ) ? $stored : self::PROFILE_STANDARD;
+        }
         $creative = self::PROFILE_CREATIVE === $profile;
         return [
             'copy' => true,
@@ -68,11 +79,21 @@ final class Elementize_Capabilities {
         $data = $response->get_data();
         if ( ! is_array( $data ) ) return $response;
         $state = self::state();
+        $creative = (bool) $state['creative_enabled'];
         $data['editing_profile'] = $state['profile'];
-        $data['creative_control_enabled'] = $state['creative_enabled'];
+        $data['creative_control_available'] = true;
+        $data['creative_control_default'] = self::PROFILE_STANDARD;
+        $data['creative_control_enabled'] = $creative;
+        $data['creative_scope'] = 'one_page';
         $data['creative_scope_page_id'] = $state['scope_page_id'];
         $data['capability_revision'] = $state['revision'];
         $data['capabilities'] = $state['capabilities'];
+        $data['template_insertion'] = $creative;
+        $data['layout_controls'] = $creative;
+        $data['design_controls'] = $creative;
+        $data['color_controls'] = $creative;
+        $data['structural_element_controls'] = $creative;
+        $data['global_design_controls'] = false;
         $response->set_data( $data );
         return $response;
     }
@@ -120,16 +141,12 @@ final class Elementize_Capabilities {
         check_ajax_referer( 'elementize_creative_control', 'nonce' );
 
         $profile = sanitize_key( (string) wp_unslash( $_POST['profile'] ?? '' ) );
-        if ( ! in_array( $profile, [ self::PROFILE_STANDARD, self::PROFILE_CREATIVE ], true ) ) {
-            wp_send_json_error( [ 'message' => 'Invalid editing profile.' ], 400 );
-        }
+        if ( ! in_array( $profile, [ self::PROFILE_STANDARD, self::PROFILE_CREATIVE ], true ) ) wp_send_json_error( [ 'message' => 'Invalid editing profile.' ], 400 );
 
         $page_id = self::PROFILE_CREATIVE === $profile ? absint( $_POST['page_id'] ?? 0 ) : 0;
         if ( self::PROFILE_CREATIVE === $profile ) {
             $post = get_post( $page_id );
-            if ( ! $post || 'page' !== $post->post_type || ! current_user_can( 'edit_post', $page_id ) ) {
-                wp_send_json_error( [ 'message' => 'Choose an editable WordPress page for Creative Control.' ], 400 );
-            }
+            if ( ! $post || 'page' !== $post->post_type || ! current_user_can( 'edit_post', $page_id ) ) wp_send_json_error( [ 'message' => 'Choose an editable WordPress page for Creative Control.' ], 400 );
             $document = Elementize_Core::need_document( $page_id );
             if ( is_wp_error( $document ) ) wp_send_json_error( [ 'message' => $document->get_error_message() ], 400 );
         }
@@ -137,9 +154,20 @@ final class Elementize_Capabilities {
         $current = self::state();
         $changed = (string) $current['profile'] !== $profile || absint( $current['scope_page_id'] ) !== $page_id;
         if ( $changed ) {
+            $new_revision = max( 1, absint( $current['revision'] ) + 1 );
             update_option( self::OPT_PROFILE, $profile, false );
             update_option( self::OPT_SCOPE_PAGE, $page_id, false );
-            update_option( self::OPT_REVISION, max( 1, absint( $current['revision'] ) + 1 ), false );
+            update_option( self::OPT_REVISION, $new_revision, false );
+
+            $stored_profile = (string) get_option( self::OPT_PROFILE, self::PROFILE_STANDARD );
+            $stored_page = absint( get_option( self::OPT_SCOPE_PAGE, 0 ) );
+            $stored_revision = absint( get_option( self::OPT_REVISION, 0 ) );
+            if ( $stored_profile !== $profile || $stored_page !== $page_id || $stored_revision !== $new_revision ) {
+                update_option( self::OPT_PROFILE, (string) $current['profile'], false );
+                update_option( self::OPT_SCOPE_PAGE, absint( $current['scope_page_id'] ), false );
+                update_option( self::OPT_REVISION, absint( $current['revision'] ), false );
+                wp_send_json_error( [ 'message' => 'Elementize could not persist the editing profile. No capability change was applied.' ], 500 );
+            }
         }
 
         wp_send_json_success( [ 'state' => self::state() ] );
