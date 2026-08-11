@@ -40,6 +40,8 @@ function Notice({ notice }: { notice: string }) {
 
 export function App({ config }: Props) {
   const [page, setPage] = useState<PageKey>(config.allReady ? 'home' : 'setup');
+  const creative = window.ElementizeCreativeConfig;
+  const creativePage = creative?.pages.find((item) => item.id === creative.state.scope_page_id);
 
   return (
     <div className="min-h-[calc(100vh-32px)] bg-background text-foreground">
@@ -51,13 +53,19 @@ export function App({ config }: Props) {
               <h1 className="text-xl font-semibold tracking-tight">Elementize</h1>
               <Badge variant="outline">v{config.version}</Badge>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">Safe Elementor content editing through ChatGPT.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Guarded Elementor editing through ChatGPT.</p>
           </div>
 
-          <Badge variant={config.allReady ? 'default' : 'secondary'} className="w-fit gap-1.5">
-            {config.allReady ? <CircleCheck className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
-            {config.allReady ? 'Ready' : 'Needs setup'}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={creative?.state.creative_enabled ? 'default' : 'outline'} className="w-fit gap-1.5">
+              <Sparkles className="h-3.5 w-3.5" />
+              {creative?.state.creative_enabled ? `Creative: ${creativePage?.title || 'selected page'}` : 'Standard editing'}
+            </Badge>
+            <Badge variant={config.allReady ? 'default' : 'secondary'} className="w-fit gap-1.5">
+              {config.allReady ? <CircleCheck className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
+              {config.allReady ? 'Ready' : 'Needs setup'}
+            </Badge>
+          </div>
         </header>
 
         <Tabs value={page} onValueChange={(value) => setPage(value as PageKey)} className="mt-4">
