@@ -105,7 +105,7 @@ final class Elementize_Core {
             return new WP_REST_Response( [ 'q' => '', 'page' => 1, 'per_page' => 0, 'total' => 0, 'total_pages' => 0, 'pages' => [], 'warning' => 'Elementor is not active.' ], 200 );
         }
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
         $search = trim( (string) $request->get_param( 'q' ) );
         $args = [
             'post_type' => 'page',
@@ -123,7 +123,12 @@ final class Elementize_Core {
         foreach ( $query->posts as $post ) {
             if ( ! $post instanceof WP_Post || ! current_user_can( 'edit_post', $post->ID ) ) continue;
             $document = self::document( $post->ID );
-            if ( ! $document || ! $document->is_built_with_elementor() ) continue;
+            if ( ! $document ) continue;
+            try {
+                if ( ! $document->is_built_with_elementor() ) continue;
+            } catch ( Throwable $ignored ) {
+                continue;
+            }
             $items[] = self::page_identity( $post->ID, $document );
         }
         return new WP_REST_Response( [ 'q' => $search, 'page' => $page, 'per_page' => $per_page, 'total' => (int) $query->found_posts, 'total_pages' => (int) $query->max_num_pages, 'pages' => $items ], 200 );
@@ -132,6 +137,10 @@ final class Elementize_Core {
     public static function page_identity( int $id, $document = null ): array {
         $post = get_post( $id );
         if ( ! $document ) $document = self::document( $id );
+        $edit_url = null;
+        if ( $document && method_exists( $document, 'get_edit_url' ) ) {
+            try { $edit_url = $document->get_edit_url(); } catch ( Throwable $ignored ) { $edit_url = null; }
+        }
         return [
             'id' => $id,
             'title' => $post ? (string) $post->post_title : '',
@@ -139,7 +148,7 @@ final class Elementize_Core {
             'modified_gmt' => $post ? (string) $post->post_modified_gmt : '',
             'permalink' => get_permalink( $id ),
             'preview_url' => get_preview_post_link( $id ),
-            'elementor_edit_url' => $document && method_exists( $document, 'get_edit_url' ) ? $document->get_edit_url() : null,
+            'elementor_edit_url' => $edit_url,
         ];
     }
 
@@ -153,14 +162,22 @@ final class Elementize_Core {
         if ( ! class_exists( '\\Elementor\\Plugin' ) ) return new WP_Error( 'elementize_elementor_required', 'Elementor must be installed and active.', [ 'status' => 503 ] );
         $document = self::document( $id );
         if ( ! $document ) return new WP_Error( 'elementize_elementor_document_not_found', 'Elementor could not load this page as a document.', [ 'status' => 404 ] );
-        if ( ! $document->is_built_with_elementor() ) return new WP_Error( 'elementize_not_elementor_page', 'This page is not currently built with Elementor.', [ 'status' => 400 ] );
+        try {
+            if ( ! $document->is_built_with_elementor() ) return new WP_Error( 'elementize_not_elementor_page', 'This page is not currently built with Elementor.', [ 'status' => 400 ] );
+        } catch ( Throwable $e ) {
+            return new WP_Error( 'elementize_elementor_document_failed', 'Elementor could not inspect this page document.', [ 'status' => 503 ] );
+        }
         return $document;
     }
 
     public static function elements( int $id ) {
         $document = self::need_document( $id );
         if ( is_wp_error( $document ) ) return $document;
-        $elements = $document->get_elements_data();
+        try {
+            $elements = $document->get_elements_data();
+        } catch ( Throwable $e ) {
+            return new WP_Error( 'elementize_elementor_read_failed', 'Elementor could not read the page element data.', [ 'status' => 503 ] );
+        }
         if ( ! is_array( $elements ) ) return new WP_Error( 'elementize_invalid_elementor_data', 'Elementor returned invalid page data.', [ 'status' => 500 ] );
         return [ 'document' => $document, 'elements' => $elements ];
     }
