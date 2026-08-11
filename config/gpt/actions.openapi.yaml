@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Elementize Content Actions
-  version: 0.37.1
-  description: Natural-language targeting plus guarded content editing, media handoff, and Pixfort icon lookup for existing Elementor + Pixfort pages.
+  version: 0.38.0
+  description: Fast, retry-safe natural-language targeting plus guarded content editing, media handoff, and Pixfort icon lookup for existing Elementor + Pixfort pages.
 servers:
   - url: https://example.invalid
     description: Replaced automatically by the Elementize setup screen.
@@ -152,7 +152,7 @@ paths:
     post:
       operationId: importElementizeConversationImage
       summary: Import one image attached in this ChatGPT conversation
-      description: Use when the user wants an image they supplied in the current ChatGPT conversation placed on the WordPress page. Returns a WordPress attachment_id for a later guarded media update.
+      description: Imports or reuses one verified conversation image and returns a WordPress attachment_id for a later guarded media update.
       requestBody:
         required: true
         content:
@@ -172,14 +172,14 @@ paths:
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201': { description: Conversation image imported and verified }
+        '201': { description: Conversation image imported or safely deduplicated and verified }
         '400': { description: Invalid file, unsupported image, or confirmation missing }
 
   /wp-json/elementize/v1/media/images/import-generated:
     post:
       operationId: importElementizeGeneratedImage
       summary: Import the image ChatGPT just generated into WordPress
-      description: 'Use after ChatGPT generates an image the user wants on the page. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url.'
+      description: 'Use after ChatGPT generates an image. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Retries are deduplicated when possible.'
       requestBody:
         required: true
         content:
@@ -204,7 +204,7 @@ paths:
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201': { description: Generated ChatGPT image imported and verified }
+        '201': { description: Generated ChatGPT image imported or safely deduplicated and verified }
         '400': { description: Missing or unsafe generated-image source, unsupported image, or confirmation missing }
         '502': { description: Generated image download failed }
 
@@ -212,7 +212,7 @@ paths:
     post:
       operationId: importElementizeRemoteImage
       summary: Import one public HTTPS image into the WordPress Media Library
-      description: Use after the user supplies an image URL or ChatGPT finds and verifies a suitable image online. Returns a WordPress attachment_id for a later guarded media update.
+      description: Imports or reuses a verified public HTTPS image and returns a WordPress attachment_id for a later guarded media update.
       requestBody:
         required: true
         content:
@@ -228,7 +228,7 @@ paths:
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
-        '201': { description: Remote image imported and verified }
+        '201': { description: Remote image imported or safely deduplicated and verified }
         '400': { description: Unsafe URL, unsupported image, or confirmation missing }
         '502': { description: Remote image download failed }
 
