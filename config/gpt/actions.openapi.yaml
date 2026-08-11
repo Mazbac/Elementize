@@ -132,7 +132,7 @@ paths:
     post:
       operationId: importElementizeGeneratedImage
       summary: Import the image ChatGPT just generated into WordPress
-      description: Use after ChatGPT generates an image the user wants on the page. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Returns a verified WordPress attachment_id for the normal guarded media update.
+      description: 'Use after ChatGPT generates an image the user wants on the page. Pass exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Returns a verified WordPress attachment_id for the normal guarded media update.'
       requestBody:
         required: true
         content:
