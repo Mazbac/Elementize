@@ -29,7 +29,7 @@ function Notice({ notice }: { notice: string }) {
   if (!message) return null;
 
   return (
-    <Alert variant="accent" className="mt-5">
+    <Alert variant="accent" className="mt-4">
       <AlertTitle>{message.title}</AlertTitle>
       <AlertDescription>{message.body}</AlertDescription>
     </Alert>
@@ -41,39 +41,29 @@ export function App({ config }: Props) {
 
   return (
     <div className="min-h-[calc(100vh-32px)] bg-background text-foreground">
-      <div className="mx-auto w-full max-w-[1180px] px-5 py-6 lg:px-7">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
-              <Sparkles className="h-4 w-4" />
+      <div className="mx-auto w-full max-w-[1040px] px-5 py-5 lg:px-6">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-semibold tracking-tight">Elementize</h1>
+              <Badge variant="outline">v{config.version}</Badge>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-[23px] font-semibold leading-7 tracking-[-0.01em]">Elementize</h1>
-                <Badge variant="outline">v{config.version}</Badge>
-              </div>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Safe content editing for Elementor and Pixfort, connected to ChatGPT.
-              </p>
-            </div>
+            <p className="mt-1 text-sm text-muted-foreground">Safe Elementor content editing through ChatGPT.</p>
           </div>
 
-          <Badge variant={config.allReady ? 'default' : 'secondary'} className="w-fit gap-1.5 px-2.5 py-1">
+          <Badge variant={config.allReady ? 'default' : 'secondary'} className="w-fit gap-1.5">
             {config.allReady ? <CircleCheck className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
             {config.allReady ? 'Ready' : 'Needs setup'}
           </Badge>
         </header>
 
-        <Tabs value={page} onValueChange={(value) => setPage(value as PageKey)} className="mt-5">
-          <TabsList className="h-auto w-full justify-start gap-1 rounded-none border-b bg-transparent p-0">
+        <Tabs value={page} onValueChange={(value) => setPage(value as PageKey)} className="mt-4">
+          <TabsList>
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
-                <TabsTrigger
-                  key={item.key}
-                  value={item.key}
-                  className="gap-2 rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-[13px] shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
-                >
+                <TabsTrigger key={item.key} value={item.key} className="gap-2">
                   <Icon className="h-4 w-4" />
                   {item.label}
                 </TabsTrigger>
@@ -84,16 +74,12 @@ export function App({ config }: Props) {
 
         <Notice notice={config.notice} />
 
-        <main className="mt-6">
+        <main className="mt-5">
           {page === 'home' && <HomePage config={config} onNavigate={setPage} />}
           {page === 'setup' && <SetupPage config={config} onNavigate={setPage} />}
           {page === 'connection' && <ConnectionPage config={config} />}
           {page === 'settings' && <SettingsPage config={config} />}
         </main>
-
-        <footer className="mt-8 border-t pt-4 text-xs text-muted-foreground">
-          Elementize leaves layout and visual design in Elementor. Content writes stay guarded by fresh state, revisions and persisted verification.
-        </footer>
       </div>
     </div>
   );

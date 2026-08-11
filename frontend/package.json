@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@radix-ui/react-accordion": "latest",
+    "@radix-ui/react-label": "latest",
     "@radix-ui/react-progress": "latest",
+    "@radix-ui/react-separator": "latest",
     "@radix-ui/react-slot": "latest",
     "@radix-ui/react-tabs": "latest",
     "class-variance-authority": "latest",
