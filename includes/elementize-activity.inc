@@ -89,8 +89,12 @@ final class Elementize_Activity {
         $after_hash = (string) ( $data['content_hash'] ?? '' );
         if ( ! $revision_id || '' === $after_hash ) return $response;
 
-        $snapshot = wp_json_encode( $pending['elements'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-        if ( is_string( $snapshot ) && '' !== $snapshot ) update_post_meta( $revision_id, self::SNAPSHOT_META, $snapshot );
+        $snapshot = self::encode_snapshot( $pending['elements'] );
+        if ( '' !== $snapshot ) {
+            // update_post_meta() redirects revision IDs to their parent post. Use the
+            // generic metadata API so this snapshot stays attached to this revision.
+            update_metadata( 'post', $revision_id, self::SNAPSHOT_META, $snapshot );
+        }
 
         $post = get_post( $pending['page_id'] );
         $user = wp_get_current_user();
@@ -138,7 +142,7 @@ final class Elementize_Activity {
             if ( ! is_array( $record ) ) continue;
             $page_id = absint( $record['page_id'] ?? 0 );
             $revision_id = absint( $record['revision_id'] ?? 0 );
-            $snapshot_available = $revision_id > 0 && '' !== (string) get_post_meta( $revision_id, self::SNAPSHOT_META, true );
+            $snapshot_available = $revision_id > 0 && '' !== self::snapshot_payload( $revision_id );
             $undone = '' !== (string) ( $record['undone_at_gmt'] ?? '' );
 
             if ( $page_id && ! array_key_exists( $page_id, $current_hashes ) ) {
@@ -177,8 +181,7 @@ final class Elementize_Activity {
         if ( 'publish' === $post->post_status && true !== $request->get_param( 'confirm_published_page' ) ) return new WP_Error( 'elementize_published_confirmation_required', 'This is a published page. Confirm the live-page undo before continuing.', [ 'status' => 400 ] );
 
         $revision_id = absint( $record['revision_id'] ?? 0 );
-        $snapshot_json = $revision_id ? (string) get_post_meta( $revision_id, self::SNAPSHOT_META, true ) : '';
-        $snapshot = '' !== $snapshot_json ? json_decode( $snapshot_json, true ) : null;
+        $snapshot = self::decode_snapshot( $revision_id );
         if ( ! is_array( $snapshot ) ) return new WP_Error( 'elementize_activity_snapshot_missing', 'The pre-change snapshot is no longer available, so this change cannot be undone safely.', [ 'status' => 409 ] );
         if ( ! hash_equals( (string) ( $record['before_hash'] ?? '' ), Elementize_Core::hash_elements( $snapshot ) ) ) return new WP_Error( 'elementize_activity_snapshot_invalid', 'The stored pre-change snapshot did not pass integrity verification.', [ 'status' => 409 ] );
 
@@ -236,6 +239,25 @@ final class Elementize_Activity {
     private static function content_write_page_id( WP_REST_Request $request ): int {
         if ( ! preg_match( '#^/' . preg_quote( Elementize_Core::NS, '#' ) . '/pages/(\\d+)/content$#', $request->get_route(), $matches ) ) return 0;
         return absint( $matches[1] ?? 0 );
+    }
+
+    private static function encode_snapshot( array $elements ): string {
+        $json = wp_json_encode( $elements, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        return is_string( $json ) && '' !== $json ? base64_encode( $json ) : '';
+    }
+
+    private static function snapshot_payload( int $revision_id ): string {
+        if ( $revision_id <= 0 ) return '';
+        return (string) get_metadata( 'post', $revision_id, self::SNAPSHOT_META, true );
+    }
+
+    private static function decode_snapshot( int $revision_id ): ?array {
+        $payload = self::snapshot_payload( $revision_id );
+        if ( '' === $payload ) return null;
+        $json = base64_decode( $payload, true );
+        if ( ! is_string( $json ) || '' === $json ) return null;
+        $decoded = json_decode( $json, true );
+        return is_array( $decoded ) ? $decoded : null;
     }
 
     private static function save_verified( $document, int $page_id, array $elements, string $expected_hash ) {
