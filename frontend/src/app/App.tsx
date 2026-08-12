@@ -27,8 +27,9 @@ function initialPage(config: ElementizeAdminConfig): PageKey {
 }
 
 function Notice({ notice }: { notice: string }) {
+  if (notice === 'connection_saved') return null;
+
   const messages: Record<string, { title: string; body: string }> = {
-    connection_saved: { title: 'Connection saved', body: 'The secure website address was updated. Continue in Setup with the refreshed Action schema.' },
     connection_cleared: { title: 'Automatic address restored', body: 'Elementize will use the detected site address when possible.' },
     connection_invalid: { title: 'Address not saved', body: 'Use a public HTTPS origin without a path, query or credentials.' },
   };
@@ -37,7 +38,7 @@ function Notice({ notice }: { notice: string }) {
   if (!message) return null;
 
   return (
-    <Alert variant="accent" className="mt-4">
+    <Alert className="mt-4">
       <AlertTitle>{message.title}</AlertTitle>
       <AlertDescription>{message.body}</AlertDescription>
     </Alert>
