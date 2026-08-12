@@ -507,6 +507,7 @@ final class Elementize_Visual_QA {
             if ( '' === $cmd ) $cmd = '' !== $system_root ? $system_root . '\\System32\\cmd.exe' : 'cmd.exe';
             $psq = static function( string $value ): string { return "'" . str_replace( "'", "''", $value ) . "'"; };
             $script = 'Start-Process -FilePath ' . $psq( $cmd ) . ' -ArgumentList ' . $psq( '/d /c call "' . $runner . '"' ) . ' -WindowStyle Hidden';
+            $script = str_replace( '\\"', '"', $script );
             $command = [ $powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', $script ];
         } else {
             $command = [ '/bin/sh', '-c', 'nohup /bin/sh ' . escapeshellarg( $runner ) . ' >/dev/null 2>&1 &' ];
