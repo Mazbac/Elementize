@@ -17,6 +17,8 @@ define( 'ELEMENTIZE_FILE', __FILE__ );
 define( 'ELEMENTIZE_DIR', __DIR__ );
 
 require_once __DIR__ . '/includes/elementize-bootstrap.inc';
+require_once __DIR__ . '/includes/runtime/elementize-chatgpt-vision.inc';
+Elementize_ChatGPT_Vision::init();
 require_once __DIR__ . '/includes/runtime/elementize-template-response.inc';
 Elementize_Template_Response::init();
 
