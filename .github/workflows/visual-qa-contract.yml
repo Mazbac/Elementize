@@ -15,18 +15,19 @@ jobs:
           set -euo pipefail
           runtime="includes/elementize-visual-qa.inc"
           url_test="tests/visual-qa-url-contract.php"
-          grep -q "private const VERSION = '5'" "$runtime" || { echo 'Rendered Visual QA v5 is not active.'; exit 1; }
+          grep -q "private const VERSION = '6'" "$runtime" || { echo 'Rendered Visual QA v6 is not active.'; exit 1; }
           grep -q "local_chromium_async" "$runtime" || { echo 'Async Chromium backend is missing.'; exit 1; }
           grep -q "png_file_complete" "$runtime" || { echo 'Complete-PNG capture signal is missing.'; exit 1; }
           grep -q "capture_artifact_state" "$runtime" || { echo 'Bounded async capture diagnostics are missing.'; exit 1; }
-          grep -q "start \"\" /b" "$runtime" || { echo 'Detached Windows runner launch is missing.'; exit 1; }
-          if grep -q "start \"\" /wait" "$runtime"; then
-            echo 'Windows capture must not wait for Chromium process exit before recognizing a completed PNG.'
+          grep -q "Start-Process -FilePath" "$runtime" || { echo 'PowerShell Start-Process Windows launcher is missing.'; exit 1; }
+          grep -q "ComSpec" "$runtime" || { echo 'Windows launcher no longer mirrors the proven cmd.exe runner path.'; exit 1; }
+          if grep -q "start \"\" /b" "$runtime"; then
+            echo 'Broken cmd.exe start /b launcher must not return.'
             exit 1
           fi
           grep -q "without a complete PNG" "$runtime" || { echo 'PNG-completion timeout contract is missing.'; exit 1; }
           grep -q "normalize_capture_url" "$runtime" || { echo 'Capture URL normalization is missing.'; exit 1; }
-          grep -q "elementize_visual_qa_job_v5_" "$runtime" || { echo 'Visual QA v5 job namespace is missing.'; exit 1; }
+          grep -q "elementize_visual_qa_job_v6_" "$runtime" || { echo 'Visual QA v6 job namespace is missing.'; exit 1; }
           grep -q "capture_url" "$runtime" || { echo 'Fail-closed capture URL stage is missing.'; exit 1; }
           test -f "$url_test" || { echo 'Visual QA URL regression test is missing.'; exit 1; }
           php -l "$runtime"
