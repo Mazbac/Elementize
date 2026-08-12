@@ -8,6 +8,8 @@ final class Elementize_Templates {
     private const PIXFORT_SOURCE_ID = 'pixfort';
     private const PIXFORT_LIBRARY_OPTION = 'custom_remote_info_library';
     private const MAX_REMOTE_BYTES = 33554432; // 32 MiB. Request one extra byte to detect truncation cleanly.
+    private const PIXFORT_SNAPSHOT_TTL = 1800;
+    private const PIXFORT_SNAPSHOT_MAX_BYTES = 8388608;
 
     public static function init(): void {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 27 );
@@ -368,6 +370,9 @@ final class Elementize_Templates {
         }
 
         $scope_page_id = self::pixfort_scope_page_id();
+        $snapshot = self::pixfort_template_snapshot( $template_id, $scope_page_id );
+        if ( is_array( $snapshot ) ) return $snapshot;
+
         $native = self::load_pixfort_native_payload( $template_id );
         $payload = is_array( $native ) ? $native : null;
         $ajax = null;
@@ -408,7 +413,7 @@ final class Elementize_Templates {
             return new WP_Error( 'elementize_template_embedded_reference', 'This Pixfort template contains an embedded/global template reference. Elementize will not insert shared template dependencies into a managed local section.', [ 'status' => 400, 'references' => $summary['embedded_template_references'] ] );
         }
 
-        return [
+        $loaded = [
             'source_id' => self::PIXFORT_SOURCE_ID,
             'template_id' => $template_id,
             'provider' => 'pixfort',
@@ -416,11 +421,41 @@ final class Elementize_Templates {
             'type' => self::normalized_type( (string) ( $record['type'] ?? '' ), (string) ( $record['subtype'] ?? '' ), (string) ( $record['title'] ?? '' ), true ),
             'elements' => $elements,
         ];
+        self::store_pixfort_template_snapshot( $template_id, $scope_page_id, $loaded );
+        return $loaded;
     }
 
     private static function pixfort_scope_page_id(): int {
         $state = class_exists( 'Elementize_Capabilities' ) ? Elementize_Capabilities::state() : [];
         return ! empty( $state['creative_enabled'] ) ? absint( $state['scope_page_id'] ?? 0 ) : 0;
+    }
+
+    private static function pixfort_snapshot_key( string $template_id, int $scope_page_id ): string {
+        $fingerprint = implode( '|', [
+            $template_id,
+            (string) $scope_page_id,
+            (string) get_current_user_id(),
+            defined( 'ELEMENTOR_VERSION' ) ? (string) ELEMENTOR_VERSION : '',
+            defined( 'PIXFORT_THEME_SLUG' ) ? (string) PIXFORT_THEME_SLUG : '',
+        ] );
+        return 'elementize_pixfort_tpl_' . md5( $fingerprint );
+    }
+
+    private static function pixfort_template_snapshot( string $template_id, int $scope_page_id ): ?array {
+        $key = self::pixfort_snapshot_key( $template_id, $scope_page_id );
+        $snapshot = get_transient( $key );
+        if ( ! is_array( $snapshot ) ) return null;
+        if ( (string) ( $snapshot['template_id'] ?? '' ) !== $template_id || ! is_array( $snapshot['elements'] ?? null ) || ! $snapshot['elements'] ) {
+            delete_transient( $key );
+            return null;
+        }
+        return $snapshot;
+    }
+
+    private static function store_pixfort_template_snapshot( string $template_id, int $scope_page_id, array $snapshot ): void {
+        $json = wp_json_encode( $snapshot, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+        if ( ! is_string( $json ) || '' === $json || strlen( $json ) > self::PIXFORT_SNAPSHOT_MAX_BYTES ) return;
+        set_transient( self::pixfort_snapshot_key( $template_id, $scope_page_id ), $snapshot, self::PIXFORT_SNAPSHOT_TTL );
     }
 
     private static function load_pixfort_native_payload( string $template_id ) {
