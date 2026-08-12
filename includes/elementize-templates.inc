@@ -292,7 +292,7 @@ final class Elementize_Templates {
             'source_id' => self::PIXFORT_SOURCE_ID,
             'provider' => 'pixfort',
             'class' => $class_ready ? '\\Elementor\\TemplateLibrary\\Source_Pixfort' : 'pixfort_elementor_library_data',
-            'adapter' => 'pixfort_native_remote',
+            'adapter' => $class_ready ? 'pixfort_native_source' : 'pixfort_remote_fallback',
         ];
     }
 
@@ -367,7 +367,8 @@ final class Elementize_Templates {
             return new WP_Error( 'elementize_pixfort_template_not_found', 'The requested Pixfort template is not present in the installed Pixfort library catalogue.', [ 'status' => 404 ] );
         }
 
-        $payload = self::fetch_pixfort_template_payload( $record );
+        $payload = self::load_pixfort_native_payload( $template_id );
+        if ( null === $payload ) $payload = self::fetch_pixfort_template_payload( $record );
         if ( is_wp_error( $payload ) ) return $payload;
 
         if ( ! empty( $payload['pixIsNested'] ) || ! empty( $payload['pixNestedTemplates'] ) ) {
@@ -396,6 +397,51 @@ final class Elementize_Templates {
             'type' => self::normalized_type( (string) ( $record['type'] ?? '' ), (string) ( $record['subtype'] ?? '' ), (string) ( $record['title'] ?? '' ), true ),
             'elements' => $elements,
         ];
+    }
+
+    private static function load_pixfort_native_payload( string $template_id ) {
+        if ( ! self::ensure_pixfort_source_class() ) return null;
+
+        $state = class_exists( 'Elementize_Capabilities' ) ? Elementize_Capabilities::state() : [];
+        $scope_page_id = ! empty( $state['creative_enabled'] ) ? absint( $state['scope_page_id'] ?? 0 ) : 0;
+        $args = [ 'template_id' => $template_id ];
+        if ( $scope_page_id > 0 ) $args['editor_post_id'] = $scope_page_id;
+
+        try {
+            $source = new \Elementor\TemplateLibrary\Source_Pixfort();
+            $candidate = $source->get_data( $args );
+        } catch ( Throwable $e ) {
+            return new WP_Error(
+                'elementize_pixfort_native_template_failed',
+                'Pixfort native template loading failed: ' . $e->getMessage(),
+                [ 'status' => 503, 'adapter' => 'pixfort_native_source', 'scope_page_id' => $scope_page_id ]
+            );
+        }
+
+        if ( is_wp_error( $candidate ) ) {
+            return new WP_Error(
+                'elementize_pixfort_native_template_failed',
+                'Pixfort native template loading failed: ' . $candidate->get_error_message(),
+                [ 'status' => 503, 'adapter' => 'pixfort_native_source', 'scope_page_id' => $scope_page_id ]
+            );
+        }
+        if ( ! is_array( $candidate ) ) {
+            return new WP_Error(
+                'elementize_pixfort_native_template_invalid',
+                'Pixfort native template loading returned an invalid response.',
+                [ 'status' => 503, 'adapter' => 'pixfort_native_source', 'scope_page_id' => $scope_page_id ]
+            );
+        }
+
+        $elements = self::extract_elements( $candidate );
+        if ( ! is_array( $elements ) || ! $elements ) {
+            return new WP_Error(
+                'elementize_pixfort_native_template_empty',
+                'Pixfort native template loading returned no Elementor content.',
+                [ 'status' => 503, 'adapter' => 'pixfort_native_source', 'scope_page_id' => $scope_page_id ]
+            );
+        }
+        return $candidate;
     }
 
     private static function pixfort_template_record( string $template_id ): ?array {
@@ -427,7 +473,7 @@ final class Elementize_Templates {
             return new WP_Error( 'elementize_pixfort_template_url_invalid', 'The resolved Pixfort template URL is outside the trusted Pixfort import host.', [ 'status' => 503 ] );
         }
 
-        // Match Pixfort's native transport closely, but request one extra byte so oversized/truncated JSON is detected explicitly.
+        // Remote fallback is used only when Pixfort's native source class cannot be loaded.
         $args = [
             'timeout' => 40,
             'redirection' => 3,
