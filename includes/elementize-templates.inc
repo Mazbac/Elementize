@@ -7,7 +7,7 @@ final class Elementize_Templates {
     private const MAX_CONTENT_FIELDS = 800;
     private const PIXFORT_SOURCE_ID = 'pixfort';
     private const PIXFORT_LIBRARY_OPTION = 'custom_remote_info_library';
-    private const MAX_REMOTE_BYTES = 10485760;
+    private const MAX_REMOTE_BYTES = 33554432; // 32 MiB. Request one extra byte to detect truncation cleanly.
 
     public static function init(): void {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 27 );
@@ -42,30 +42,43 @@ final class Elementize_Templates {
         $q = self::lower( trim( (string) $request->get_param( 'q' ) ) );
         $type = sanitize_key( (string) $request->get_param( 'type' ) );
         $provider = sanitize_key( (string) $request->get_param( 'provider' ) );
-        if ( ! in_array( $type, [ 'all', 'page', 'section', 'container' ], true ) ) return new WP_Error( 'elementize_template_type_invalid', 'type must be all, page, section, or container.', [ 'status' => 400 ] );
-        if ( ! in_array( $provider, [ 'all', 'pixfort', 'local' ], true ) ) return new WP_Error( 'elementize_template_provider_invalid', 'provider must be all, pixfort, or local.', [ 'status' => 400 ] );
+        if ( ! in_array( $type, [ 'all', 'page', 'section', 'container' ], true ) ) {
+            return new WP_Error( 'elementize_template_type_invalid', 'type must be all, page, section, or container.', [ 'status' => 400 ] );
+        }
+        if ( ! in_array( $provider, [ 'all', 'pixfort', 'local' ], true ) ) {
+            return new WP_Error( 'elementize_template_provider_invalid', 'provider must be all, pixfort, or local.', [ 'status' => 400 ] );
+        }
 
         $items = self::index();
         if ( is_wp_error( $items ) ) return $items;
+
         $filtered = [];
         foreach ( $items as $item ) {
             if ( 'all' !== $provider && $provider !== (string) $item['provider'] ) continue;
-            $item_type = strtolower( (string) ( $item['type'] ?? '' ) );
-            if ( 'all' !== $type && $type !== $item_type ) continue;
+            if ( 'all' !== $type && $type !== strtolower( (string) ( $item['type'] ?? '' ) ) ) continue;
             if ( '' !== $q ) {
-                $haystack = self::lower( implode( ' ', [ (string) $item['title'], (string) $item['type'], (string) $item['provider'], implode( ' ', (array) $item['keywords'] ) ] ) );
+                $haystack = self::lower( implode( ' ', [
+                    (string) $item['title'],
+                    (string) $item['type'],
+                    (string) $item['provider'],
+                    (string) ( $item['subtype'] ?? '' ),
+                    implode( ' ', (array) $item['keywords'] ),
+                ] ) );
                 if ( false === strpos( $haystack, $q ) ) continue;
             }
             $filtered[] = $item;
         }
+
         usort( $filtered, static function( array $a, array $b ): int {
             if ( $a['provider'] !== $b['provider'] ) return 'pixfort' === $a['provider'] ? -1 : 1;
             return strcasecmp( (string) $a['title'], (string) $b['title'] );
         } );
+
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
         $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
         $total = count( $filtered );
         $sources = self::source_descriptors();
+
         return new WP_REST_Response( [
             'q' => $q,
             'type' => $type,
@@ -85,10 +98,10 @@ final class Elementize_Templates {
         $template_id = sanitize_text_field( (string) $request['template_id'] );
         $loaded = self::load_template( $source_id, $template_id );
         if ( is_wp_error( $loaded ) ) return $loaded;
+
         $elements = $loaded['elements'];
-        $content = array_slice( Elementize_Content::discover_items( $elements ), 0, self::MAX_CONTENT_FIELDS );
-        $design = Elementize_Design::controls_for_template( $elements, self::MAX_CONTENT_FIELDS );
         $summary = self::structure_summary( $elements );
+
         return new WP_REST_Response( [
             'source_id' => $source_id,
             'template_id' => $template_id,
@@ -98,8 +111,8 @@ final class Elementize_Templates {
             'insertable' => empty( $summary['embedded_template_references'] ),
             'warnings' => self::warnings( $summary ),
             'structure' => $summary,
-            'editable_content_fields' => $content,
-            'design_controls' => $design,
+            'editable_content_fields' => array_slice( Elementize_Content::discover_items( $elements ), 0, self::MAX_CONTENT_FIELDS ),
+            'design_controls' => Elementize_Design::controls_for_template( $elements, self::MAX_CONTENT_FIELDS ),
             'creative_guidelines' => Elementize_Design::guidelines(),
         ], 200 );
     }
@@ -111,9 +124,14 @@ final class Elementize_Templates {
         if ( is_wp_error( $sources ) ) return $sources;
         $source = $sources[ $source_id ] ?? null;
         if ( ! is_object( $source ) ) return new WP_Error( 'elementize_template_source_not_found', 'The requested Elementor template source is not available.', [ 'status' => 404 ] );
+
         $provider = self::source_provider( $source_id, $source );
-        if ( ! in_array( $provider, [ 'pixfort', 'local' ], true ) ) return new WP_Error( 'elementize_template_source_forbidden', 'Elementize only imports detected Pixfort or local Elementor template sources.', [ 'status' => 400 ] );
-        if ( ! method_exists( $source, 'get_data' ) ) return new WP_Error( 'elementize_template_source_unsupported', 'The template source cannot provide Elementor template data.', [ 'status' => 503 ] );
+        if ( ! in_array( $provider, [ 'pixfort', 'local' ], true ) ) {
+            return new WP_Error( 'elementize_template_source_forbidden', 'Elementize only imports detected Pixfort or local Elementor template sources.', [ 'status' => 400 ] );
+        }
+        if ( ! method_exists( $source, 'get_data' ) ) {
+            return new WP_Error( 'elementize_template_source_unsupported', 'The template source cannot provide Elementor template data.', [ 'status' => 503 ] );
+        }
 
         $data = null;
         $attempts = [
@@ -122,19 +140,21 @@ final class Elementize_Templates {
             [ 'id' => $template_id, 'display' => true ],
         ];
         foreach ( $attempts as $args ) {
-            try { $candidate = $source->get_data( $args ); }
-            catch ( Throwable $e ) { $candidate = null; }
-            if ( is_wp_error( $candidate ) ) continue;
-            if ( is_array( $candidate ) ) {
-                $elements = self::extract_elements( $candidate );
-                if ( is_array( $elements ) ) { $data = $candidate; break; }
-            }
+            try { $candidate = $source->get_data( $args ); } catch ( Throwable $e ) { $candidate = null; }
+            if ( is_wp_error( $candidate ) || ! is_array( $candidate ) ) continue;
+            $elements = self::extract_elements( $candidate );
+            if ( is_array( $elements ) ) { $data = $candidate; break; }
         }
+
         if ( ! is_array( $data ) ) return new WP_Error( 'elementize_template_data_unavailable', 'The selected template source did not return usable Elementor content.', [ 'status' => 503 ] );
         $elements = self::extract_elements( $data );
         if ( ! is_array( $elements ) || ! $elements ) return new WP_Error( 'elementize_template_content_empty', 'The selected template contains no insertable Elementor elements.', [ 'status' => 400 ] );
+
         $summary = self::structure_summary( $elements );
-        if ( ! empty( $summary['embedded_template_references'] ) ) return new WP_Error( 'elementize_template_embedded_reference', 'This template contains an embedded/global template reference. Elementize will not insert shared template dependencies into a managed local section.', [ 'status' => 400, 'references' => $summary['embedded_template_references'] ] );
+        if ( ! empty( $summary['embedded_template_references'] ) ) {
+            return new WP_Error( 'elementize_template_embedded_reference', 'This template contains an embedded/global template reference. Elementize will not insert shared template dependencies into a managed local section.', [ 'status' => 400, 'references' => $summary['embedded_template_references'] ] );
+        }
+
         return [
             'source_id' => $source_id,
             'template_id' => $template_id,
@@ -176,27 +196,26 @@ final class Elementize_Templates {
             if ( ! is_array( $raw ) ) continue;
             $item = self::normalize_item( self::PIXFORT_SOURCE_ID, 'pixfort', $raw );
             if ( ! $item ) continue;
-            $key_id = $item['source_id'] . ':' . $item['template_id'];
-            if ( isset( $seen[ $key_id ] ) ) continue;
-            $seen[ $key_id ] = true;
+            $dedupe = $item['source_id'] . ':' . $item['template_id'];
+            if ( isset( $seen[ $dedupe ] ) ) continue;
+            $seen[ $dedupe ] = true;
             $items[] = $item;
         }
 
         $sources = self::sources();
         if ( is_wp_error( $sources ) ) return $sources;
         foreach ( $sources as $source_id => $source ) {
-            $provider = self::source_provider( $source_id, $source );
+            $provider = self::source_provider( (string) $source_id, $source );
             if ( ! in_array( $provider, [ 'pixfort', 'local' ], true ) || ! method_exists( $source, 'get_items' ) ) continue;
-            try { $source_items = $source->get_items(); }
-            catch ( Throwable $e ) { $source_items = []; }
+            try { $source_items = $source->get_items(); } catch ( Throwable $e ) { $source_items = []; }
             if ( is_wp_error( $source_items ) || ! is_array( $source_items ) ) continue;
             foreach ( array_slice( $source_items, 0, self::MAX_ITEMS ) as $raw ) {
                 if ( ! is_array( $raw ) ) continue;
                 $item = self::normalize_item( (string) $source_id, $provider, $raw );
                 if ( ! $item ) continue;
-                $key_id = $item['source_id'] . ':' . $item['template_id'];
-                if ( isset( $seen[ $key_id ] ) ) continue;
-                $seen[ $key_id ] = true;
+                $dedupe = $item['source_id'] . ':' . $item['template_id'];
+                if ( isset( $seen[ $dedupe ] ) ) continue;
+                $seen[ $dedupe ] = true;
                 $items[] = $item;
             }
         }
@@ -206,7 +225,10 @@ final class Elementize_Templates {
     }
 
     private static function sources() {
-        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->templates_manager ) ) return new WP_Error( 'elementize_elementor_required', 'Elementor template manager is unavailable.', [ 'status' => 503 ] );
+        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->templates_manager ) ) {
+            return new WP_Error( 'elementize_elementor_required', 'Elementor template manager is unavailable.', [ 'status' => 503 ] );
+        }
+
         $manager = \Elementor\Plugin::$instance->templates_manager;
         $sources = [];
         try {
@@ -224,7 +246,11 @@ final class Elementize_Templates {
                         $property = $reflection->getProperty( $property_name );
                         $property->setAccessible( true );
                         $registered = $property->getValue( $manager );
-                        if ( is_array( $registered ) ) foreach ( $registered as $id => $source ) if ( is_object( $source ) ) $sources[ sanitize_key( (string) $id ) ] = $source;
+                        if ( is_array( $registered ) ) {
+                            foreach ( $registered as $id => $source ) {
+                                if ( is_object( $source ) ) $sources[ sanitize_key( (string) $id ) ] = $source;
+                            }
+                        }
                         break 2;
                     }
                     $reflection = $reflection->getParentClass();
@@ -337,7 +363,9 @@ final class Elementize_Templates {
 
     private static function load_pixfort_template( string $template_id ) {
         $record = self::pixfort_template_record( $template_id );
-        if ( ! is_array( $record ) ) return new WP_Error( 'elementize_pixfort_template_not_found', 'The requested Pixfort template is not present in the installed Pixfort library catalogue.', [ 'status' => 404 ] );
+        if ( ! is_array( $record ) ) {
+            return new WP_Error( 'elementize_pixfort_template_not_found', 'The requested Pixfort template is not present in the installed Pixfort library catalogue.', [ 'status' => 404 ] );
+        }
 
         $payload = self::fetch_pixfort_template_payload( $record );
         if ( is_wp_error( $payload ) ) return $payload;
@@ -351,7 +379,9 @@ final class Elementize_Templates {
         }
 
         $elements = self::extract_elements( $payload );
-        if ( ! is_array( $elements ) || ! $elements ) return new WP_Error( 'elementize_template_content_empty', 'The selected Pixfort template contains no insertable Elementor elements.', [ 'status' => 400 ] );
+        if ( ! is_array( $elements ) || ! $elements ) {
+            return new WP_Error( 'elementize_template_content_empty', 'The selected Pixfort template contains no insertable Elementor elements.', [ 'status' => 400 ] );
+        }
 
         $summary = self::structure_summary( $elements );
         if ( ! empty( $summary['embedded_template_references'] ) ) {
@@ -392,12 +422,18 @@ final class Elementize_Templates {
         }
 
         $url = self::pixfort_import_base_url() . ltrim( $file, '/' );
+        $parts = wp_parse_url( $url );
+        if ( ! is_array( $parts ) || 'https' !== strtolower( (string) ( $parts['scheme'] ?? '' ) ) || 'import.pixfort.com' !== strtolower( (string) ( $parts['host'] ?? '' ) ) ) {
+            return new WP_Error( 'elementize_pixfort_template_url_invalid', 'The resolved Pixfort template URL is outside the trusted Pixfort import host.', [ 'status' => 503 ] );
+        }
+
+        // Match Pixfort's native transport closely, but request one extra byte so oversized/truncated JSON is detected explicitly.
         $args = [
             'timeout' => 40,
             'redirection' => 3,
             'sslverify' => true,
             'reject_unsafe_urls' => true,
-            'limit_response_size' => self::MAX_REMOTE_BYTES,
+            'limit_response_size' => self::MAX_REMOTE_BYTES + 1,
         ];
         $filtered = apply_filters( 'pixfort_el_remote_get_args', $args );
         if ( is_array( $filtered ) ) $args = array_merge( $args, $filtered );
@@ -405,26 +441,67 @@ final class Elementize_Templates {
         $args['redirection'] = min( 3, max( 0, absint( $args['redirection'] ?? 3 ) ) );
         $args['sslverify'] = true;
         $args['reject_unsafe_urls'] = true;
-        $args['limit_response_size'] = self::MAX_REMOTE_BYTES;
+        $args['limit_response_size'] = self::MAX_REMOTE_BYTES + 1;
 
-        $response = wp_safe_remote_get( $url, $args );
+        $response = wp_remote_get( $url, $args );
         if ( is_wp_error( $response ) ) {
             return new WP_Error( 'elementize_pixfort_template_fetch_failed', 'Pixfort template download failed: ' . $response->get_error_message(), [ 'status' => 503 ] );
         }
+
         $status = (int) wp_remote_retrieve_response_code( $response );
-        if ( 200 !== $status ) return new WP_Error( 'elementize_pixfort_template_fetch_status', 'Pixfort template download returned HTTP ' . $status . '.', [ 'status' => 503 ] );
+        if ( 200 !== $status ) {
+            return new WP_Error( 'elementize_pixfort_template_fetch_status', 'Pixfort template download returned HTTP ' . $status . '.', [ 'status' => 503 ] );
+        }
 
         $body = wp_remote_retrieve_body( $response );
         if ( ! is_string( $body ) || '' === $body ) return new WP_Error( 'elementize_pixfort_template_empty_response', 'Pixfort returned an empty template response.', [ 'status' => 503 ] );
-        if ( strlen( $body ) > self::MAX_REMOTE_BYTES ) return new WP_Error( 'elementize_pixfort_template_too_large', 'The Pixfort template response exceeds Elementize limits.', [ 'status' => 413 ] );
 
-        $payload = json_decode( $body, true );
-        if ( ! is_array( $payload ) ) return new WP_Error( 'elementize_pixfort_template_invalid_json', 'Pixfort returned invalid template JSON.', [ 'status' => 503 ] );
-        if ( isset( $payload['error'] ) ) return new WP_Error( 'elementize_pixfort_template_remote_error', sanitize_text_field( (string) $payload['error'] ), [ 'status' => 503 ] );
+        $bytes = strlen( $body );
+        if ( $bytes > self::MAX_REMOTE_BYTES ) {
+            return new WP_Error( 'elementize_pixfort_template_too_large', 'The Pixfort template response exceeds Elementize limits.', [ 'status' => 413, 'response_bytes' => $bytes ] );
+        }
+
+        $payload = self::decode_pixfort_json( $body );
+        if ( is_wp_error( $payload ) ) {
+            $data = $payload->get_error_data();
+            $data = is_array( $data ) ? $data : [];
+            $data['status'] = 503;
+            $data['response_bytes'] = $bytes;
+            $data['content_type'] = sanitize_text_field( (string) wp_remote_retrieve_header( $response, 'content-type' ) );
+            $data['content_encoding'] = sanitize_text_field( (string) wp_remote_retrieve_header( $response, 'content-encoding' ) );
+            $data['template_file'] = sanitize_text_field( $file );
+            return new WP_Error( 'elementize_pixfort_template_invalid_json', 'Pixfort returned invalid template JSON.', $data );
+        }
+
+        if ( isset( $payload['error'] ) ) {
+            return new WP_Error( 'elementize_pixfort_template_remote_error', sanitize_text_field( (string) $payload['error'] ), [ 'status' => 503 ] );
+        }
         if ( empty( $payload['data'] ) && empty( $payload['content'] ) && empty( $payload['elements'] ) ) {
             return new WP_Error( 'elementize_pixfort_template_data_missing', 'Pixfort returned a template response without Elementor content.', [ 'status' => 503 ] );
         }
         return $payload;
+    }
+
+    private static function decode_pixfort_json( string $body ) {
+        // Some JSON exporters prepend a UTF-8 BOM. PHP json_decode treats that as a syntax error.
+        if ( str_starts_with( $body, "\xEF\xBB\xBF" ) ) $body = substr( $body, 3 );
+        $body = trim( $body );
+        if ( '' === $body ) return new WP_Error( 'elementize_pixfort_template_empty_json', 'Pixfort returned an empty JSON body.', [ 'json_error' => 'Empty body' ] );
+
+        // Defensive fallback for a server/proxy that returns raw gzip bytes without a usable Content-Encoding header.
+        if ( strlen( $body ) >= 2 && "\x1f\x8b" === substr( $body, 0, 2 ) && function_exists( 'gzdecode' ) ) {
+            $decoded = @gzdecode( $body );
+            if ( is_string( $decoded ) && '' !== $decoded && strlen( $decoded ) <= self::MAX_REMOTE_BYTES ) $body = $decoded;
+        }
+
+        $payload = json_decode( $body, true, 512, JSON_BIGINT_AS_STRING );
+        if ( is_array( $payload ) ) return $payload;
+
+        $kind = preg_match( '/^\s*</', $body ) ? 'html_or_xml' : 'non_json';
+        return new WP_Error( 'elementize_pixfort_template_json_decode_failed', 'Pixfort template JSON could not be decoded.', [
+            'json_error' => function_exists( 'json_last_error_msg' ) ? json_last_error_msg() : (string) json_last_error(),
+            'response_kind' => $kind,
+        ] );
     }
 
     private static function pixfort_import_base_url(): string {
@@ -439,6 +516,7 @@ final class Elementize_Templates {
     private static function normalize_item( string $source_id, string $provider, array $raw ): ?array {
         $id = $raw['template_id'] ?? $raw['id'] ?? null;
         if ( ! is_scalar( $id ) || '' === trim( (string) $id ) ) return null;
+
         $title = (string) ( $raw['title'] ?? $raw['name'] ?? ( 'Template ' . $id ) );
         $subtype = (string) ( $raw['subtype'] ?? $raw['subType'] ?? $raw['sub_type'] ?? '' );
         $type = self::normalized_type( (string) ( $raw['type'] ?? $raw['template_type'] ?? '' ), $subtype, $title, 'pixfort' === $provider );
@@ -447,6 +525,7 @@ final class Elementize_Templates {
             foreach ( self::keyword_values( $raw[ $key ] ?? null ) as $part ) $keywords[] = $part;
         }
         $thumbnail = $raw['thumbnail'] ?? $raw['thumbnail_url'] ?? $raw['preview'] ?? null;
+
         return [
             'source_id' => $source_id,
             'template_id' => (string) $id,
@@ -467,6 +546,7 @@ final class Elementize_Templates {
             return $out;
         }
         if ( ! is_string( $value ) || '' === trim( $value ) ) return [];
+
         $trimmed = trim( $value );
         if ( str_starts_with( $trimmed, '[' ) || str_starts_with( $trimmed, '{' ) ) {
             $decoded = json_decode( $trimmed, true );
@@ -493,13 +573,17 @@ final class Elementize_Templates {
     }
 
     private static function extract_elements( array $data ): ?array {
-        foreach ( [ 'content', 'elements' ] as $key ) if ( isset( $data[ $key ] ) && is_array( $data[ $key ] ) ) return array_values( $data[ $key ] );
+        foreach ( [ 'content', 'elements' ] as $key ) {
+            if ( isset( $data[ $key ] ) && is_array( $data[ $key ] ) ) return array_values( $data[ $key ] );
+        }
         if ( isset( $data['data'] ) && is_array( $data['data'] ) ) return self::extract_elements( $data['data'] );
         return null;
     }
 
     private static function template_title_from_data( array $data, string $fallback ): string {
-        foreach ( [ 'title', 'name' ] as $key ) if ( is_string( $data[ $key ] ?? null ) && '' !== trim( $data[ $key ] ) ) return wp_strip_all_tags( $data[ $key ] );
+        foreach ( [ 'title', 'name' ] as $key ) {
+            if ( is_string( $data[ $key ] ?? null ) && '' !== trim( $data[ $key ] ) ) return wp_strip_all_tags( $data[ $key ] );
+        }
         return 'Template ' . $fallback;
     }
 
@@ -519,7 +603,9 @@ final class Elementize_Templates {
             if ( '' !== $widget ) {
                 $summary['widget_count']++;
                 $summary['widgets'][ $widget ] = ( $summary['widgets'][ $widget ] ?? 0 ) + 1;
-                if ( false !== strpos( $widget, 'template' ) || false !== strpos( $widget, 'global' ) ) $summary['embedded_template_references'][] = (string) ( $element['id'] ?? $widget );
+                if ( false !== strpos( $widget, 'template' ) || false !== strpos( $widget, 'global' ) ) {
+                    $summary['embedded_template_references'][] = (string) ( $element['id'] ?? $widget );
+                }
             }
             self::scan_values( $element['settings'] ?? [], $summary, [] );
             if ( is_array( $element['elements'] ?? null ) ) self::summarize_elements( $element['elements'], $summary, $depth + 1 );
