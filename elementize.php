@@ -21,6 +21,8 @@ require_once __DIR__ . '/includes/runtime/elementize-chatgpt-action-schema.inc';
 Elementize_ChatGPT_Action_Schema::init();
 require_once __DIR__ . '/includes/runtime/elementize-chatgpt-vision.inc';
 Elementize_ChatGPT_Vision::init();
+require_once __DIR__ . '/includes/runtime/elementize-chatgpt-vision-dispatch.inc';
+Elementize_ChatGPT_Vision_Dispatch::init();
 require_once __DIR__ . '/includes/runtime/elementize-template-response.inc';
 Elementize_Template_Response::init();
 
