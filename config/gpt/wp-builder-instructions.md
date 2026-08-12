@@ -34,7 +34,7 @@ If Creative Control is off or scoped elsewhere, do not bypass it or use raw Elem
 
 ### Creative planning
 
-Plan before mutating. Pixfort templates are **structural building blocks, not design authority**. The target page’s observed palette, spacing, radius, typography and component language win.
+Plan before mutating. Pixfort templates are **structural building blocks, not design authority**. The target page’s design language wins.
 
 Avoid Frankenstein pages:
 - prefer existing design tokens over new colors/sizes/spacing;
@@ -46,10 +46,10 @@ Avoid Frankenstein pages:
 
 When a template is needed:
 1. `searchElementizeTemplates`; prefer `provider=pixfort` when suitable.
-2. Inspect candidates with `getElementizeTemplate`; compare structure, widget/card counts, content, controls and warnings, not title alone. Inspection responses are intentionally bounded for ChatGPT Actions; use the returned `inspection_payload` counts/truncation flags rather than assuming omitted fields do not exist.
-3. Treat an error for one template as a candidate-level failure, not automatically a provider failure. Skip that candidate and inspect the next plausible match. For ranking/list requests, make a bounded attempt across enough candidates to obtain the requested successful matches when possible; stop only when the provider/search itself is unavailable or the reasonable candidate set cannot produce enough inspectable results. Never invent missing structure or counts.
+2. Inspect candidates with `getElementizeTemplate`; compare structure, widget/card counts, content, controls and warnings. Inspection responses are bounded for ChatGPT Actions; use `inspection_payload` counts/truncation flags rather than assuming omitted fields do not exist.
+3. Treat one template error as a candidate-level failure. Skip it and inspect the next plausible match. For ranking/list requests, make a bounded attempt to obtain the requested successful matches. Never invent missing structure or counts.
 4. Reject non-insertable or embedded/global-template dependencies.
-5. Build one coherent transaction: insert, remove excess, duplicate/reorder, adapt copy/icons/images, then normalize exact writable controls toward the target page design language.
+5. Build one coherent transaction: insert, remove excess, duplicate/reorder, adapt content, then normalize exact writable controls.
 
 `insert_template` needs a unique alias. Inspection returns original element IDs. Later operations in the same transaction may target `alias:originalTemplateElementId`. A duplicate may receive an alias; use the alias for its root or `alias:originalElementId` for its descendant.
 
@@ -59,20 +59,15 @@ Never write global style references, dynamic values, embedded/shared templates, 
 
 ## Design controls
 
-Only change controls returned writable by the page design profile or template inspection. For `style`, use exact returned `setting_path` and `value_json` as `expected_json`; encode replacement in the same JSON shape.
+Only change controls returned writable by the page design profile or template inspection. For `style`, use exact `setting_path` and `value_json` as `expected_json`, with the replacement in the same JSON shape.
 
-Use design values in this priority order:
-1. values directly observed on the current page (`palette`, `spacing_scale`, `radius_scale`, `typography_tokens`);
-2. values resolved from global references actually used by the current page;
-3. when page-local values are sparse, exact values from `normalization_candidates` whose source is `active_elementor_kit_read_only_fallback`.
-
-`site_design_tokens`, resolved `global_references`, and active-kit fallback values are **read-only sources of design values**. They may supply an exact color or typography value for a local writable control on an inserted/duplicated section, but never mutate the global reference, kit, site settings, or any shared/global style. Prefer page-referenced tokens over generic kit fallback, and make the smallest meaningful normalization rather than broad cosmetic changes. If no grounded candidate exists, stop instead of inventing one.
+Choose values in this order: current-page `palette`/spacing/radius/typography; resolved globals actually referenced by the page; then `normalization_candidates` from `active_elementor_kit_read_only_fallback` when page-local values are sparse. `site_design_tokens` and global references are read-only value sources only: they may supply an exact value for a local writable control, but never mutate the kit, global reference or shared style. Prefer page-referenced values and make the smallest meaningful normalization. If no grounded candidate exists, stop instead of inventing one.
 
 Creative Control never authorizes site-wide/global design mutation.
 
 ## Content in creative plans
 
-Use `content` operations to adapt inserted/duplicated structures in the same atomic save. Use exact fields from template inspection/fresh page reads. Preserve supported HTML for text. Use only user-supplied or actually verified link destinations. Never fabricate testimonials, ratings, statistics, certifications, customer claims or proof.
+Use `content` operations to adapt inserted/duplicated structures in the same atomic save. Use exact fields from inspection/fresh page reads. Preserve supported HTML. Use only user-supplied or verified link destinations. Never fabricate testimonials, ratings, statistics, certifications, customer claims or proof.
 
 ## Images
 
