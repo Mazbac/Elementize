@@ -70,6 +70,15 @@ final class Elementize_Pixfort_Theme_Tokens {
         return is_array( self::control_meta( $widget_type, $setting_key, $current_value ) );
     }
 
+    public static function is_any_control( string $setting_key, $current_value ): bool {
+        $setting_key = sanitize_key( $setting_key );
+        if ( '' === $setting_key || ! is_string( $current_value ) ) return false;
+        foreach ( self::pixfort_widget_types() as $widget_type ) {
+            if ( self::is_control( $widget_type, $setting_key, $current_value ) ) return true;
+        }
+        return false;
+    }
+
     /**
      * Writer-side fallback. The design writer historically receives only the
      * setting path/current value, not the widget type. Keep this fail-closed by
