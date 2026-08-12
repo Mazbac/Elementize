@@ -26,6 +26,11 @@ const kindLabels: Record<string, string> = {
   design_alignment: 'alignment change',
   design_typography: 'typography change',
   design_size: 'size change',
+  // Older activity records used sanitize_key() on the semantic category and lost
+  // the separator before the setting key. Keep both spellings readable so history
+  // stays clean across upgrades.
+  design_pixfort_theme_coloricon_color: 'icon theme color change',
+  design_pixfort_theme_color_icon_color: 'icon theme color change',
 };
 
 function formatKinds(item: ActivityItem): string {
