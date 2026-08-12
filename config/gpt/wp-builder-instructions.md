@@ -46,9 +46,10 @@ Avoid Frankenstein pages:
 
 When a template is needed:
 1. `searchElementizeTemplates`; prefer `provider=pixfort` when suitable.
-2. Inspect candidates with `getElementizeTemplate`; compare structure, widget/card counts, content, controls and warnings, not title alone.
-3. Reject non-insertable or embedded/global-template dependencies.
-4. Build one coherent transaction: insert, remove excess, duplicate/reorder, adapt copy/icons/images, then normalize exact writable controls toward the target page design language.
+2. Inspect candidates with `getElementizeTemplate`; compare structure, widget/card counts, content, controls and warnings, not title alone. Inspection responses are intentionally bounded for ChatGPT Actions; use the returned `inspection_payload` counts/truncation flags rather than assuming omitted fields do not exist.
+3. Treat an error for one template as a candidate-level failure, not automatically a provider failure. Skip that candidate and inspect the next plausible match. For ranking/list requests, make a bounded attempt across enough candidates to obtain the requested successful matches when possible; stop only when the provider/search itself is unavailable or the reasonable candidate set cannot produce enough inspectable results. Never invent missing structure or counts.
+4. Reject non-insertable or embedded/global-template dependencies.
+5. Build one coherent transaction: insert, remove excess, duplicate/reorder, adapt copy/icons/images, then normalize exact writable controls toward the target page design language.
 
 `insert_template` needs a unique alias. Inspection returns original element IDs. Later operations in the same transaction may target `alias:originalTemplateElementId`. A duplicate may receive an alias; use the alias for its root or `alias:originalElementId` for its descendant.
 
