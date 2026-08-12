@@ -86,20 +86,72 @@ final class Elementize_Creative {
         if ( is_wp_error( $revision ) ) return $revision;
         if ( ! self::store_revision_snapshots( (int) $revision, $before, $managed_before ) ) return new WP_Error( 'elementize_creative_snapshot_failed', 'Elementize could not persist the pre-change creative snapshot, so the page was not modified.', [ 'status' => 500, 'revision_id' => $revision ] );
 
+        // Elementor does not persist the exact array passed to Document::save(). During save it runs the
+        // document/save/data filter and normalizes every element through get_data_for_save() before writing
+        // _elementor_data. Capture both stages so verification can remain exact without treating legitimate
+        // Elementor normalization of newly imported templates as corruption.
+        $save_input = null;
+        $saved_editor_data = null;
+        $capture_save_input = static function( $data, $saving_document ) use ( $id, &$save_input ) {
+            if ( ! is_array( $data ) || ! is_object( $saving_document ) || ! method_exists( $saving_document, 'get_main_id' ) ) return $data;
+            try { $saving_id = absint( $saving_document->get_main_id() ); } catch ( Throwable $ignored ) { $saving_id = 0; }
+            if ( $saving_id === $id && isset( $data['elements'] ) && is_array( $data['elements'] ) ) $save_input = $data['elements'];
+            return $data;
+        };
+        $capture_saved_editor_data = static function( $post_id, $editor_data ) use ( $id, &$saved_editor_data ): void {
+            if ( absint( $post_id ) === $id && is_array( $editor_data ) ) $saved_editor_data = $editor_data;
+        };
+        add_filter( 'elementor/document/save/data', $capture_save_input, PHP_INT_MAX, 2 );
+        add_action( 'elementor/editor/after_save', $capture_saved_editor_data, PHP_INT_MAX, 2 );
         try { $saved = $document->save( [ 'elements' => $working ] ); }
         catch ( Throwable $e ) {
             $rollback = self::restore_page( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_creative_save_failed', 'Elementor could not save the creative transaction: ' . $e->getMessage(), [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
+        } finally {
+            remove_filter( 'elementor/document/save/data', $capture_save_input, PHP_INT_MAX );
+            remove_action( 'elementor/editor/after_save', $capture_saved_editor_data, PHP_INT_MAX );
         }
         if ( ! $saved ) {
             $rollback = self::restore_page( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_creative_save_failed', 'Elementor refused to save the creative transaction.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
 
-        $persisted = Elementize_Core::persisted_elements( $id );
-        if ( is_wp_error( $persisted ) || ! hash_equals( $after_hash_expected, Elementize_Core::hash_elements( is_array( $persisted ) ? $persisted : [] ) ) ) {
+        $save_input_hash = is_array( $save_input ) ? Elementize_Core::hash_elements( $save_input ) : '';
+        if ( ! is_array( $save_input ) || ! hash_equals( $after_hash_expected, $save_input_hash ) ) {
             $rollback = self::restore_page( $document, $id, $before, $before_hash );
-            return new WP_Error( 'elementize_creative_verification_failed', 'Persisted Elementor data did not exactly match the validated creative transaction, so Elementize attempted to restore the pre-change page.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
+            return new WP_Error( 'elementize_creative_save_input_changed', 'Another Elementor save filter changed the validated creative transaction before persistence, so Elementize restored the pre-change page.', [
+                'status' => 500,
+                'revision_id' => $revision,
+                'rollback_verified' => $rollback,
+                'validated_hash' => $after_hash_expected,
+                'save_input_hash' => $save_input_hash,
+            ] );
+        }
+        if ( ! is_array( $saved_editor_data ) ) {
+            $rollback = self::restore_page( $document, $id, $before, $before_hash );
+            return new WP_Error( 'elementize_creative_normalization_capture_failed', 'Elementor saved the creative transaction but did not expose the normalized editor data required for exact verification, so Elementize restored the pre-change page.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
+        }
+
+        $persisted = Elementize_Core::persisted_elements( $id );
+        $normalized_expected_hash = Elementize_Core::hash_elements( $saved_editor_data );
+        $persisted_hash = is_array( $persisted ) ? Elementize_Core::hash_elements( $persisted ) : '';
+        $normalized_hash_verified = is_array( $persisted ) && hash_equals( $normalized_expected_hash, $persisted_hash );
+        $structure_verified = is_array( $persisted ) && self::same_structure( $working, $persisted );
+        $changes_verified = is_array( $persisted ) && self::verify_persisted_changes( $persisted, $changes );
+        if ( is_wp_error( $persisted ) || ! $normalized_hash_verified || ! $structure_verified || ! $changes_verified ) {
+            $rollback = self::restore_page( $document, $id, $before, $before_hash );
+            return new WP_Error( 'elementize_creative_verification_failed', 'Persisted Elementor data did not verify against Elementor\'s normalized save result and the validated creative structure, so Elementize restored the pre-change page.', [
+                'status' => 500,
+                'revision_id' => $revision,
+                'rollback_verified' => $rollback,
+                'save_input_verified' => true,
+                'normalization_capture_verified' => true,
+                'normalized_hash_verified' => $normalized_hash_verified,
+                'structural_identity_verified' => $structure_verified,
+                'change_targets_verified' => $changes_verified,
+                'normalized_expected_hash' => $normalized_expected_hash,
+                'persisted_hash' => $persisted_hash,
+            ] );
         }
 
         if ( ! self::save_managed_roots( $id, $managed ) ) {
@@ -110,7 +162,7 @@ final class Elementize_Creative {
 
         Elementize_Core::regenerate_css( $id );
         clean_post_cache( $id );
-        $after_hash = Elementize_Core::hash_elements( $persisted );
+        $after_hash = $persisted_hash;
         $activity_id = self::record_activity( $id, (int) $revision, $before_hash, $after_hash, $changes, sanitize_text_field( (string) $request->get_param( 'plan_label' ) ) );
         if ( is_wp_error( $activity_id ) ) {
             $rollback = self::restore_page( $document, $id, $before, $before_hash );
@@ -124,14 +176,21 @@ final class Elementize_Creative {
             'page' => Elementize_Core::page_identity( $id ),
             'revision_id' => (int) $revision,
             'activity_id' => $activity_id,
+            'previous_content_hash' => $before_hash,
             'content_hash' => $after_hash,
             'persisted_verification' => true,
+            'save_input_verification' => true,
+            'normalization_verified' => true,
+            'structural_identity_verified' => true,
+            'change_target_verification' => true,
+            'managed_root_verification' => true,
             'capability_revision' => $capability_revision,
             'operation_count' => count( $operations ),
             'changes' => $changes,
             'aliases' => self::public_aliases( $aliases ),
             'managed_root_ids' => array_values( array_keys( $managed ) ),
             'quality' => self::quality_summary( $persisted, $managed ),
+            'visual_render_verified' => false,
         ], 200 );
     }
 
@@ -359,6 +418,52 @@ final class Elementize_Creative {
         if ( true !== $result ) return self::operation_error( $index, 'The content target no longer exists.' );
         $changes[] = [ 'kind' => $kind, 'element_id' => $id, 'setting_path' => $path, 'old_value' => $old, 'new_value' => $new ];
         return true;
+    }
+
+    private static function same_structure( array $expected, array $persisted ): bool {
+        return Elementize_Design::canonical_json( self::structure_identity( $expected ) ) === Elementize_Design::canonical_json( self::structure_identity( $persisted ) );
+    }
+
+    private static function structure_identity( array $elements ): array {
+        $out = [];
+        foreach ( $elements as $element ) {
+            if ( ! is_array( $element ) ) continue;
+            $out[] = [
+                'id' => (string) ( $element['id'] ?? '' ),
+                'elType' => (string) ( $element['elType'] ?? '' ),
+                'widgetType' => (string) ( $element['widgetType'] ?? '' ),
+                'elements' => is_array( $element['elements'] ?? null ) ? self::structure_identity( $element['elements'] ) : [],
+            ];
+        }
+        return $out;
+    }
+
+    private static function verify_persisted_changes( array $persisted, array $changes ): bool {
+        foreach ( $changes as $change ) {
+            if ( ! is_array( $change ) ) return false;
+            $kind = sanitize_key( (string) ( $change['kind'] ?? '' ) );
+            if ( in_array( $kind, [ 'insert_template', 'remove_element', 'duplicate_element', 'move_element', 'reorder_children' ], true ) ) continue;
+            if ( ! str_starts_with( $kind, 'design_' ) && ! in_array( $kind, [ 'text', 'link', 'media', 'pixfort_icon' ], true ) ) continue;
+            $id = (string) ( $change['element_id'] ?? '' );
+            $node = '' !== $id ? Elementize_Tree::find_node( $persisted, $id ) : null;
+            if ( ! is_array( $node ) || ! is_array( $node['settings'] ?? null ) ) return false;
+            $found = false;
+            $value = self::setting_value( $node['settings'], (array) ( $change['setting_path'] ?? [] ), $found );
+            if ( ! $found || Elementize_Design::canonical_json( $value ) !== Elementize_Design::canonical_json( $change['new_value'] ?? null ) ) return false;
+        }
+        return true;
+    }
+
+    private static function setting_value( array $settings, array $path, bool &$found ) {
+        $found = false;
+        if ( ! $path ) return null;
+        $cursor = $settings;
+        foreach ( $path as $part ) {
+            if ( ! is_array( $cursor ) || ! array_key_exists( $part, $cursor ) ) return null;
+            $cursor = $cursor[ $part ];
+        }
+        $found = true;
+        return $cursor;
     }
 
     private static function managed_roots( int $page_id ): array {
