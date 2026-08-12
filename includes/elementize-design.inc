@@ -6,6 +6,8 @@ final class Elementize_Design {
     private const MAX_VISITS = 24000;
     private const MAX_DEPTH = 80;
     private const MAX_PATH = 30;
+    private const MAX_GLOBAL_REFERENCES = 160;
+    private const MAX_SITE_TOKENS = 48;
 
     public static function init(): void {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 26 );
@@ -60,19 +62,42 @@ final class Elementize_Design {
             if ( 'radius' === $category ) self::count_numeric_values( $value, $radii );
             if ( 'typography' === $category ) self::count_typography_value( $control, $typography );
         }
+
+        $site_tokens = self::active_kit_tokens();
+        $global_references = self::global_references_for_elements( $elements, $element_filter );
+        $resolved_globals = self::resolve_global_references( $global_references, $site_tokens );
+        foreach ( (array) ( $resolved_globals['colors'] ?? [] ) as $reference ) {
+            $value = (string) ( $reference['value'] ?? '' );
+            if ( '' !== $value ) self::count_color_values( $value, $palette );
+        }
+        foreach ( (array) ( $resolved_globals['typography'] ?? [] ) as $reference ) {
+            foreach ( (array) ( $reference['values'] ?? [] ) as $key => $value ) {
+                if ( is_scalar( $value ) && '' !== trim( (string) $value ) ) {
+                    $token = sanitize_key( (string) $key ) . '=' . trim( (string) $value );
+                    $typography[ $token ] = ( $typography[ $token ] ?? 0 ) + 1;
+                }
+            }
+        }
+
         arsort( $palette );
         arsort( $spacing );
         arsort( $radii );
         arsort( $typography );
+
+        $page_palette = self::count_list( $palette, 16 );
+        $page_typography = self::count_list( $typography, 16 );
         return [
             'source' => 'observed_current_page',
             'controls_returned' => count( $controls ),
             'controls_truncated' => count( $controls ) >= $limit || (int) $state['visits'] >= self::MAX_VISITS,
-            'palette' => self::count_list( $palette, 16 ),
+            'palette' => $page_palette,
             'spacing_scale' => self::count_list( $spacing, 16 ),
             'radius_scale' => self::count_list( $radii, 12 ),
-            'typography_tokens' => self::count_list( $typography, 16 ),
+            'typography_tokens' => $page_typography,
             'controls' => $controls,
+            'global_references' => $resolved_globals,
+            'site_design_tokens' => $site_tokens,
+            'normalization_candidates' => self::normalization_candidates( $page_palette, $page_typography, $site_tokens ),
         ];
     }
 
@@ -134,7 +159,7 @@ final class Elementize_Design {
 
     public static function guidelines(): array {
         return [
-            'principle' => 'Use templates as structural building blocks, then normalize them to the visual language already observed on the target page. Prefer existing tokens over inventing new ones.',
+            'principle' => 'Use templates as structural building blocks, then normalize them to the visual language already observed on the target page. Prefer page-observed values first. When local page controls are sparse because Elementor globals provide the design language, use exact read-only active-kit tokens returned in normalization_candidates rather than inventing values. Never mutate global references.',
             'complexity_budget' => [
                 'max_creative_operations_per_transaction' => 50,
                 'max_nested_element_depth' => 80,
@@ -183,6 +208,213 @@ final class Elementize_Design {
 
     private static function control( string $category, string $id, string $widget, array $path, $value ): array {
         return [ 'category' => $category, 'element_id' => $id, 'widget_type' => $widget, 'setting_path' => array_values( $path ), 'setting_key' => (string) end( $path ), 'value' => $value, 'value_json' => self::canonical_json( $value ), 'writable_in_creative_mode' => true ];
+    }
+
+    private static function global_references_for_elements( array $elements, string $filter = '' ): array {
+        $references = [];
+        self::collect_global_references_elements( $elements, $filter, $references, 0 );
+        return array_slice( $references, 0, self::MAX_GLOBAL_REFERENCES );
+    }
+
+    private static function collect_global_references_elements( array $elements, string $filter, array &$references, int $depth ): void {
+        if ( $depth > self::MAX_DEPTH || count( $references ) >= self::MAX_GLOBAL_REFERENCES ) return;
+        foreach ( $elements as $element ) {
+            if ( count( $references ) >= self::MAX_GLOBAL_REFERENCES ) return;
+            if ( ! is_array( $element ) ) continue;
+            $id = trim( (string) ( $element['id'] ?? '' ) );
+            $matches = '' === $filter || $filter === $id;
+            if ( $matches && is_array( $element['settings'] ?? null ) ) {
+                self::collect_global_references_settings( $element['settings'], $id, (string) ( $element['widgetType'] ?? '' ), $references, 0 );
+            }
+            if ( '' === $filter || $filter !== $id ) {
+                if ( is_array( $element['elements'] ?? null ) ) self::collect_global_references_elements( $element['elements'], $filter, $references, $depth + 1 );
+            }
+        }
+    }
+
+    private static function collect_global_references_settings( $value, string $id, string $widget, array &$references, int $depth ): void {
+        if ( ! is_array( $value ) || $depth > 30 || count( $references ) >= self::MAX_GLOBAL_REFERENCES ) return;
+        foreach ( $value as $key => $child ) {
+            if ( '__globals__' === (string) $key && is_array( $child ) ) {
+                foreach ( $child as $setting_key => $reference ) {
+                    if ( count( $references ) >= self::MAX_GLOBAL_REFERENCES ) return;
+                    if ( ! is_string( $reference ) ) continue;
+                    $parsed = self::parse_global_reference( $reference );
+                    if ( ! $parsed ) continue;
+                    $references[] = [
+                        'element_id' => $id,
+                        'widget_type' => $widget,
+                        'setting_key' => sanitize_text_field( (string) $setting_key ),
+                        'reference' => $reference,
+                        'token_type' => $parsed['type'],
+                        'token_id' => $parsed['id'],
+                    ];
+                }
+                continue;
+            }
+            if ( is_array( $child ) ) self::collect_global_references_settings( $child, $id, $widget, $references, $depth + 1 );
+        }
+    }
+
+    private static function parse_global_reference( string $reference ): ?array {
+        if ( ! preg_match( '#^globals/(colors|typography)\?id=([A-Za-z0-9_-]{1,80})$#', trim( $reference ), $matches ) ) return null;
+        return [ 'type' => 'colors' === $matches[1] ? 'color' : 'typography', 'id' => (string) $matches[2] ];
+    }
+
+    private static function active_kit_tokens(): array {
+        $result = [
+            'source' => 'elementor_active_kit_read_only',
+            'available' => false,
+            'kit_id' => 0,
+            'palette' => [],
+            'typography' => [],
+            'writable' => false,
+        ];
+        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->kits_manager ) ) return $result;
+        $manager = \Elementor\Plugin::$instance->kits_manager;
+        if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_current_settings' ) ) return $result;
+        try {
+            if ( method_exists( $manager, 'get_active_id' ) ) $result['kit_id'] = absint( $manager->get_active_id() );
+            $system_colors = $manager->get_current_settings( 'system_colors' );
+            $custom_colors = $manager->get_current_settings( 'custom_colors' );
+            $system_typography = $manager->get_current_settings( 'system_typography' );
+            $custom_typography = $manager->get_current_settings( 'custom_typography' );
+        } catch ( Throwable $ignored ) {
+            return $result;
+        }
+
+        foreach ( [ 'system' => $system_colors, 'custom' => $custom_colors ] as $scope => $items ) {
+            foreach ( is_array( $items ) ? $items : [] as $item ) {
+                if ( count( $result['palette'] ) >= self::MAX_SITE_TOKENS ) break 2;
+                if ( ! is_array( $item ) ) continue;
+                $token_id = sanitize_key( (string) ( $item['_id'] ?? '' ) );
+                $color = trim( (string) ( $item['color'] ?? '' ) );
+                if ( '' === $token_id || ! self::safe_color( $color ) ) continue;
+                $result['palette'][] = [
+                    'token_id' => $token_id,
+                    'title' => sanitize_text_field( (string) ( $item['title'] ?? $token_id ) ),
+                    'value' => $color,
+                    'scope' => $scope,
+                    'reference' => 'globals/colors?id=' . $token_id,
+                    'read_only' => true,
+                ];
+            }
+        }
+
+        foreach ( [ 'system' => $system_typography, 'custom' => $custom_typography ] as $scope => $items ) {
+            foreach ( is_array( $items ) ? $items : [] as $item ) {
+                if ( count( $result['typography'] ) >= self::MAX_SITE_TOKENS ) break 2;
+                if ( ! is_array( $item ) ) continue;
+                $token_id = sanitize_key( (string) ( $item['_id'] ?? '' ) );
+                if ( '' === $token_id ) continue;
+                $values = self::typography_token_values( $item );
+                if ( ! $values ) continue;
+                $result['typography'][] = [
+                    'token_id' => $token_id,
+                    'title' => sanitize_text_field( (string) ( $item['title'] ?? $token_id ) ),
+                    'values' => $values,
+                    'scope' => $scope,
+                    'reference' => 'globals/typography?id=' . $token_id,
+                    'read_only' => true,
+                ];
+            }
+        }
+        $result['available'] = ! empty( $result['palette'] ) || ! empty( $result['typography'] );
+        return $result;
+    }
+
+    private static function typography_token_values( array $item ): array {
+        $allowed = [
+            'typography_font_family' => 'font_family',
+            'typography_font_size' => 'font_size',
+            'typography_font_weight' => 'font_weight',
+            'typography_text_transform' => 'text_transform',
+            'typography_font_style' => 'font_style',
+            'typography_line_height' => 'line_height',
+            'typography_letter_spacing' => 'letter_spacing',
+            'typography_word_spacing' => 'word_spacing',
+        ];
+        $values = [];
+        foreach ( $allowed as $source_key => $target_key ) {
+            if ( ! array_key_exists( $source_key, $item ) ) continue;
+            $value = $item[ $source_key ];
+            if ( '' === $value || null === $value ) continue;
+            if ( ! self::bounded_css_value( $value, 0 ) ) continue;
+            $values[ $target_key ] = $value;
+        }
+        return $values;
+    }
+
+    private static function resolve_global_references( array $references, array $site_tokens ): array {
+        $color_index = [];
+        foreach ( (array) ( $site_tokens['palette'] ?? [] ) as $token ) {
+            if ( is_array( $token ) && '' !== (string) ( $token['token_id'] ?? '' ) ) $color_index[ (string) $token['token_id'] ] = $token;
+        }
+        $typography_index = [];
+        foreach ( (array) ( $site_tokens['typography'] ?? [] ) as $token ) {
+            if ( is_array( $token ) && '' !== (string) ( $token['token_id'] ?? '' ) ) $typography_index[ (string) $token['token_id'] ] = $token;
+        }
+
+        $resolved = [ 'count' => count( $references ), 'colors' => [], 'typography' => [], 'unresolved' => [] ];
+        foreach ( $references as $reference ) {
+            if ( ! is_array( $reference ) ) continue;
+            $type = (string) ( $reference['token_type'] ?? '' );
+            $token_id = (string) ( $reference['token_id'] ?? '' );
+            $token = 'color' === $type ? ( $color_index[ $token_id ] ?? null ) : ( $typography_index[ $token_id ] ?? null );
+            if ( ! is_array( $token ) ) {
+                $resolved['unresolved'][] = $reference;
+                continue;
+            }
+            $entry = array_merge( $reference, [
+                'title' => (string) ( $token['title'] ?? $token_id ),
+                'scope' => (string) ( $token['scope'] ?? '' ),
+                'read_only' => true,
+            ] );
+            if ( 'color' === $type ) {
+                $entry['value'] = (string) ( $token['value'] ?? '' );
+                $resolved['colors'][] = $entry;
+            } else {
+                $entry['values'] = (array) ( $token['values'] ?? [] );
+                $resolved['typography'][] = $entry;
+            }
+        }
+        return $resolved;
+    }
+
+    private static function normalization_candidates( array $page_palette, array $page_typography, array $site_tokens ): array {
+        $site_palette = [];
+        foreach ( array_slice( (array) ( $site_tokens['palette'] ?? [] ), 0, 16 ) as $token ) {
+            if ( ! is_array( $token ) ) continue;
+            $site_palette[] = [
+                'value' => (string) ( $token['value'] ?? '' ),
+                'title' => (string) ( $token['title'] ?? '' ),
+                'token_id' => (string) ( $token['token_id'] ?? '' ),
+                'reference' => (string) ( $token['reference'] ?? '' ),
+                'read_only_source' => true,
+            ];
+        }
+        $site_typography = [];
+        foreach ( array_slice( (array) ( $site_tokens['typography'] ?? [] ), 0, 12 ) as $token ) {
+            if ( ! is_array( $token ) ) continue;
+            $site_typography[] = [
+                'title' => (string) ( $token['title'] ?? '' ),
+                'token_id' => (string) ( $token['token_id'] ?? '' ),
+                'values' => (array) ( $token['values'] ?? [] ),
+                'reference' => (string) ( $token['reference'] ?? '' ),
+                'read_only_source' => true,
+            ];
+        }
+        return [
+            'palette_source' => $page_palette ? 'current_page_explicit_or_resolved_global' : ( $site_palette ? 'active_elementor_kit_read_only_fallback' : 'none' ),
+            'palette' => $page_palette ?: $site_palette,
+            'typography_source' => $page_typography ? 'current_page_explicit_or_resolved_global' : ( $site_typography ? 'active_elementor_kit_read_only_fallback' : 'none' ),
+            'typography' => $page_typography ?: $site_typography,
+            'rule' => 'Values here are candidates for local writable controls only. A read-only global/site token may supply an exact value, but its global reference must never be mutated.',
+        ];
+    }
+
+    private static function safe_color( string $value ): bool {
+        return '' !== $value && strlen( $value ) <= 128 && (bool) preg_match( '/^(#[0-9a-f]{3,8}|rgba?\([^\r\n]{1,90}\)|hsla?\([^\r\n]{1,90}\)|transparent|currentColor|var\(--[A-Za-z0-9_-]+\))$/i', trim( $value ) );
     }
 
     private static function dynamic( string $value ): bool {
