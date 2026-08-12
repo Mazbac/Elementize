@@ -12,6 +12,7 @@ require_once __DIR__ . '/elementize-design.inc';
 require_once __DIR__ . '/elementize-tree.inc';
 require_once __DIR__ . '/elementize-templates.inc';
 require_once __DIR__ . '/elementize-creative.inc';
+require_once __DIR__ . '/elementize-visual-qa.inc';
 require_once __DIR__ . '/elementize-media-library.inc';
 require_once __DIR__ . '/elementize-media-import.inc';
 require_once __DIR__ . '/elementize-activity.inc';
@@ -74,7 +75,7 @@ final class Elementize_Creative_Style_Preflight {
 
     private static function contains_semantic_style_candidate( array $operations ): bool {
         foreach ( $operations as $operation ) {
-            if ( ! is_array( $operation ) || 'style' !== sanitize_key( (string) ( $operation['type'] ?? '' ) ) ) continue;
+            if ( ! is_array( $operation ) || 'style' !== sanitize_key( (string) ( $operation['type'] ?? '' ) ) continue;
             $path = $operation['setting_path'] ?? null;
             if ( ! is_array( $path ) || ! $path ) continue;
             $key = strtolower( (string) end( $path ) );
@@ -223,6 +224,7 @@ Elementize_Capabilities::init();
 Elementize_Design::init();
 Elementize_Templates::init();
 Elementize_Creative::init();
+Elementize_Visual_QA::init();
 Elementize_Media_Library::init();
 Elementize_Media_Import::init();
 Elementize_Activity::init();
