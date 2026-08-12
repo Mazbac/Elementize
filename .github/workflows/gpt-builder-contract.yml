@@ -34,6 +34,7 @@ jobs:
           includes/elementize-pixfort-transport.inc
           includes/elementize-templates.inc
           includes/elementize-tree.inc
+          includes/elementize-visual-qa.inc
           EOF
           )
           actual_runtime=$(find includes -maxdepth 1 -type f -print | sort)
@@ -46,10 +47,10 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 16
-          test "$init_count" -eq 14
+          test "$require_count" -eq 17
+          test "$init_count" -eq 15
 
-          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens content context capabilities design tree templates creative media-library media-import activity connections onboarding; do
+          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens content context capabilities design tree templates creative visual-qa media-library media-import activity connections onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
 
@@ -80,6 +81,11 @@ jobs:
           grep -q "ACTIVITY_SNAPSHOT_META" includes/elementize-creative.inc || { echo 'Creative Activity/Undo snapshot integration is missing.'; exit 1; }
           grep -q "embedded_template_references" includes/elementize-templates.inc || { echo 'Shared/embedded template dependency guard is missing.'; exit 1; }
           php tests/creative-control-contract.php
+
+          grep -q "class Elementize_Visual_QA" includes/elementize-visual-qa.inc || { echo 'Rendered visual QA runtime class is missing.'; exit 1; }
+          grep -q "visual_render_verified" includes/elementize-visual-qa.inc || { echo 'Rendered visual verification signal is missing.'; exit 1; }
+          grep -q "elementize_visual_preview" includes/elementize-visual-qa.inc || { echo 'Hash-bound local rendered preview guard is missing.'; exit 1; }
+          grep -q "preview_url_exposed' => false" includes/elementize-visual-qa.inc || { echo 'Rendered preview URL must remain internal.'; exit 1; }
 
           grep -q "_elementize_sha256" includes/elementize-media-import.inc || { echo 'Media import SHA-256 deduplication is missing.'; exit 1; }
           grep -q "deduplicated" includes/elementize-media-import.inc || { echo 'Media import retry result contract is missing.'; exit 1; }
