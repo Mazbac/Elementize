@@ -1,0 +1,26 @@
+name: Visual QA contract
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-visual-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate asynchronous capture completion contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="includes/elementize-visual-qa.inc"
+          grep -q "private const VERSION = '4'" "$runtime" || { echo 'Rendered Visual QA v4 is not active.'; exit 1; }
+          grep -q "local_chromium_async" "$runtime" || { echo 'Async Chromium backend is missing.'; exit 1; }
+          grep -q "png_file_complete" "$runtime" || { echo 'Complete-PNG capture signal is missing.'; exit 1; }
+          grep -q "capture_artifact_state" "$runtime" || { echo 'Bounded async capture diagnostics are missing.'; exit 1; }
+          grep -q "start \"\" /b" "$runtime" || { echo 'Detached Windows runner launch is missing.'; exit 1; }
+          if grep -q "start \"\" /wait" "$runtime"; then
+            echo 'Windows capture must not wait for Chromium process exit before recognizing a completed PNG.'
+            exit 1
+          fi
+          grep -q "without a complete PNG" "$runtime" || { echo 'PNG-completion timeout contract is missing.'; exit 1; }
