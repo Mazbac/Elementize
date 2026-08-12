@@ -5,6 +5,9 @@ final class Elementize_Templates {
     private const CACHE_TTL = 300;
     private const MAX_ITEMS = 500;
     private const MAX_CONTENT_FIELDS = 800;
+    private const PIXFORT_SOURCE_ID = 'pixfort';
+    private const PIXFORT_LIBRARY_OPTION = 'custom_remote_info_library';
+    private const MAX_REMOTE_BYTES = 10485760;
 
     public static function init(): void {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 27 );
@@ -60,7 +63,7 @@ final class Elementize_Templates {
             return strcasecmp( (string) $a['title'], (string) $b['title'] );
         } );
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
         $total = count( $filtered );
         $sources = self::source_descriptors();
         return new WP_REST_Response( [
@@ -102,6 +105,8 @@ final class Elementize_Templates {
     }
 
     public static function load_template( string $source_id, string $template_id ) {
+        if ( self::PIXFORT_SOURCE_ID === $source_id ) return self::load_pixfort_template( $template_id );
+
         $sources = self::sources();
         if ( is_wp_error( $sources ) ) return $sources;
         $source = $sources[ $source_id ] ?? null;
@@ -163,9 +168,22 @@ final class Elementize_Templates {
         $key = 'elementize_template_index_' . md5( $fingerprint . '|' . ( defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : '' ) );
         $cached = get_transient( $key );
         if ( is_array( $cached ) ) return $cached;
+
+        $items = [];
+        $seen = [];
+
+        foreach ( self::pixfort_items() as $raw ) {
+            if ( ! is_array( $raw ) ) continue;
+            $item = self::normalize_item( self::PIXFORT_SOURCE_ID, 'pixfort', $raw );
+            if ( ! $item ) continue;
+            $key_id = $item['source_id'] . ':' . $item['template_id'];
+            if ( isset( $seen[ $key_id ] ) ) continue;
+            $seen[ $key_id ] = true;
+            $items[] = $item;
+        }
+
         $sources = self::sources();
         if ( is_wp_error( $sources ) ) return $sources;
-        $items = [];
         foreach ( $sources as $source_id => $source ) {
             $provider = self::source_provider( $source_id, $source );
             if ( ! in_array( $provider, [ 'pixfort', 'local' ], true ) || ! method_exists( $source, 'get_items' ) ) continue;
@@ -175,9 +193,14 @@ final class Elementize_Templates {
             foreach ( array_slice( $source_items, 0, self::MAX_ITEMS ) as $raw ) {
                 if ( ! is_array( $raw ) ) continue;
                 $item = self::normalize_item( (string) $source_id, $provider, $raw );
-                if ( $item ) $items[] = $item;
+                if ( ! $item ) continue;
+                $key_id = $item['source_id'] . ':' . $item['template_id'];
+                if ( isset( $seen[ $key_id ] ) ) continue;
+                $seen[ $key_id ] = true;
+                $items[] = $item;
             }
         }
+
         set_transient( $key, $items, self::CACHE_TTL );
         return $items;
     }
@@ -212,12 +235,16 @@ final class Elementize_Templates {
     }
 
     private static function source_descriptors(): array {
-        $sources = self::sources();
-        if ( is_wp_error( $sources ) ) return [];
         $out = [];
+        $pixfort = self::pixfort_descriptor();
+        if ( $pixfort ) $out[] = $pixfort;
+
+        $sources = self::sources();
+        if ( is_wp_error( $sources ) ) return $out;
         foreach ( $sources as $id => $source ) {
             $provider = self::source_provider( (string) $id, $source );
             if ( ! in_array( $provider, [ 'pixfort', 'local' ], true ) ) continue;
+            if ( self::PIXFORT_SOURCE_ID === (string) $id ) continue;
             $out[] = [ 'source_id' => (string) $id, 'provider' => $provider, 'class' => get_class( $source ) ];
         }
         return $out;
@@ -230,17 +257,194 @@ final class Elementize_Templates {
         return 'other';
     }
 
+    private static function pixfort_descriptor(): ?array {
+        $class_ready = self::ensure_pixfort_source_class();
+        $library = self::pixfort_library();
+        $has_library = ! empty( $library['templates'] ) && is_array( $library['templates'] );
+        if ( ! $class_ready && ! function_exists( 'pixfort_elementor_library_data' ) && ! $has_library ) return null;
+        return [
+            'source_id' => self::PIXFORT_SOURCE_ID,
+            'provider' => 'pixfort',
+            'class' => $class_ready ? '\\Elementor\\TemplateLibrary\\Source_Pixfort' : 'pixfort_elementor_library_data',
+            'adapter' => 'pixfort_native_remote',
+        ];
+    }
+
+    private static function ensure_pixfort_source_class(): bool {
+        $class = '\\Elementor\\TemplateLibrary\\Source_Pixfort';
+        if ( class_exists( $class ) ) return true;
+        if ( ! class_exists( '\\Elementor\\TemplateLibrary\\Source_Base' ) ) return false;
+
+        $candidates = [];
+        if ( defined( 'PIX_CORE_PLUGIN_DIR' ) ) $candidates[] = rtrim( (string) PIX_CORE_PLUGIN_DIR, '/\\' ) . '/includes/import/elementor/source.php';
+        if ( defined( 'PIXFORT_PLUGIN_DIR' ) ) $candidates[] = rtrim( (string) PIXFORT_PLUGIN_DIR, '/\\' ) . '/includes/import/elementor/source.php';
+        if ( defined( 'WP_PLUGIN_DIR' ) ) $candidates[] = rtrim( (string) WP_PLUGIN_DIR, '/\\' ) . '/pixfort-core/includes/import/elementor/source.php';
+
+        $plugins_root = defined( 'WP_PLUGIN_DIR' ) ? realpath( (string) WP_PLUGIN_DIR ) : false;
+        $plugins_root_norm = is_string( $plugins_root ) ? strtolower( rtrim( wp_normalize_path( $plugins_root ), '/' ) . '/' ) : '';
+
+        foreach ( array_unique( $candidates ) as $candidate ) {
+            $real = realpath( $candidate );
+            if ( ! is_string( $real ) || ! is_file( $real ) ) continue;
+            $real_norm = strtolower( wp_normalize_path( $real ) );
+            if ( '' !== $plugins_root_norm && ! str_starts_with( $real_norm, $plugins_root_norm ) ) continue;
+            try { require_once $real; } catch ( Throwable $ignored ) {}
+            if ( class_exists( $class ) ) return true;
+        }
+        return false;
+    }
+
+    private static function pixfort_library(): array {
+        $library = [];
+
+        if ( function_exists( 'pixfort_elementor_library_data' ) ) {
+            try { $payload = pixfort_elementor_library_data(); } catch ( Throwable $e ) { $payload = null; }
+            if ( is_array( $payload ) ) {
+                if ( isset( $payload['library'] ) && is_array( $payload['library'] ) ) $library = $payload['library'];
+                elseif ( isset( $payload['templates'] ) && is_array( $payload['templates'] ) ) $library = $payload;
+            }
+        }
+
+        if ( empty( $library['templates'] ) && self::ensure_pixfort_source_class() && method_exists( '\\Elementor\\TemplateLibrary\\Source_Pixfort', 'get_library_data' ) ) {
+            try { $candidate = \Elementor\TemplateLibrary\Source_Pixfort::get_library_data(); } catch ( Throwable $e ) { $candidate = null; }
+            if ( is_array( $candidate ) && isset( $candidate['templates'] ) && is_array( $candidate['templates'] ) ) $library = $candidate;
+        }
+
+        if ( empty( $library['templates'] ) ) {
+            $candidate = get_option( self::PIXFORT_LIBRARY_OPTION, [] );
+            if ( is_array( $candidate ) && isset( $candidate['templates'] ) && is_array( $candidate['templates'] ) ) $library = $candidate;
+        }
+
+        return is_array( $library ) ? $library : [];
+    }
+
+    private static function pixfort_items(): array {
+        if ( self::ensure_pixfort_source_class() ) {
+            try {
+                $source = new \Elementor\TemplateLibrary\Source_Pixfort();
+                $items = $source->get_items();
+            } catch ( Throwable $e ) {
+                $items = [];
+            }
+            if ( is_array( $items ) && $items ) return array_slice( $items, 0, self::MAX_ITEMS );
+        }
+
+        $library = self::pixfort_library();
+        return isset( $library['templates'] ) && is_array( $library['templates'] )
+            ? array_slice( $library['templates'], 0, self::MAX_ITEMS )
+            : [];
+    }
+
+    private static function load_pixfort_template( string $template_id ) {
+        $record = self::pixfort_template_record( $template_id );
+        if ( ! is_array( $record ) ) return new WP_Error( 'elementize_pixfort_template_not_found', 'The requested Pixfort template is not present in the installed Pixfort library catalogue.', [ 'status' => 404 ] );
+
+        $payload = self::fetch_pixfort_template_payload( $record );
+        if ( is_wp_error( $payload ) ) return $payload;
+
+        if ( ! empty( $payload['pixIsNested'] ) || ! empty( $payload['pixNestedTemplates'] ) ) {
+            return new WP_Error(
+                'elementize_pixfort_nested_template_unsupported',
+                'This Pixfort template depends on nested Pixfort templates. Elementize will not import those hidden dependencies outside the guarded page transaction.',
+                [ 'status' => 400 ]
+            );
+        }
+
+        $elements = self::extract_elements( $payload );
+        if ( ! is_array( $elements ) || ! $elements ) return new WP_Error( 'elementize_template_content_empty', 'The selected Pixfort template contains no insertable Elementor elements.', [ 'status' => 400 ] );
+
+        $summary = self::structure_summary( $elements );
+        if ( ! empty( $summary['embedded_template_references'] ) ) {
+            return new WP_Error( 'elementize_template_embedded_reference', 'This Pixfort template contains an embedded/global template reference. Elementize will not insert shared template dependencies into a managed local section.', [ 'status' => 400, 'references' => $summary['embedded_template_references'] ] );
+        }
+
+        return [
+            'source_id' => self::PIXFORT_SOURCE_ID,
+            'template_id' => $template_id,
+            'provider' => 'pixfort',
+            'title' => wp_strip_all_tags( (string) ( $record['title'] ?? ( 'Template ' . $template_id ) ) ),
+            'type' => self::normalized_type( (string) ( $record['type'] ?? '' ), (string) ( $record['subtype'] ?? '' ), (string) ( $record['title'] ?? '' ), true ),
+            'elements' => $elements,
+        ];
+    }
+
+    private static function pixfort_template_record( string $template_id ): ?array {
+        $library = self::pixfort_library();
+        foreach ( (array) ( $library['templates'] ?? [] ) as $record ) {
+            if ( ! is_array( $record ) ) continue;
+            $id = $record['id'] ?? $record['template_id'] ?? null;
+            if ( is_scalar( $id ) && (string) $id === $template_id ) return $record;
+        }
+
+        foreach ( self::pixfort_items() as $item ) {
+            if ( ! is_array( $item ) ) continue;
+            $id = $item['template_id'] ?? $item['id'] ?? null;
+            if ( is_scalar( $id ) && (string) $id === $template_id ) return $item;
+        }
+        return null;
+    }
+
+    private static function fetch_pixfort_template_payload( array $record ) {
+        $file = trim( (string) ( $record['file'] ?? '' ) );
+        if ( '' === $file ) return new WP_Error( 'elementize_pixfort_template_file_missing', 'The Pixfort catalogue entry does not contain a template file.', [ 'status' => 503 ] );
+        if ( str_contains( $file, '..' ) || str_contains( $file, '\\' ) || ! preg_match( '#^[A-Za-z0-9._/-]+$#', $file ) ) {
+            return new WP_Error( 'elementize_pixfort_template_file_invalid', 'The Pixfort catalogue returned an unsafe template file path.', [ 'status' => 503 ] );
+        }
+
+        $url = self::pixfort_import_base_url() . ltrim( $file, '/' );
+        $args = [
+            'timeout' => 40,
+            'redirection' => 3,
+            'sslverify' => true,
+            'reject_unsafe_urls' => true,
+            'limit_response_size' => self::MAX_REMOTE_BYTES,
+        ];
+        $filtered = apply_filters( 'pixfort_el_remote_get_args', $args );
+        if ( is_array( $filtered ) ) $args = array_merge( $args, $filtered );
+        $args['timeout'] = min( 40, max( 5, absint( $args['timeout'] ?? 40 ) ) );
+        $args['redirection'] = min( 3, max( 0, absint( $args['redirection'] ?? 3 ) ) );
+        $args['sslverify'] = true;
+        $args['reject_unsafe_urls'] = true;
+        $args['limit_response_size'] = self::MAX_REMOTE_BYTES;
+
+        $response = wp_safe_remote_get( $url, $args );
+        if ( is_wp_error( $response ) ) {
+            return new WP_Error( 'elementize_pixfort_template_fetch_failed', 'Pixfort template download failed: ' . $response->get_error_message(), [ 'status' => 503 ] );
+        }
+        $status = (int) wp_remote_retrieve_response_code( $response );
+        if ( 200 !== $status ) return new WP_Error( 'elementize_pixfort_template_fetch_status', 'Pixfort template download returned HTTP ' . $status . '.', [ 'status' => 503 ] );
+
+        $body = wp_remote_retrieve_body( $response );
+        if ( ! is_string( $body ) || '' === $body ) return new WP_Error( 'elementize_pixfort_template_empty_response', 'Pixfort returned an empty template response.', [ 'status' => 503 ] );
+        if ( strlen( $body ) > self::MAX_REMOTE_BYTES ) return new WP_Error( 'elementize_pixfort_template_too_large', 'The Pixfort template response exceeds Elementize limits.', [ 'status' => 413 ] );
+
+        $payload = json_decode( $body, true );
+        if ( ! is_array( $payload ) ) return new WP_Error( 'elementize_pixfort_template_invalid_json', 'Pixfort returned invalid template JSON.', [ 'status' => 503 ] );
+        if ( isset( $payload['error'] ) ) return new WP_Error( 'elementize_pixfort_template_remote_error', sanitize_text_field( (string) $payload['error'] ), [ 'status' => 503 ] );
+        if ( empty( $payload['data'] ) && empty( $payload['content'] ) && empty( $payload['elements'] ) ) {
+            return new WP_Error( 'elementize_pixfort_template_data_missing', 'Pixfort returned a template response without Elementor content.', [ 'status' => 503 ] );
+        }
+        return $payload;
+    }
+
+    private static function pixfort_import_base_url(): string {
+        $slug = defined( 'PIXFORT_THEME_SLUG' ) ? sanitize_key( (string) PIXFORT_THEME_SLUG ) : '';
+        if ( 'acquire' === $slug ) return 'https://import.pixfort.com/acquire/elementor/';
+        if ( 'conseil' === $slug ) return 'https://import.pixfort.com/conseil/elementor/';
+        if ( 'pixdocs' === $slug ) return 'https://import.pixfort.com/pixdocs/elementor/';
+        if ( 'pixfort' === $slug ) return 'https://import.pixfort.com/pixfort-theme/elementor/';
+        return 'https://import.pixfort.com/essentials/elementor/';
+    }
+
     private static function normalize_item( string $source_id, string $provider, array $raw ): ?array {
         $id = $raw['template_id'] ?? $raw['id'] ?? null;
         if ( ! is_scalar( $id ) || '' === trim( (string) $id ) ) return null;
         $title = (string) ( $raw['title'] ?? $raw['name'] ?? ( 'Template ' . $id ) );
-        $type = strtolower( (string) ( $raw['type'] ?? $raw['template_type'] ?? '' ) );
-        if ( ! in_array( $type, [ 'page', 'section', 'container' ], true ) ) $type = false !== stripos( $title, 'section' ) ? 'section' : 'container';
+        $subtype = (string) ( $raw['subtype'] ?? $raw['subType'] ?? $raw['sub_type'] ?? '' );
+        $type = self::normalized_type( (string) ( $raw['type'] ?? $raw['template_type'] ?? '' ), $subtype, $title, 'pixfort' === $provider );
         $keywords = [];
-        foreach ( [ 'tags', 'keywords', 'categories', 'subType', 'sub_type' ] as $key ) {
-            $value = $raw[ $key ] ?? null;
-            if ( is_string( $value ) ) $keywords[] = $value;
-            if ( is_array( $value ) ) foreach ( $value as $part ) if ( is_scalar( $part ) ) $keywords[] = (string) $part;
+        foreach ( [ 'tags', 'keywords', 'categories', 'subtype', 'subType', 'sub_type' ] as $key ) {
+            foreach ( self::keyword_values( $raw[ $key ] ?? null ) as $part ) $keywords[] = $part;
         }
         $thumbnail = $raw['thumbnail'] ?? $raw['thumbnail_url'] ?? $raw['preview'] ?? null;
         return [
@@ -250,9 +454,42 @@ final class Elementize_Templates {
             'pixfort_native' => 'pixfort' === $provider,
             'title' => wp_strip_all_tags( $title ),
             'type' => $type,
+            'subtype' => sanitize_text_field( $subtype ),
             'keywords' => array_values( array_unique( array_filter( array_map( 'sanitize_text_field', $keywords ) ) ) ),
             'thumbnail' => is_string( $thumbnail ) ? esc_url_raw( $thumbnail ) : null,
         ];
+    }
+
+    private static function keyword_values( $value ): array {
+        if ( is_array( $value ) ) {
+            $out = [];
+            foreach ( $value as $part ) if ( is_scalar( $part ) && '' !== trim( (string) $part ) ) $out[] = (string) $part;
+            return $out;
+        }
+        if ( ! is_string( $value ) || '' === trim( $value ) ) return [];
+        $trimmed = trim( $value );
+        if ( str_starts_with( $trimmed, '[' ) || str_starts_with( $trimmed, '{' ) ) {
+            $decoded = json_decode( $trimmed, true );
+            if ( is_array( $decoded ) ) {
+                $out = [];
+                array_walk_recursive( $decoded, static function( $part ) use ( &$out ): void {
+                    if ( is_scalar( $part ) && '' !== trim( (string) $part ) ) $out[] = (string) $part;
+                } );
+                if ( $out ) return $out;
+            }
+        }
+        return [ $trimmed ];
+    }
+
+    private static function normalized_type( string $type, string $subtype, string $title, bool $pixfort = false ): string {
+        $type = strtolower( trim( $type ) );
+        $subtype = strtolower( trim( $subtype ) );
+        if ( 'page' === $type || false !== strpos( $subtype, 'page' ) ) return 'page';
+        if ( in_array( $type, [ 'section', 'block' ], true ) || false !== strpos( $subtype, 'section' ) || false !== strpos( $subtype, 'block' ) ) return 'section';
+        if ( 'container' === $type ) return 'container';
+        if ( false !== stripos( $title, 'page' ) ) return 'page';
+        if ( false !== stripos( $title, 'section' ) ) return 'section';
+        return $pixfort ? 'section' : 'container';
     }
 
     private static function extract_elements( array $data ): ?array {
@@ -268,6 +505,7 @@ final class Elementize_Templates {
 
     private static function template_type_from_data( array $data ): string {
         $type = strtolower( (string) ( $data['type'] ?? $data['template_type'] ?? 'container' ) );
+        if ( 'block' === $type ) return 'section';
         return in_array( $type, [ 'page', 'section', 'container' ], true ) ? $type : 'container';
     }
 
@@ -297,7 +535,10 @@ final class Elementize_Templates {
             }
             return;
         }
-        if ( is_string( $value ) && str_starts_with( ltrim( $value ), '[elementor-tag' ) ) $summary['dynamic_values']++;
+        if ( is_string( $value ) ) {
+            $trimmed = ltrim( $value );
+            if ( str_starts_with( $trimmed, '[elementor-tag' ) || false !== strpos( $value, '{{' ) ) $summary['dynamic_values']++;
+        }
     }
 
     private static function warnings( array $summary ): array {
