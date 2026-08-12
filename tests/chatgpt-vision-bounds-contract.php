@@ -19,7 +19,7 @@ foreach ( [
     "'chatgpt_vision_handoff_ready'",
     "trim_trailing_background",
     "Elementize_ChatGPT_Vision::before_callbacks",
-    "'capture_mode' = 'content_bounded_tall_desktop'",
+    "'content_bounded_tall_desktop'",
     "'capture_original_height'",
     "'capture_bounded_height'",
 ] as $needle ) {
