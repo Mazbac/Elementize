@@ -2,11 +2,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Visual_QA {
-    private const VERSION = '4';
+    private const VERSION = '5';
     private const TTL = 180;
     private const JOB_TTL = 180;
     private const JOB_TIMEOUT_SECONDS = 75;
-    private const JOB_PREFIX = 'elementize_visual_qa_job_v4_';
+    private const JOB_PREFIX = 'elementize_visual_qa_job_v5_';
     private const MODEL_CONST = 'ELEMENTIZE_LOCAL_VISION_MODEL';
     private const OLLAMA_URL_CONST = 'ELEMENTIZE_OLLAMA_URL';
     private const CHROME_PATH_CONST = 'ELEMENTIZE_CHROME_PATH';
@@ -84,10 +84,12 @@ final class Elementize_Visual_QA {
             return new WP_REST_Response( $base, 200 );
         }
 
-        $url = 'publish' === $post->post_status ? get_permalink( $id ) : self::signed_preview_url( $id, $hash, $revision );
-        if ( ! is_string( $url ) || '' === $url ) {
+        $candidate_url = 'publish' === $post->post_status ? get_permalink( $id ) : self::signed_preview_url( $id, $hash, $revision );
+        $url = self::normalize_capture_url( $candidate_url );
+        if ( '' === $url ) {
             $base['capture_state'] = 'failed';
-            $base['reason'] = 'Elementize could not create a local rendered-preview URL for this page.';
+            $base['stage'] = 'capture_url';
+            $base['reason'] = 'Elementize could not derive a safe HTTP(S) rendered-preview URL for this page.';
             return new WP_REST_Response( $base, 200 );
         }
 
@@ -250,7 +252,7 @@ final class Elementize_Visual_QA {
     }
 
     private static function ollama_state(): array {
-        $cached = get_transient( 'elementize_visual_qa_local_state_v4' );
+        $cached = get_transient( 'elementize_visual_qa_local_state_v5' );
         if ( is_array( $cached ) ) return $cached;
         $state = [ 'reachable' => false, 'model_available' => false, 'model' => self::model() ];
         $response = wp_remote_get( self::ollama_url() . '/api/tags', [ 'timeout' => 2, 'redirection' => 0, 'sslverify' => false, 'limit_response_size' => 1048576 ] );
@@ -263,7 +265,7 @@ final class Elementize_Visual_QA {
                 if ( $name === $state['model'] || ( 'gemma3:4b' === $state['model'] && 'gemma3:latest' === $name ) ) { $state['model_available'] = true; break; }
             }
         }
-        set_transient( 'elementize_visual_qa_local_state_v4', $state, 30 );
+        set_transient( 'elementize_visual_qa_local_state_v5', $state, 30 );
         return $state;
     }
 
@@ -292,6 +294,42 @@ final class Elementize_Visual_QA {
             'elementize_visual_revision' => $revision,
             'elementize_visual_sig' => $sig,
         ], trailingslashit( home_url( '/' ) ) );
+    }
+
+    private static function normalize_capture_url( $candidate ): string {
+        if ( ! is_scalar( $candidate ) ) return '';
+        $value = trim( (string) $candidate );
+        if ( '' === $value ) return '';
+
+        $value = wp_unslash( $value );
+        $value = html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        $value = trim( $value );
+        $value = trim( $value, " \t\n\r\0\x0B\"'" );
+
+        if ( preg_match( '/^\[[^\]\r\n]*\]\(\s*(https?:\/\/.+)\s*\)$/i', $value, $match ) ) {
+            $value = trim( (string) $match[1] );
+        }
+
+        if ( strlen( $value ) >= 2 ) {
+            $first = $value[0];
+            $last = $value[ strlen( $value ) - 1 ];
+            if ( ( '[' === $first && ']' === $last ) || ( '<' === $first && '>' === $last ) ) {
+                $inner = trim( substr( $value, 1, -1 ) );
+                if ( preg_match( '#^https?://#i', $inner ) ) $value = $inner;
+            }
+        }
+
+        $value = trim( $value, " \t\n\r\0\x0B\"'" );
+        if ( '' === $value || preg_match( '/[\r\n]/', $value ) ) return '';
+
+        $safe = esc_url_raw( $value, [ 'http', 'https' ] );
+        if ( ! is_string( $safe ) || '' === $safe ) return '';
+        $parts = wp_parse_url( $safe );
+        if ( ! is_array( $parts ) ) return '';
+        $scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+        $host = trim( (string) ( $parts['host'] ?? '' ) );
+        if ( ! in_array( $scheme, [ 'http', 'https' ], true ) || '' === $host ) return '';
+        return $safe;
     }
 
     private static function preview_signature( int $id, string $hash, int $revision, int $expires ): string {
@@ -392,6 +430,8 @@ final class Elementize_Visual_QA {
     }
 
     private static function start_capture_job( string $url, string $browser, string $job_id, int $id, string $hash, int $revision, bool $analyze ) {
+        $url = self::normalize_capture_url( $url );
+        if ( '' === $url ) return new WP_Error( 'elementize_visual_capture_url_invalid', 'The local rendered capture target must be a valid HTTP(S) URL.' );
         if ( '' === $browser || ! is_file( $browser ) ) return new WP_Error( 'elementize_visual_browser_missing', 'A supported local browser executable was not found.' );
         $paths = self::temp_paths( $job_id );
         self::cleanup_paths( $paths );
@@ -419,6 +459,8 @@ final class Elementize_Visual_QA {
     }
 
     private static function windows_runner( string $browser, string $url, array $paths ) {
+        $url = self::normalize_capture_url( $url );
+        if ( '' === $url ) return new WP_Error( 'elementize_visual_capture_url_invalid', 'The Windows local capture runner refused an invalid HTTP(S) target URL.' );
         foreach ( [ $browser, $url, $paths['screenshot'], $paths['profile'], $paths['log'], $paths['done'] ] as $value ) {
             if ( preg_match( '/[\r\n"]/', (string) $value ) ) return new WP_Error( 'elementize_visual_runner_value_invalid', 'A local capture runner value could not be safely encoded.' );
         }
@@ -436,6 +478,8 @@ final class Elementize_Visual_QA {
     }
 
     private static function unix_runner( string $browser, string $url, array $paths ): string {
+        $url = self::normalize_capture_url( $url );
+        if ( '' === $url ) return '';
         $q = static fn( string $value ): string => escapeshellarg( $value );
         return "#!/bin/sh\n"
             . "sleep 1\n"
