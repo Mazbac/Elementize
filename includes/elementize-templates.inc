@@ -55,7 +55,7 @@ final class Elementize_Templates {
         $filtered = [];
         foreach ( $items as $item ) {
             if ( 'all' !== $provider && $provider !== (string) $item['provider'] ) continue;
-            if ( 'all' !== $type && $type !== strtolower( (string) ( $item['type'] ?? '' ) ) continue;
+            if ( 'all' !== $type && $type !== strtolower( (string) ( $item['type'] ?? '' ) ) ) continue;
             if ( '' !== $q ) {
                 $haystack = self::lower( implode( ' ', [
                     (string) $item['title'],
@@ -75,7 +75,7 @@ final class Elementize_Templates {
         } );
 
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
         $total = count( $filtered );
         $sources = self::source_descriptors();
 
