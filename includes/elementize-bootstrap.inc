@@ -75,7 +75,7 @@ final class Elementize_Creative_Style_Preflight {
 
     private static function contains_semantic_style_candidate( array $operations ): bool {
         foreach ( $operations as $operation ) {
-            if ( ! is_array( $operation ) || 'style' !== sanitize_key( (string) ( $operation['type'] ?? '' ) ) continue;
+            if ( ! is_array( $operation ) || 'style' !== sanitize_key( (string) ( $operation['type'] ?? '' ) ) ) continue;
             $path = $operation['setting_path'] ?? null;
             if ( ! is_array( $path ) || ! $path ) continue;
             $key = strtolower( (string) end( $path ) );
