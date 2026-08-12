@@ -146,11 +146,7 @@ final class Elementize_Design {
             return trim( $value );
         }
         if ( str_starts_with( $category, 'pixfort_theme_color:' ) ) {
-            $setting_key = sanitize_key( substr( $category, strlen( 'pixfort_theme_color:' ) ) );
-            if ( '' === $setting_key || ! class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ) {
-                return new WP_Error( 'elementize_pixfort_theme_token_unavailable', 'Pixfort semantic theme-color validation is unavailable for this setting.', [ 'status' => 400 ] );
-            }
-            return Elementize_Pixfort_Theme_Tokens::validate_any_transition( $setting_key, $current, $value );
+            return new WP_Error( 'elementize_pixfort_theme_token_widget_required', 'Pixfort semantic theme-color writes require exact target-widget validation in the Creative transaction.', [ 'status' => 400 ] );
         }
         if ( 'alignment' === $category ) {
             if ( ! is_string( $value ) || ! in_array( strtolower( trim( $value ) ), [ 'left','center','right','justify','start','end','flex-start','flex-end','space-between','space-around','space-evenly','stretch','baseline','top','middle','bottom' ], true ) ) {
@@ -178,7 +174,7 @@ final class Elementize_Design {
 
     public static function guidelines(): array {
         return [
-            'principle' => 'Use templates as structural building blocks, then normalize them to the visual language already observed on the target page. Prefer page-observed values first. When local page controls are sparse because Elementor globals provide the design language, use exact read-only active-kit tokens returned in normalization_candidates rather than inventing values. Pixfort semantic theme-color controls are writable only when the installed widget exposes the exact selector and the active Kit grounds its Primary/Secondary theme role. Never mutate global references.',
+            'principle' => 'Use templates as structural building blocks, then normalize them to the visual language already observed on the target page. Prefer page-observed values first. When local page controls are sparse because Elementor globals provide the design language, use exact read-only active-kit tokens returned in normalization_candidates rather than inventing values. Pixfort semantic theme-color controls are writable only when the exact installed widget exposes the selector and Pixfort theme options authoritatively resolve the Primary/Secondary role; Elementor Kit tokens are read-only corroboration only. Never mutate global references.',
             'complexity_budget' => [
                 'max_creative_operations_per_transaction' => 50,
                 'max_nested_element_depth' => 80,
@@ -326,7 +322,7 @@ final class Elementize_Design {
             return $result;
         }
 
-        foreach ( [ 'system' => $system_colors, 'custom' => $custom_colors ] as $scope => $items ) {
+        foreach ( [ 'custom' => $custom_colors, 'system' => $system_colors ] as $scope => $items ) {
             foreach ( is_array( $items ) ? $items : [] as $item ) {
                 if ( count( $result['palette'] ) >= self::MAX_SITE_TOKENS ) break 2;
                 if ( ! is_array( $item ) ) continue;
@@ -344,7 +340,7 @@ final class Elementize_Design {
             }
         }
 
-        foreach ( [ 'system' => $system_typography, 'custom' => $custom_typography ] as $scope => $items ) {
+        foreach ( [ 'custom' => $custom_typography, 'system' => $system_typography ] as $scope => $items ) {
             foreach ( is_array( $items ) ? $items : [] as $item ) {
                 if ( count( $result['typography'] ) >= self::MAX_SITE_TOKENS ) break 2;
                 if ( ! is_array( $item ) ) continue;
@@ -432,6 +428,7 @@ final class Elementize_Design {
                 'value' => (string) ( $token['value'] ?? '' ),
                 'title' => (string) ( $token['title'] ?? '' ),
                 'token_id' => (string) ( $token['token_id'] ?? '' ),
+                'scope' => (string) ( $token['scope'] ?? '' ),
                 'reference' => (string) ( $token['reference'] ?? '' ),
                 'read_only_source' => true,
             ];
@@ -442,6 +439,7 @@ final class Elementize_Design {
             $site_typography[] = [
                 'title' => (string) ( $token['title'] ?? '' ),
                 'token_id' => (string) ( $token['token_id'] ?? '' ),
+                'scope' => (string) ( $token['scope'] ?? '' ),
                 'values' => (array) ( $token['values'] ?? [] ),
                 'reference' => (string) ( $token['reference'] ?? '' ),
                 'read_only_source' => true,
@@ -450,9 +448,11 @@ final class Elementize_Design {
         return [
             'palette_source' => $page_palette ? 'current_page_explicit_or_resolved_global' : ( $site_palette ? 'active_elementor_kit_read_only_fallback' : 'none' ),
             'palette' => $page_palette ?: $site_palette,
+            'palette_fallback_priority' => 'custom_before_system',
             'typography_source' => $page_typography ? 'current_page_explicit_or_resolved_global' : ( $site_typography ? 'active_elementor_kit_read_only_fallback' : 'none' ),
             'typography' => $page_typography ?: $site_typography,
-            'rule' => 'Values here are candidates for local writable controls only. A read-only global/site token may supply an exact value, but its global reference must never be mutated.',
+            'typography_fallback_priority' => 'custom_before_system',
+            'rule' => 'Values here are candidates for local writable controls only. Page-observed values win; when page evidence is sparse, site custom Kit tokens are listed before generic Elementor system defaults. A read-only global/site token may supply an exact value, but its global reference must never be mutated.',
         ];
     }
 
