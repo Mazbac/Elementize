@@ -17,5 +17,7 @@ define( 'ELEMENTIZE_FILE', __FILE__ );
 define( 'ELEMENTIZE_DIR', __DIR__ );
 
 require_once __DIR__ . '/includes/elementize-bootstrap.inc';
+require_once __DIR__ . '/includes/runtime/elementize-template-response.inc';
+Elementize_Template_Response::init();
 
 register_activation_hook( __FILE__, [ Elementize_Onboarding::class, 'activate' ] );
