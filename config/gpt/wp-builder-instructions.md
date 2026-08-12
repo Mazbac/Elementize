@@ -59,7 +59,16 @@ Never write global style references, dynamic values, embedded/shared templates, 
 
 ## Design controls
 
-Only change controls returned writable by the page design profile or template inspection. For `style`, use exact returned `setting_path` and `value_json` as `expected_json`; encode replacement in the same JSON shape. Prefer values already observed on the page. Creative Control never authorizes site-wide/global design mutation.
+Only change controls returned writable by the page design profile or template inspection. For `style`, use exact returned `setting_path` and `value_json` as `expected_json`; encode replacement in the same JSON shape.
+
+Use design values in this priority order:
+1. values directly observed on the current page (`palette`, `spacing_scale`, `radius_scale`, `typography_tokens`);
+2. values resolved from global references actually used by the current page;
+3. when page-local values are sparse, exact values from `normalization_candidates` whose source is `active_elementor_kit_read_only_fallback`.
+
+`site_design_tokens`, resolved `global_references`, and active-kit fallback values are **read-only sources of design values**. They may supply an exact color or typography value for a local writable control on an inserted/duplicated section, but never mutate the global reference, kit, site settings, or any shared/global style. Prefer page-referenced tokens over generic kit fallback, and make the smallest meaningful normalization rather than broad cosmetic changes. If no grounded candidate exists, stop instead of inventing one.
+
+Creative Control never authorizes site-wide/global design mutation.
 
 ## Content in creative plans
 
