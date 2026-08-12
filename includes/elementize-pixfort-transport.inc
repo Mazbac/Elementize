@@ -5,6 +5,7 @@ final class Elementize_Pixfort_Ajax_Stop extends RuntimeException {}
 
 final class Elementize_Pixfort_Transport {
     private const ESSENTIALS_PURCHASE_OPTION = 'envato_purchase_code_27889640';
+    private const PIXFORT_LIBRARY_OPTION = 'custom_remote_info_library';
     private const TEMPLATE_AJAX_ACTION = 'pix_core_getElementorTemplate';
     private const MAX_CALLBACK_SOURCE_BYTES = 2097152;
     private const MAX_AJAX_RESPONSE_BYTES = 33554432;
@@ -52,11 +53,11 @@ final class Elementize_Pixfort_Transport {
         $hook = 'wp_ajax_' . self::TEMPLATE_AJAX_ACTION;
         $callbacks = self::hook_callbacks( $hook );
         if ( ! $callbacks ) {
-            return new WP_Error(
-                'elementize_pixfort_ajax_handler_unavailable',
-                'The Pixfort template AJAX handler observed in the Elementor editor is not registered in this request.',
-                [ 'status' => 503, 'adapter' => 'pixfort_registered_ajax', 'ajax_action' => self::TEMPLATE_AJAX_ACTION ]
-            );
+            // Pixfort's Source_Pixfort implementation resolves the catalogue entry's `file` and performs the
+            // same authenticated import.pixfort.com GET underneath get_data(). In REST, its editor-only AJAX
+            // registration may be absent even though the catalogue and licensed transport are available, so
+            // perform that bounded read directly instead of treating the missing hook as a terminal failure.
+            return self::load_template_via_catalogue_remote( $template_id, $page_id );
         }
 
         $inspection = self::inspect_callbacks( $callbacks );
@@ -181,6 +182,141 @@ final class Elementize_Pixfort_Transport {
     public static function throw_wp_die( $message = '', $title = '', $args = [] ): void {
         $text = is_scalar( $message ) ? (string) $message : '';
         throw new Elementize_Pixfort_Ajax_Stop( $text );
+    }
+
+    private static function load_template_via_catalogue_remote( string $template_id, int $page_id ) {
+        $library = get_option( self::PIXFORT_LIBRARY_OPTION, [] );
+        if ( ( ! is_array( $library ) || empty( $library['templates'] ) )
+            && class_exists( '\\Elementor\\TemplateLibrary\\Source_Pixfort' )
+            && method_exists( '\\Elementor\\TemplateLibrary\\Source_Pixfort', 'get_library_data' ) ) {
+            try { $candidate = \Elementor\TemplateLibrary\Source_Pixfort::get_library_data(); }
+            catch ( Throwable $ignored ) { $candidate = null; }
+            if ( is_array( $candidate ) ) $library = $candidate;
+        }
+
+        $record = null;
+        foreach ( (array) ( is_array( $library ) ? ( $library['templates'] ?? [] ) : [] ) as $candidate ) {
+            if ( ! is_array( $candidate ) ) continue;
+            $id = $candidate['id'] ?? $candidate['template_id'] ?? null;
+            if ( is_scalar( $id ) && (string) $id === $template_id ) {
+                $record = $candidate;
+                break;
+            }
+        }
+
+        $base_data = [
+            'status' => 503,
+            'adapter' => 'pixfort_catalogue_remote',
+            'ajax_action' => self::TEMPLATE_AJAX_ACTION,
+            'scope_page_id' => $page_id,
+        ];
+
+        if ( ! is_array( $record ) ) {
+            return new WP_Error(
+                'elementize_pixfort_catalogue_record_missing',
+                'The Pixfort AJAX handler is unavailable and the selected template could not be resolved in the installed catalogue.',
+                $base_data
+            );
+        }
+
+        $file = trim( (string) ( $record['file'] ?? '' ) );
+        if ( '' === $file || str_contains( $file, '..' ) || str_contains( $file, '\\' ) || ! preg_match( '#^[A-Za-z0-9._/-]+$#', $file ) ) {
+            return new WP_Error(
+                'elementize_pixfort_catalogue_file_invalid',
+                'The Pixfort AJAX handler is unavailable and the catalogue returned no safe template file path.',
+                $base_data
+            );
+        }
+
+        $url = self::pixfort_import_base_url() . ltrim( $file, '/' );
+        $parts = wp_parse_url( $url );
+        if ( ! is_array( $parts ) || 'https' !== strtolower( (string) ( $parts['scheme'] ?? '' ) ) || 'import.pixfort.com' !== strtolower( (string) ( $parts['host'] ?? '' ) ) ) {
+            return new WP_Error(
+                'elementize_pixfort_catalogue_url_invalid',
+                'The Pixfort catalogue resolved outside the trusted import host.',
+                $base_data
+            );
+        }
+
+        $args = [
+            'timeout' => 40,
+            'redirection' => 3,
+            'sslverify' => true,
+            'reject_unsafe_urls' => true,
+            'limit_response_size' => self::MAX_AJAX_RESPONSE_BYTES + 1,
+        ];
+        $filtered = apply_filters( 'pixfort_el_remote_get_args', $args );
+        if ( is_array( $filtered ) ) $args = array_merge( $args, $filtered );
+        $args['timeout'] = min( 40, max( 5, absint( $args['timeout'] ?? 40 ) ) );
+        $args['redirection'] = min( 3, max( 0, absint( $args['redirection'] ?? 3 ) ) );
+        $args['sslverify'] = true;
+        $args['reject_unsafe_urls'] = true;
+        $args['limit_response_size'] = self::MAX_AJAX_RESPONSE_BYTES + 1;
+
+        $response = wp_remote_get( $url, $args );
+        if ( is_wp_error( $response ) ) {
+            return new WP_Error(
+                'elementize_pixfort_catalogue_fetch_failed',
+                'Pixfort catalogue template download failed: ' . sanitize_text_field( $response->get_error_message() ),
+                $base_data
+            );
+        }
+
+        $status = (int) wp_remote_retrieve_response_code( $response );
+        if ( 200 !== $status ) {
+            return new WP_Error(
+                'elementize_pixfort_catalogue_fetch_status',
+                'Pixfort catalogue template download returned HTTP ' . $status . '.',
+                $base_data
+            );
+        }
+
+        $body = wp_remote_retrieve_body( $response );
+        if ( ! is_string( $body ) || '' === $body ) {
+            $base_data['response_kind'] = 'empty';
+            return new WP_Error( 'elementize_pixfort_catalogue_empty_response', 'Pixfort catalogue template download returned an empty response.', $base_data );
+        }
+
+        $bytes = strlen( $body );
+        $base_data['response_bytes'] = $bytes;
+        if ( $bytes > self::MAX_AJAX_RESPONSE_BYTES ) {
+            return new WP_Error( 'elementize_pixfort_catalogue_response_too_large', 'Pixfort catalogue template response exceeded Elementize limits.', $base_data );
+        }
+
+        $decoded = self::decode_remote_output( $body );
+        if ( ! is_array( $decoded ) ) {
+            $base_data['response_kind'] = preg_match( '/^\s*</', $body ) ? 'html_or_xml' : 'non_json';
+            return new WP_Error( 'elementize_pixfort_catalogue_invalid_json', 'Pixfort catalogue template download did not return usable JSON.', $base_data );
+        }
+
+        if ( isset( $decoded['error'] ) ) {
+            $message = is_scalar( $decoded['error'] ) ? sanitize_text_field( (string) $decoded['error'] ) : '';
+            return new WP_Error(
+                'elementize_pixfort_catalogue_remote_error',
+                '' !== $message ? 'Pixfort catalogue template download failed: ' . $message : 'Pixfort catalogue template download returned an error.',
+                $base_data
+            );
+        }
+
+        if ( ! self::contains_elementor_content( $decoded ) ) {
+            $base_data['response_kind'] = 'json_without_elementor_content';
+            return new WP_Error(
+                'elementize_pixfort_catalogue_content_missing',
+                'Pixfort catalogue template download returned JSON without Elementor content.',
+                $base_data
+            );
+        }
+
+        return $decoded;
+    }
+
+    private static function pixfort_import_base_url(): string {
+        $slug = defined( 'PIXFORT_THEME_SLUG' ) ? sanitize_key( (string) PIXFORT_THEME_SLUG ) : '';
+        if ( 'acquire' === $slug ) return 'https://import.pixfort.com/acquire/elementor/';
+        if ( 'conseil' === $slug ) return 'https://import.pixfort.com/conseil/elementor/';
+        if ( 'pixdocs' === $slug ) return 'https://import.pixfort.com/pixdocs/elementor/';
+        if ( 'pixfort' === $slug ) return 'https://import.pixfort.com/pixfort-theme/elementor/';
+        return 'https://import.pixfort.com/essentials/elementor/';
     }
 
     private static function hook_callbacks( string $hook ): array {
@@ -314,6 +450,14 @@ final class Elementize_Pixfort_Transport {
             if ( is_array( $decoded ) ) return $decoded;
         }
         return null;
+    }
+
+    private static function decode_remote_output( string $output ): ?array {
+        if ( strlen( $output ) >= 2 && "\x1f\x8b" === substr( $output, 0, 2 ) && function_exists( 'gzdecode' ) ) {
+            $decoded = @gzdecode( $output );
+            if ( is_string( $decoded ) && '' !== $decoded && strlen( $decoded ) <= self::MAX_AJAX_RESPONSE_BYTES ) $output = $decoded;
+        }
+        return self::decode_ajax_output( $output );
     }
 
     private static function response_message( $data ): string {
