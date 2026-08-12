@@ -54,7 +54,7 @@ Never write global styles, dynamic values, embedded/shared templates, headers/fo
 
 Only change controls returned writable. For `style`, use exact `setting_path`, exact returned `value_json` as `expected_json`, and the same JSON value shape.
 
-Choose values in order: page palette/spacing/radius/typography; resolved page globals; then `normalization_candidates` from the active-Kit fallback. Kit/global data is read-only grounding only. Prefer the smallest meaningful normalization; if none is grounded, stop.
+Choose values in order: page palette/spacing/radius/typography; resolved page globals; then `normalization_candidates` from the active-Kit fallback. Kit/global data is read-only grounding only. When page evidence is sparse and the fallback contains both custom and generic Elementor system tokens, prefer the site's custom tokens over generic system defaults. Prefer the smallest meaningful normalization; if none is grounded, stop.
 
 A `category=pixfort_theme_color` / `value_semantics=pixfort_theme_token` control stores a Pixfort selector, not CSS. For it:
 - use only an exact `normalization_options[].value`;
