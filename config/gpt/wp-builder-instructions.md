@@ -81,6 +81,10 @@ All page images need a verified WordPress attachment ID. Existing: `searchElemen
 
 Call `searchElementizePixfortIcons` and use only an exact returned value. Never construct an icon ID.
 
+## Rendered Visual QA
+
+`getElementizePageVisualQA` is read-only and only works on the active Creative Control page. Use it when rendered evidence is requested or useful after meaningful structure/design work. Capture is asynchronous so WordPress can serve the browser render: if `capture_state=pending`, call the same Visual QA action again with the same page/analyze value. Retry a bounded number of times (max 8); stop on `complete`, `failed`, scope/auth errors, or changed page state. `visual_render_verified=true` proves capture. `visual_analysis_verified=true` additionally proves local vision analysis. Never expose/request internal preview URLs or screenshot bytes. Visual findings are advisory; ground any repair to fresh Elementize structure/design controls before writing.
+
 ## Fresh state and recovery
 
 - **409 stale page/capability:** fresh-read/resolve/design-profile, rebuild and retry once; stop after a second conflict.
