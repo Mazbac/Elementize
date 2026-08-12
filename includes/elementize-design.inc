@@ -106,18 +106,21 @@ final class Elementize_Design {
         return (array) ( $profile['controls'] ?? [] );
     }
 
-    public static function classify_control( array $path, $value ) {
+    public static function classify_control( array $path, $value, string $widget = '' ) {
         if ( ! $path || count( $path ) > self::MAX_PATH ) return false;
         foreach ( $path as $part ) if ( '__globals__' === (string) $part ) return false;
         $key = strtolower( (string) end( $path ) );
         if ( '' === $key || str_starts_with( $key, '_' ) ) return false;
         if ( is_string( $value ) && self::dynamic( $value ) ) return false;
         if ( preg_match( '/(^|_)(color|background_color|border_color|text_color|icon_color|fill_color|stroke_color)(_|$)/', $key ) ) {
-            // Pixfort frequently stores semantic theme selectors such as
-            // gradient-primary, heading-default, body-default, primary and white
-            // in settings whose keys contain "color". Those are not literal CSS
-            // color fields and must not be treated as writable CSS controls.
-            return is_string( $value ) && self::safe_color( $value ) ? 'color' : false;
+            if ( is_string( $value ) && self::safe_color( $value ) ) return 'color';
+            if ( is_string( $value ) && class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ) {
+                $known = '' !== $widget
+                    ? Elementize_Pixfort_Theme_Tokens::is_control( $widget, $key, $value )
+                    : Elementize_Pixfort_Theme_Tokens::is_any_control( $key, $value );
+                if ( $known ) return 'pixfort_theme_color:' . $key;
+            }
+            return false;
         }
         if ( preg_match( '/(^|_)(padding|margin|gap|row_gap|column_gap|space_between)(_|$)/', $key ) ) return 'spacing';
         if ( preg_match( '/(^|_)(border_radius|radius)(_|$)/', $key ) ) return 'radius';
@@ -141,6 +144,13 @@ final class Elementize_Design {
                 return new WP_Error( 'elementize_design_color_invalid', 'The design color is not an allowed CSS color value.', [ 'status' => 400 ] );
             }
             return trim( $value );
+        }
+        if ( str_starts_with( $category, 'pixfort_theme_color:' ) ) {
+            $setting_key = sanitize_key( substr( $category, strlen( 'pixfort_theme_color:' ) ) );
+            if ( '' === $setting_key || ! class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ) {
+                return new WP_Error( 'elementize_pixfort_theme_token_unavailable', 'Pixfort semantic theme-color validation is unavailable for this setting.', [ 'status' => 400 ] );
+            }
+            return Elementize_Pixfort_Theme_Tokens::validate_any_transition( $setting_key, $current, $value );
         }
         if ( 'alignment' === $category ) {
             if ( ! is_string( $value ) || ! in_array( strtolower( trim( $value ) ), [ 'left','center','right','justify','start','end','flex-start','flex-end','space-between','space-around','space-evenly','stretch','baseline','top','middle','bottom' ], true ) ) {
@@ -168,7 +178,7 @@ final class Elementize_Design {
 
     public static function guidelines(): array {
         return [
-            'principle' => 'Use templates as structural building blocks, then normalize them to the visual language already observed on the target page. Prefer page-observed values first. When local page controls are sparse because Elementor globals provide the design language, use exact read-only active-kit tokens returned in normalization_candidates rather than inventing values. Never mutate global references.',
+            'principle' => 'Use templates as structural building blocks, then normalize them to the visual language already observed on the target page. Prefer page-observed values first. When local page controls are sparse because Elementor globals provide the design language, use exact read-only active-kit tokens returned in normalization_candidates rather than inventing values. Pixfort semantic theme-color controls are writable only when the installed widget exposes the exact selector and the active Kit grounds its Primary/Secondary theme role. Never mutate global references.',
             'complexity_budget' => [
                 'max_creative_operations_per_transaction' => 50,
                 'max_nested_element_depth' => 80,
@@ -203,7 +213,7 @@ final class Elementize_Design {
         if ( count( $controls ) >= $limit || count( $path ) > self::MAX_PATH || (int) $state['visits'] >= self::MAX_VISITS ) return;
         $state['visits'] = (int) $state['visits'] + 1;
         if ( is_array( $value ) ) {
-            $category = self::classify_control( $path, $value );
+            $category = self::classify_control( $path, $value, $widget );
             if ( false !== $category ) { $controls[] = self::control( $category, $id, $widget, $path, $value ); return; }
             foreach ( $value as $key => $child ) {
                 self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $widget, $controls, $state, $limit );
@@ -211,22 +221,36 @@ final class Elementize_Design {
             }
             return;
         }
-        $category = self::classify_control( $path, $value );
+        $category = self::classify_control( $path, $value, $widget );
         if ( false !== $category ) $controls[] = self::control( $category, $id, $widget, $path, $value );
     }
 
     private static function control( string $category, string $id, string $widget, array $path, $value ): array {
-        return [
-            'category' => $category,
+        $setting_key = (string) end( $path );
+        $semantic = str_starts_with( $category, 'pixfort_theme_color:' );
+        $public_category = $semantic ? 'pixfort_theme_color' : $category;
+        $out = [
+            'category' => $public_category,
             'element_id' => $id,
             'widget_type' => $widget,
             'setting_path' => array_values( $path ),
-            'setting_key' => (string) end( $path ),
+            'setting_key' => $setting_key,
             'value' => $value,
             'value_json' => self::canonical_json( $value ),
-            'value_semantics' => 'color' === $category ? 'literal_css_color' : 'bounded_elementor_value',
+            'value_semantics' => $semantic ? 'pixfort_theme_token' : ( 'color' === $category ? 'literal_css_color' : 'bounded_elementor_value' ),
             'writable_in_creative_mode' => true,
         ];
+        if ( $semantic && class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ) {
+            $meta = Elementize_Pixfort_Theme_Tokens::control_meta( $widget, $setting_key, $value );
+            if ( is_array( $meta ) ) {
+                $out['token_source'] = (string) ( $meta['source'] ?? '' );
+                $out['current_token_label'] = (string) ( $meta['current_label'] ?? '' );
+                $out['current_theme_role'] = (string) ( $meta['current_theme_role'] ?? '' );
+                $out['allowed_values'] = (array) ( $meta['allowed_values'] ?? [] );
+                $out['normalization_options'] = (array) ( $meta['normalization_options'] ?? [] );
+            }
+        }
+        return $out;
     }
 
     private static function global_references_for_elements( array $elements, string $filter = '' ): array {
