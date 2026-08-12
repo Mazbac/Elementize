@@ -2,11 +2,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Visual_QA {
-    private const VERSION = '5';
+    private const VERSION = '6';
     private const TTL = 180;
     private const JOB_TTL = 180;
     private const JOB_TIMEOUT_SECONDS = 75;
-    private const JOB_PREFIX = 'elementize_visual_qa_job_v5_';
+    private const JOB_PREFIX = 'elementize_visual_qa_job_v6_';
     private const MODEL_CONST = 'ELEMENTIZE_LOCAL_VISION_MODEL';
     private const OLLAMA_URL_CONST = 'ELEMENTIZE_OLLAMA_URL';
     private const CHROME_PATH_CONST = 'ELEMENTIZE_CHROME_PATH';
@@ -252,7 +252,7 @@ final class Elementize_Visual_QA {
     }
 
     private static function ollama_state(): array {
-        $cached = get_transient( 'elementize_visual_qa_local_state_v5' );
+        $cached = get_transient( 'elementize_visual_qa_local_state_v6' );
         if ( is_array( $cached ) ) return $cached;
         $state = [ 'reachable' => false, 'model_available' => false, 'model' => self::model() ];
         $response = wp_remote_get( self::ollama_url() . '/api/tags', [ 'timeout' => 2, 'redirection' => 0, 'sslverify' => false, 'limit_response_size' => 1048576 ] );
@@ -265,7 +265,7 @@ final class Elementize_Visual_QA {
                 if ( $name === $state['model'] || ( 'gemma3:4b' === $state['model'] && 'gemma3:latest' === $name ) ) { $state['model_available'] = true; break; }
             }
         }
-        set_transient( 'elementize_visual_qa_local_state_v5', $state, 30 );
+        set_transient( 'elementize_visual_qa_local_state_v6', $state, 30 );
         return $state;
     }
 
@@ -499,9 +499,18 @@ final class Elementize_Visual_QA {
         $null = 'Windows' === PHP_OS_FAMILY ? 'NUL' : '/dev/null';
         $spec = [ 0 => [ 'file', $null, 'r' ], 1 => [ 'file', $null, 'a' ], 2 => [ 'file', $null, 'a' ] ];
         $pipes = [];
-        $command = 'Windows' === PHP_OS_FAMILY
-            ? [ 'cmd.exe', '/d', '/c', 'start "" /b "' . $runner . '"' ]
-            : [ '/bin/sh', '-c', 'nohup /bin/sh ' . escapeshellarg( $runner ) . ' >/dev/null 2>&1 &' ];
+        if ( 'Windows' === PHP_OS_FAMILY ) {
+            $system_root = rtrim( trim( (string) getenv( 'SystemRoot' ) ), "\\/" );
+            $powershell = '' !== $system_root ? $system_root . '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : 'powershell.exe';
+            if ( '' !== $system_root && ! is_file( $powershell ) ) $powershell = 'powershell.exe';
+            $cmd = trim( (string) getenv( 'ComSpec' ) );
+            if ( '' === $cmd ) $cmd = '' !== $system_root ? $system_root . '\\System32\\cmd.exe' : 'cmd.exe';
+            $psq = static function( string $value ): string { return "'" . str_replace( "'", "''", $value ) . "'"; };
+            $script = 'Start-Process -FilePath ' . $psq( $cmd ) . ' -ArgumentList ' . $psq( '/d /c call "' . $runner . '"' ) . ' -WindowStyle Hidden';
+            $command = [ $powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', $script ];
+        } else {
+            $command = [ '/bin/sh', '-c', 'nohup /bin/sh ' . escapeshellarg( $runner ) . ' >/dev/null 2>&1 &' ];
+        }
         $proc = @proc_open( $command, $spec, $pipes, null, null, [ 'bypass_shell' => true ] );
         if ( ! is_resource( $proc ) ) return new WP_Error( 'elementize_visual_runner_start_failed', 'Could not start the asynchronous local capture runner.' );
         $started = microtime( true );
