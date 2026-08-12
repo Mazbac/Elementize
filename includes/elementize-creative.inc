@@ -117,7 +117,9 @@ final class Elementize_Creative {
         }
 
         $save_input_hash = is_array( $save_input ) ? Elementize_Core::hash_elements( $save_input ) : '';
-        if ( ! is_array( $save_input ) || ! hash_equals( $after_hash_expected, $save_input_hash ) ) {
+        $validated_save_input_hash = Elementize_Core::hash_elements( self::canonical_save_input_elements( $working ) );
+        $canonical_save_input_hash = is_array( $save_input ) ? Elementize_Core::hash_elements( self::canonical_save_input_elements( $save_input ) ) : '';
+        if ( ! is_array( $save_input ) || ! hash_equals( $validated_save_input_hash, $canonical_save_input_hash ) ) {
             $rollback = self::restore_page( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_creative_save_input_changed', 'Another Elementor save filter changed the validated creative transaction before persistence, so Elementize restored the pre-change page.', [
                 'status' => 500,
@@ -125,6 +127,8 @@ final class Elementize_Creative {
                 'rollback_verified' => $rollback,
                 'validated_hash' => $after_hash_expected,
                 'save_input_hash' => $save_input_hash,
+                'validated_canonical_hash' => $validated_save_input_hash,
+                'save_input_canonical_hash' => $canonical_save_input_hash,
             ] );
         }
         if ( ! is_array( $saved_editor_data ) ) {
@@ -357,6 +361,11 @@ final class Elementize_Creative {
         $node = Elementize_Tree::find_node( $elements, $id );
         if ( ! is_array( $node ) ) return self::operation_error( $index, 'The design target no longer exists.' );
         $widget = sanitize_key( (string) ( $node['widgetType'] ?? '' ) );
+        if ( class_exists( 'Elementize_Pixfort_Repeater_Colors' ) ) {
+            $special = Elementize_Pixfort_Repeater_Colors::apply_style( $elements, $id, $path, $expected, $new, $changes );
+            if ( is_wp_error( $special ) ) return $special;
+            if ( is_array( $special ) ) return true;
+        }
         $old = null;
         $result = Elementize_Tree::mutate_setting( $elements, $id, $path, static function( &$cursor ) use ( $expected, $new, $path, $widget, &$old ) {
             if ( Elementize_Design::canonical_json( $cursor ) !== Elementize_Design::canonical_json( $expected ) ) return new WP_Error( 'elementize_design_value_changed', 'The design setting changed after the creative read.', [ 'status' => 409 ] );
@@ -452,6 +461,19 @@ final class Elementize_Creative {
         return $out;
     }
 
+    private static function canonical_save_input_elements( array $elements ): array {
+        $out = [];
+        foreach ( $elements as $node ) {
+            if ( ! is_array( $node ) ) { $out[] = $node; continue; }
+            $copy = $node;
+            if ( 'global' === (string) ( $copy['widgetType'] ?? '' ) && 'global' === (string) ( $copy['originalWidgetType'] ?? '' ) ) {
+                unset( $copy['originalWidgetType'] );
+            }
+            if ( is_array( $copy['elements'] ?? null ) ) $copy['elements'] = self::canonical_save_input_elements( $copy['elements'] );
+            $out[] = $copy;
+        }
+        return $out;
+    }
     private static function verify_persisted_changes( array $persisted, array $changes ): bool {
         foreach ( $changes as $change ) {
             if ( ! is_array( $change ) ) return false;

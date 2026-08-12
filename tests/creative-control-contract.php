@@ -124,9 +124,17 @@ assert_same_creative( 'freshChild', private_creative( 'resolve_ref', [ 'inserted
 assert_same_creative( 'copyRoot', private_creative( 'resolve_ref', [ 'copy', $aliases ] ), 'Duplicate aliases should resolve their cloned root.' );
 assert_true_creative( is_wp_error( private_creative( 'resolve_ref', [ 'inserted:missing', $aliases ] ) ), 'Unknown alias descendants must fail closed.' );
 
+$save_filter_fixture = [
+    [ 'id' => 'global01', 'elType' => 'widget', 'widgetType' => 'global', 'originalWidgetType' => 'global', 'settings' => [], 'elements' => [] ],
+    [ 'id' => 'heading01', 'elType' => 'widget', 'widgetType' => 'heading', 'originalWidgetType' => 'heading', 'settings' => [], 'elements' => [] ],
+];
+$canonical_save_filter = private_creative( 'canonical_save_input_elements', [ $save_filter_fixture ] );
+assert_true_creative( ! isset( $canonical_save_filter[0]['originalWidgetType'] ), 'Known Elementor global-widget originalWidgetType=global bookkeeping must be ignored only for save-input equivalence.' );
+assert_same_creative( 'heading', $canonical_save_filter[1]['originalWidgetType'], 'Non-global originalWidgetType metadata must remain significant to the save-input guard.' );
 $capabilities_source = file_get_contents( __DIR__ . '/../includes/elementize-capabilities.inc' );
 $creative_source = file_get_contents( __DIR__ . '/../includes/elementize-creative.inc' );
 $design_source = file_get_contents( __DIR__ . '/../includes/elementize-design.inc' );
+$repeater_color_source = file_get_contents( __DIR__ . '/../includes/runtime/elementize-pixfort-repeater-colors.inc' );
 $template_source = file_get_contents( __DIR__ . '/../includes/elementize-templates.inc' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );
 assert_true_creative( is_string( $capabilities_source ) && false !== strpos( $capabilities_source, "PROFILE_STANDARD = 'standard'" ), 'Standard editing must remain the server-side default profile.' );
@@ -135,6 +143,10 @@ assert_true_creative( false !== strpos( $creative_source, 'expected_capability_r
 assert_true_creative( false !== strpos( $creative_source, 'ACTIVITY_SNAPSHOT_META' ) && false !== strpos( $creative_source, 'record_activity' ), 'Creative transactions must persist whole-change Activity/Undo state.' );
 assert_true_creative( false !== strpos( $creative_source, 'classify_control( $path, $cursor, $widget )' ), 'Creative style writes must classify the exact target widget rather than a context-free setting.' );
 assert_true_creative( false !== strpos( $creative_source, 'validate_transition( $widget, $setting_key, $cursor, $new )' ), 'Pixfort semantic theme-color writes must validate the exact target widget transition inside the authoritative Creative transaction.' );
+assert_true_creative( false !== strpos( $creative_source, 'Elementize_Pixfort_Repeater_Colors::apply_style' ), 'Creative style writes must delegate exact dormant Pixfort repeater color controls to the guarded adapter.' );
+assert_true_creative( false !== strpos( $creative_source, 'canonical_save_input_elements' ), 'Creative save-input verification must normalize only explicitly recognized Elementor bookkeeping before hash comparison.' );
+assert_true_creative( is_string( $repeater_color_source ) && false !== strpos( $repeater_color_source, "'has_color'" ) && false !== strpos( $repeater_color_source, "'item_color'" ), 'Pixfort repeater color adapter must bind the installed activation and selector fields.' );
+assert_true_creative( false !== strpos( $repeater_color_source, "[ 'custom', 'custom-gradient' ]" ), 'Pixfort repeater semantic color writes must reject arbitrary custom selectors.' );
 assert_true_creative( false !== strpos( $creative_source, "str_replace( ':', '_', (string) \$result['category'] )" ), 'Semantic design Activity kinds must preserve a separator before the setting key.' );
 assert_true_creative( false !== strpos( $design_source, "'__globals__'" ), 'Global Elementor design references must remain read-only.' );
 assert_true_creative( false !== strpos( $design_source, 'elementize_pixfort_theme_token_widget_required' ), 'Context-free semantic theme-color validation must fail closed and require exact target-widget validation.' );
