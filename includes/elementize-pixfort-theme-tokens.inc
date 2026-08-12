@@ -253,6 +253,16 @@ final class Elementize_Pixfort_Theme_Tokens {
         }
 
         $options = self::flatten_options( $control['options'] ?? null );
+        if ( ! $options && is_array( $control['groups'] ?? null ) ) {
+            foreach ( $control['groups'] as $group ) {
+                if ( ! is_array( $group ) ) continue;
+                foreach ( self::flatten_options( $group['options'] ?? null ) as $value => $label ) {
+                    if ( count( $options ) >= self::MAX_OPTIONS ) break 2;
+                    $options[ $value ] = $label;
+                }
+            }
+            if ( $options ) $lookup_source .= '+grouped_options';
+        }
         if ( ! $options ) {
             self::$diagnostics['options_unavailable']++;
             return null;
