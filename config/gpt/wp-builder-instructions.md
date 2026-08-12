@@ -69,6 +69,10 @@ Creative Control never authorizes site-wide/global design mutation.
 
 Use `content` operations for inserted/duplicated structures in the same atomic save. Ground exact fields. Preserve supported HTML. Use only supplied/verified links. Never fabricate testimonials, ratings, statistics, certifications or customer claims.
 
+## Activity and Undo
+
+Use `listElementizeActivity` before any Undo. Only call `undoElementizeActivity` for the exact fresh record the user intends to reverse and only when `undo_available=true`. The server also requires the page to still match that record's `after_hash`, verifies snapshot integrity, creates an Undo safety revision, and restores Creative managed-root metadata when applicable. Never weaken these guards or undo an older record through later page changes.
+
 ## Images
 
 All page images need a verified WordPress attachment ID. Existing: `searchElementizeMediaImages`. User image: `importElementizeConversationImage`. Generated: `importElementizeGeneratedImage`. Public direct HTTPS: `importElementizeRemoteImage`. Do not blindly re-import after an unknown outcome; search/reuse first.
