@@ -104,8 +104,8 @@ jobs:
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
-          echo "GPT Action operations: ${operation_count}/15"
-          test "$operation_count" -eq 15
+          echo "GPT Action operations: ${operation_count}/17"
+          test "$operation_count" -eq 17
 
           required_operations=(
             getElementizeStatus
@@ -118,6 +118,8 @@ jobs:
             searchElementizeTemplates
             getElementizeTemplate
             applyElementizeCreativePlan
+            listElementizeActivity
+            undoElementizeActivity
             searchElementizeMediaImages
             importElementizeConversationImage
             importElementizeGeneratedImage
