@@ -8,9 +8,8 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * `heading-default` and `body-default` in settings whose names contain `color`.
  * Those values are CSS/theme selector tokens, not literal CSS colors. This
  * adapter never invents such tokens: it discovers exact allowed values from the
- * currently registered Elementor widget controls and only exposes primary or
- * secondary normalization targets when the active Elementor Kit also exposes
- * Pixfort's corresponding Theme Primary/Secondary color token.
+ * currently registered Elementor widget controls and exposes normalization only
+ * when the active Elementor Kit contains Pixfort's corresponding theme role.
  */
 final class Elementize_Pixfort_Theme_Tokens {
     private const MAX_OPTIONS = 80;
@@ -43,10 +42,11 @@ final class Elementize_Pixfort_Theme_Tokens {
                 'resolves_to' => (string) $roles[ $token ]['value'],
                 'site_token_id' => (string) $roles[ $token ]['token_id'],
                 'site_token_title' => (string) $roles[ $token ]['title'],
+                'site_token_scope' => (string) $roles[ $token ]['scope'],
+                'resolution_source' => 'active_elementor_kit_pixfort_theme_role',
                 'read_only_source' => true,
             ];
         }
-        if ( ! $normalization ) return null;
 
         $allowed = [];
         foreach ( array_slice( $meta['options'], 0, self::MAX_OPTIONS, true ) as $value => $label ) {
@@ -63,6 +63,8 @@ final class Elementize_Pixfort_Theme_Tokens {
             'current_theme_role' => self::theme_role_for_token( $current_value ),
             'allowed_values' => $allowed,
             'normalization_options' => $normalization,
+            'normalization_writable' => ! empty( $normalization ),
+            'theme_roles_detected' => array_values( array_keys( $roles ) ),
         ];
     }
 
@@ -84,7 +86,7 @@ final class Elementize_Pixfort_Theme_Tokens {
      * setting path/current value, not the widget type. Keep this fail-closed by
      * requiring an exact installed Pixfort color control with the same setting
      * key/current token, and only allow normalization to primary/secondary when
-     * the active Kit exposes the corresponding Pixfort Theme token.
+     * the active Kit exposes the corresponding Pixfort theme role.
      */
     public static function validate_any_transition( string $setting_key, $current_value, $new_value ) {
         $setting_key = sanitize_key( $setting_key );
@@ -116,20 +118,32 @@ final class Elementize_Pixfort_Theme_Tokens {
         if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->kits_manager ) ) return self::$theme_roles;
         $manager = \Elementor\Plugin::$instance->kits_manager;
         if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_current_settings' ) ) return self::$theme_roles;
-        try { $colors = $manager->get_current_settings( 'custom_colors' ); } catch ( Throwable $ignored ) { $colors = []; }
-        foreach ( is_array( $colors ) ? $colors : [] as $item ) {
-            if ( ! is_array( $item ) ) continue;
-            $id = sanitize_key( (string) ( $item['_id'] ?? '' ) );
-            $role = 'pixprimarycolor' === $id ? 'primary' : ( 'pixsecondarycolor' === $id ? 'secondary' : '' );
-            if ( '' === $role ) continue;
-            $value = trim( (string) ( $item['color'] ?? '' ) );
-            if ( ! self::literal_css_color( $value ) ) continue;
-            self::$theme_roles[ $role ] = [
-                'token_id' => $id,
-                'title' => sanitize_text_field( (string) ( $item['title'] ?? ( 'Theme ' . ucfirst( $role ) . ' Color' ) ) ),
-                'value' => $value,
-                'read_only' => true,
+
+        try {
+            $groups = [
+                'system' => $manager->get_current_settings( 'system_colors' ),
+                'custom' => $manager->get_current_settings( 'custom_colors' ),
             ];
+        } catch ( Throwable $ignored ) {
+            $groups = [];
+        }
+
+        foreach ( $groups as $scope => $colors ) {
+            foreach ( is_array( $colors ) ? $colors : [] as $item ) {
+                if ( ! is_array( $item ) ) continue;
+                $id = sanitize_key( (string) ( $item['_id'] ?? '' ) );
+                $role = 'pixprimarycolor' === $id ? 'primary' : ( 'pixsecondarycolor' === $id ? 'secondary' : '' );
+                if ( '' === $role ) continue;
+                $value = trim( (string) ( $item['color'] ?? '' ) );
+                if ( ! self::literal_css_color( $value ) ) continue;
+                self::$theme_roles[ $role ] = [
+                    'token_id' => $id,
+                    'title' => sanitize_text_field( (string) ( $item['title'] ?? ( 'Theme ' . ucfirst( $role ) . ' Color' ) ) ),
+                    'value' => $value,
+                    'scope' => sanitize_key( (string) $scope ),
+                    'read_only' => true,
+                ];
+            }
         }
         return self::$theme_roles;
     }
