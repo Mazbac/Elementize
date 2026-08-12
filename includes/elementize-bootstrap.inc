@@ -4,6 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 require_once __DIR__ . '/elementize-core.inc';
 require_once __DIR__ . '/elementize-pixfort-icons.inc';
 require_once __DIR__ . '/elementize-pixfort-transport.inc';
+require_once __DIR__ . '/elementize-pixfort-theme-tokens.inc';
 require_once __DIR__ . '/elementize-content.inc';
 require_once __DIR__ . '/elementize-context.inc';
 require_once __DIR__ . '/elementize-capabilities.inc';
