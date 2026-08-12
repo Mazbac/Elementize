@@ -197,26 +197,32 @@ export function SetupPage({ config, onNavigate }: Props) {
 
             <Separator />
 
-            <Step number={3} title="Refresh the GPT Action">
+            <Step number={3} title="GPT Builder">
               {config.environment.connectionReady && config.schema ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => handleCopy(config.schema, 'schema-reconnect')}>
-                    {copied === 'schema-reconnect' ? <Check /> : <Copy />}
-                    {copied === 'schema-reconnect' ? 'Copied' : 'Copy fresh schema'}
-                  </Button>
-                  <Button asChild variant="outline" size="sm">
-                    <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'reconnect-test')}>
-                    {copied === 'reconnect-test' ? <Check /> : <Copy />}
-                    {copied === 'reconnect-test' ? 'Copied' : 'Copy test'}
-                  </Button>
-                </div>
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleCopy(config.instructions, 'instructions-always')} disabled={!config.instructions}>
+                      {copied === 'instructions-always' ? <Check /> : <Copy />}
+                      {copied === 'instructions-always' ? 'Copied' : 'Copy instructions'}
+                    </Button>
+                    <Button size="sm" onClick={() => handleCopy(config.schema, 'schema-reconnect')}>
+                      {copied === 'schema-reconnect' ? <Check /> : <Copy />}
+                      {copied === 'schema-reconnect' ? 'Copied' : 'Copy Action schema'}
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                      <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'reconnect-test')}>
+                      {copied === 'reconnect-test' ? <Check /> : <Copy />}
+                      {copied === 'reconnect-test' ? 'Copied' : 'Copy test'}
+                    </Button>
+                  </div>
+                  {hasExistingKey && (
+                    <p className="text-xs text-muted-foreground">For a tunnel restart, only the Action schema changes. Your Instructions and API key stay the same, but both remain accessible here.</p>
+                  )}
+                </>
               ) : (
-                <p className="text-sm text-muted-foreground">Save the tunnel URL first. The fresh schema will appear here.</p>
-              )}
-              {hasExistingKey && (
-                <p className="text-xs text-muted-foreground">Keep your current API key. A tunnel restart does not require a new key or new Instructions.</p>
+                <p className="text-sm text-muted-foreground">Save the tunnel URL first. The GPT setup materials will appear here.</p>
               )}
             </Step>
           </CardContent>
@@ -265,8 +271,8 @@ export function SetupPage({ config, onNavigate }: Props) {
           <CardHeader>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle>First-time GPT pairing</CardTitle>
-                <CardDescription className="mt-1">Do this once. Future Local restarts use only the three steps above.</CardDescription>
+                <CardTitle>First-time authentication</CardTitle>
+                <CardDescription className="mt-1">The GPT materials are available above. Generate the API key once, then test the connection.</CardDescription>
               </div>
               <Button asChild variant="outline" size="sm">
                 <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
@@ -275,21 +281,13 @@ export function SetupPage({ config, onNavigate }: Props) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => handleCopy(config.instructions, 'instructions')} disabled={!config.instructions}>
-                {copied === 'instructions' ? <Check /> : <Copy />}
-                {copied === 'instructions' ? 'Copied' : '1. Copy instructions'}
-              </Button>
-              <Button size="sm" onClick={() => handleCopy(config.schema, 'schema')} disabled={!config.schema}>
-                {copied === 'schema' ? <Check /> : <Copy />}
-                {copied === 'schema' ? 'Copied' : '2. Copy Action schema'}
-              </Button>
               <Button size="sm" disabled={keyBusy} onClick={handleGenerateKey}>
                 <KeyRound />
-                {keyBusy ? 'Generating…' : '3. Generate key'}
+                {keyBusy ? 'Generating…' : 'Generate API key'}
               </Button>
               <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'first-test')}>
                 {copied === 'first-test' ? <Check /> : <Copy />}
-                {copied === 'first-test' ? 'Copied' : '4. Copy test'}
+                {copied === 'first-test' ? 'Copied' : 'Copy test'}
               </Button>
             </div>
 
@@ -321,15 +319,23 @@ export function SetupPage({ config, onNavigate }: Props) {
         <Card>
           <CardHeader>
             <CardTitle>ChatGPT connection</CardTitle>
-            <CardDescription>Your existing Elementize key is available. No setup changes are required.</CardDescription>
+            <CardDescription>Your GPT materials remain available here whenever you need to update the Custom GPT.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleCopy(config.instructions, 'public-instructions')} disabled={!config.instructions}>
+              {copied === 'public-instructions' ? <Check /> : <Copy />}
+              {copied === 'public-instructions' ? 'Copied' : 'Copy instructions'}
+            </Button>
+            <Button size="sm" onClick={() => handleCopy(config.schema, 'public-schema')} disabled={!config.schema}>
+              {copied === 'public-schema' ? <Check /> : <Copy />}
+              {copied === 'public-schema' ? 'Copied' : 'Copy Action schema'}
+            </Button>
             <Button asChild variant="outline" size="sm">
               <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'public-test')}>
               {copied === 'public-test' ? <Check /> : <Copy />}
-              {copied === 'public-test' ? 'Copied' : 'Copy connection test'}
+              {copied === 'public-test' ? 'Copied' : 'Copy test'}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => onNavigate('connection')}>Manage keys</Button>
           </CardContent>
