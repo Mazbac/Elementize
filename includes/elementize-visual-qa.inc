@@ -2,8 +2,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Visual_QA {
-    private const VERSION = '2';
+    private const VERSION = '3';
     private const TTL = 180;
+    private const JOB_TTL = 180;
+    private const JOB_TIMEOUT_SECONDS = 75;
+    private const JOB_PREFIX = 'elementize_visual_qa_job_v3_';
     private const MODEL_CONST = 'ELEMENTIZE_LOCAL_VISION_MODEL';
     private const OLLAMA_URL_CONST = 'ELEMENTIZE_OLLAMA_URL';
     private const CHROME_PATH_CONST = 'ELEMENTIZE_CHROME_PATH';
@@ -12,7 +15,6 @@ final class Elementize_Visual_QA {
     private const VIEWPORT_WIDTH = 1440;
     private const CAPTURE_HEIGHT = 9000;
     private const MAX_SCREENSHOT_BYTES = 10485760;
-    private const CAPTURE_TIMEOUT_SECONDS = 45;
     private static ?array $validated_preview = null;
 
     public static function init(): void {
@@ -48,6 +50,7 @@ final class Elementize_Visual_QA {
         if ( ! $post || 'page' !== $post->post_type ) return new WP_Error( 'elementize_page_not_found', 'Page not found.', [ 'status' => 404 ] );
 
         $hash = Elementize_Core::hash_elements( $loaded['elements'] );
+        $revision = absint( $state['revision'] );
         $cap = self::capability();
         $raw_analyze = $request->get_param( 'analyze' );
         $analyze = null === $raw_analyze ? true : (bool) filter_var( $raw_analyze, FILTER_VALIDATE_BOOLEAN );
@@ -55,14 +58,14 @@ final class Elementize_Visual_QA {
             'visual_qa_version' => self::VERSION,
             'page' => Elementize_Core::page_identity( $id, $loaded['document'] ),
             'content_hash' => $hash,
-            'capability_revision' => absint( $state['revision'] ),
+            'capability_revision' => $revision,
             'scope' => 'active_creative_control_page',
             'read_only' => true,
             'advisory_only' => true,
             'provider' => 'local',
             'paid_services_required' => false,
             'external_account_required' => false,
-            'capture_backend' => 'local_chromium',
+            'capture_backend' => 'local_chromium_async',
             'analysis_backend' => 'local_vision_model',
             'browser_available' => $cap['browser_available'],
             'browser_name' => $cap['browser_name'],
@@ -76,23 +79,67 @@ final class Elementize_Visual_QA {
             'preview_url_exposed' => false,
         ];
         if ( ! $cap['capture_ready'] ) {
+            $base['capture_state'] = 'unavailable';
             $base['reason'] = 'Local screenshot capture is unavailable. A supported Chrome/Chromium/Edge executable and PHP proc_open are required.';
             return new WP_REST_Response( $base, 200 );
         }
 
-        $url = 'publish' === $post->post_status ? get_permalink( $id ) : self::signed_preview_url( $id, $hash, absint( $state['revision'] ) );
+        $url = 'publish' === $post->post_status ? get_permalink( $id ) : self::signed_preview_url( $id, $hash, $revision );
         if ( ! is_string( $url ) || '' === $url ) {
+            $base['capture_state'] = 'failed';
             $base['reason'] = 'Elementize could not create a local rendered-preview URL for this page.';
             return new WP_REST_Response( $base, 200 );
         }
 
-        $capture = self::capture_screenshot( $url, (string) $cap['browser_path'] );
+        $job_id = self::job_id( $id, $hash, $revision, $analyze );
+        $job_key = self::job_key( $job_id );
+        $job = get_transient( $job_key );
+        if ( is_array( $job ) && ! self::job_matches( $job, $id, $hash, $revision, $analyze ) ) {
+            self::cleanup_job( $job );
+            delete_transient( $job_key );
+            $job = false;
+        }
+
+        if ( ! is_array( $job ) ) {
+            self::cleanup_stale_temp_files();
+            $job = self::start_capture_job( $url, (string) $cap['browser_path'], $job_id, $id, $hash, $revision, $analyze );
+            if ( is_wp_error( $job ) ) {
+                $base['capture_state'] = 'failed';
+                $base['reason'] = self::safe_error( $job, 'Could not start the local rendered capture job.' );
+                $base['stage'] = 'capture_launch';
+                return new WP_REST_Response( $base, 200 );
+            }
+            set_transient( $job_key, $job, self::JOB_TTL );
+            return new WP_REST_Response( self::pending_payload( $base, $job_id, $job ), 200 );
+        }
+
+        $paths = is_array( $job['paths'] ?? null ) ? $job['paths'] : [];
+        $done = isset( $paths['done'] ) && is_string( $paths['done'] ) && is_file( $paths['done'] );
+        if ( ! $done ) {
+            $elapsed = max( 0, time() - absint( $job['started_at'] ?? 0 ) );
+            if ( $elapsed <= self::JOB_TIMEOUT_SECONDS ) return new WP_REST_Response( self::pending_payload( $base, $job_id, $job ), 200 );
+
+            $diagnostic = self::read_capture_log( (string) ( $paths['log'] ?? '' ) );
+            self::cleanup_job( $job );
+            delete_transient( $job_key );
+            $base['capture_state'] = 'failed';
+            $base['stage'] = 'capture';
+            $base['reason'] = self::clip( 'Asynchronous local browser capture exceeded ' . self::JOB_TIMEOUT_SECONDS . ' seconds.' . ( '' !== $diagnostic ? ' Browser detail: ' . $diagnostic : '' ), 500 );
+            return new WP_REST_Response( $base, 200 );
+        }
+
+        $capture = self::finalize_capture_job( $job );
+        delete_transient( $job_key );
         if ( is_wp_error( $capture ) ) {
+            self::cleanup_job( $job );
+            $base['capture_state'] = 'failed';
             $base['reason'] = self::safe_error( $capture, 'Local rendered capture failed.' );
             $base['stage'] = 'capture';
             return new WP_REST_Response( $base, 200 );
         }
 
+        $base['capture_state'] = 'complete';
+        $base['capture_job_id'] = $job_id;
         $base['visual_render_verified'] = true;
         $base['screenshot'] = [
             'captured' => true,
@@ -129,7 +176,7 @@ final class Elementize_Visual_QA {
             $base['note'] = 'Rendered visual evidence was captured and analyzed locally. Findings are advisory and must still be grounded to exact Elementize structure/design controls before any repair write.';
             return new WP_REST_Response( $base, 200 );
         } finally {
-            self::cleanup_capture_files( $capture );
+            self::cleanup_job( $job );
         }
     }
 
@@ -141,7 +188,7 @@ final class Elementize_Visual_QA {
         $data['rendered_visual_qa'] = true;
         $data['rendered_visual_qa_version'] = self::VERSION;
         $data['rendered_visual_qa_scope'] = 'active_creative_control_page';
-        $data['rendered_visual_capture_backend'] = 'local_chromium';
+        $data['rendered_visual_capture_backend'] = 'local_chromium_async';
         $data['rendered_visual_capture_ready'] = $cap['capture_ready'];
         $data['rendered_visual_browser'] = $cap['browser_name'];
         $data['rendered_visual_analysis_backend'] = 'local_vision_model';
@@ -156,7 +203,7 @@ final class Elementize_Visual_QA {
     }
 
     private static function process_available(): bool {
-        return function_exists( 'proc_open' ) && function_exists( 'proc_get_status' ) && function_exists( 'proc_terminate' );
+        return function_exists( 'proc_open' ) && function_exists( 'proc_get_status' ) && function_exists( 'proc_close' );
     }
 
     private static function browser_path(): string {
@@ -201,7 +248,7 @@ final class Elementize_Visual_QA {
     }
 
     private static function ollama_state(): array {
-        $cached = get_transient( 'elementize_visual_qa_local_state_v2' );
+        $cached = get_transient( 'elementize_visual_qa_local_state_v3' );
         if ( is_array( $cached ) ) return $cached;
         $state = [ 'reachable' => false, 'model_available' => false, 'model' => self::model() ];
         $response = wp_remote_get( self::ollama_url() . '/api/tags', [ 'timeout' => 2, 'redirection' => 0, 'sslverify' => false, 'limit_response_size' => 1048576 ] );
@@ -214,7 +261,7 @@ final class Elementize_Visual_QA {
                 if ( $name === $state['model'] || ( 'gemma3:4b' === $state['model'] && 'gemma3:latest' === $name ) ) { $state['model_available'] = true; break; }
             }
         }
-        set_transient( 'elementize_visual_qa_local_state_v2', $state, 30 );
+        set_transient( 'elementize_visual_qa_local_state_v3', $state, 30 );
         return $state;
     }
 
@@ -304,99 +351,133 @@ final class Elementize_Visual_QA {
         return self::preview_requested() ? false : $redirect_url;
     }
 
-    private static function temp_paths(): array {
+    private static function job_id( int $id, string $hash, int $revision, bool $analyze ): string {
+        return substr( hash( 'sha256', $id . "\n" . $revision . "\n" . $hash . "\n" . ( $analyze ? '1' : '0' ) ), 0, 24 );
+    }
+
+    private static function job_key( string $job_id ): string {
+        return self::JOB_PREFIX . $job_id;
+    }
+
+    private static function job_matches( array $job, int $id, string $hash, int $revision, bool $analyze ): bool {
+        return absint( $job['page_id'] ?? 0 ) === $id
+            && absint( $job['revision'] ?? 0 ) === $revision
+            && is_string( $job['content_hash'] ?? null ) && hash_equals( (string) $job['content_hash'], $hash )
+            && (bool) ( $job['analyze'] ?? false ) === $analyze;
+    }
+
+    private static function pending_payload( array $base, string $job_id, array $job ): array {
+        $base['capture_state'] = 'pending';
+        $base['capture_job_id'] = $job_id;
+        $base['retry_after_ms'] = 1500;
+        $base['capture_elapsed_ms'] = max( 0, (int) round( ( microtime( true ) - (float) ( $job['started_microtime'] ?? microtime( true ) ) ) * 1000 ) );
+        $base['note'] = 'The local browser capture is running outside the current WordPress request so the page can render without blocking on the REST worker. Call this same read-only Visual QA action again to collect the result.';
+        return $base;
+    }
+
+    private static function temp_paths( string $job_id ): array {
         $base = trailingslashit( function_exists( 'get_temp_dir' ) ? get_temp_dir() : sys_get_temp_dir() );
-        $token = wp_generate_uuid4();
+        $prefix = $base . 'elementize-visual-' . $job_id;
         return [
-            'screenshot' => $base . 'elementize-visual-' . $token . '.png',
-            'profile' => $base . 'elementize-chrome-' . $token,
-            'log' => $base . 'elementize-chrome-' . $token . '.log',
+            'screenshot' => $prefix . '.png',
+            'profile' => $base . 'elementize-chrome-' . $job_id,
+            'log' => $prefix . '.log',
+            'done' => $prefix . '.done',
+            'runner' => $prefix . ( 'Windows' === PHP_OS_FAMILY ? '.cmd' : '.sh' ),
         ];
     }
 
-    private static function capture_screenshot( string $url, string $browser ) {
-        if ( ! self::process_available() ) return new WP_Error( 'elementize_visual_process_unavailable', 'PHP proc_open is unavailable.' );
+    private static function start_capture_job( string $url, string $browser, string $job_id, int $id, string $hash, int $revision, bool $analyze ) {
         if ( '' === $browser || ! is_file( $browser ) ) return new WP_Error( 'elementize_visual_browser_missing', 'A supported local browser executable was not found.' );
-
-        $paths = self::temp_paths();
+        $paths = self::temp_paths( $job_id );
+        self::cleanup_paths( $paths );
         if ( ! wp_mkdir_p( $paths['profile'] ) ) return new WP_Error( 'elementize_visual_profile_failed', 'Could not create an isolated local browser profile.' );
 
-        $command = [
-            $browser,
-            '--headless=new', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars', '--mute-audio',
-            '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-background-networking', '--disable-sync',
-            '--metrics-recording-only', '--disable-logging', '--log-level=3', '--ignore-certificate-errors', '--allow-insecure-localhost',
-            '--user-data-dir=' . $paths['profile'], '--window-size=' . self::VIEWPORT_WIDTH . ',' . self::CAPTURE_HEIGHT,
-            '--virtual-time-budget=8000', '--screenshot=' . $paths['screenshot'], $url,
+        $runner = 'Windows' === PHP_OS_FAMILY
+            ? self::windows_runner( $browser, $url, $paths )
+            : self::unix_runner( $browser, $url, $paths );
+        if ( is_wp_error( $runner ) ) { self::cleanup_paths( $paths ); return $runner; }
+        if ( false === @file_put_contents( $paths['runner'], $runner ) ) { self::cleanup_paths( $paths ); return new WP_Error( 'elementize_visual_runner_write_failed', 'Could not create the temporary local capture runner.' ); }
+        if ( 'Windows' !== PHP_OS_FAMILY ) @chmod( $paths['runner'], 0700 );
+
+        $launched = self::launch_runner( $paths['runner'] );
+        if ( is_wp_error( $launched ) ) { self::cleanup_paths( $paths ); return $launched; }
+        return [
+            'job_id' => $job_id,
+            'page_id' => $id,
+            'content_hash' => $hash,
+            'revision' => $revision,
+            'analyze' => $analyze,
+            'started_at' => time(),
+            'started_microtime' => microtime( true ),
+            'paths' => $paths,
         ];
-        $spec = [
-            0 => [ 'pipe', 'r' ],
-            1 => [ 'file', $paths['log'], 'a' ],
-            2 => [ 'file', $paths['log'], 'a' ],
-        ];
-        $pipes = [];
-        $proc = @proc_open( $command, $spec, $pipes, null, null, [ 'bypass_shell' => true ] );
-        if ( ! is_resource( $proc ) ) {
-            self::cleanup_paths( $paths );
-            return new WP_Error( 'elementize_visual_browser_start_failed', 'Could not start the local headless browser.' );
+    }
+
+    private static function windows_runner( string $browser, string $url, array $paths ) {
+        foreach ( [ $browser, $url, $paths['screenshot'], $paths['profile'], $paths['log'], $paths['done'] ] as $value ) {
+            if ( preg_match( '/[\r\n"]/', (string) $value ) ) return new WP_Error( 'elementize_visual_runner_value_invalid', 'A local capture runner value could not be safely encoded.' );
         }
-        if ( isset( $pipes[0] ) && is_resource( $pipes[0] ) ) fclose( $pipes[0] );
+        $q = static function( string $value ): string { return '"' . str_replace( '%', '%%', $value ) . '"'; };
+        return "@echo off\r\n"
+            . "ping 127.0.0.1 -n 2 >nul\r\n"
+            . 'start "" /wait ' . $q( $browser )
+            . ' --headless=new --disable-gpu --disable-dev-shm-usage --hide-scrollbars --mute-audio --no-first-run --no-default-browser-check --disable-extensions --disable-background-networking --disable-sync --metrics-recording-only --disable-logging --log-level=3 --ignore-certificate-errors --allow-insecure-localhost --timeout=12000'
+            . ' --user-data-dir=' . $q( $paths['profile'] )
+            . ' --window-size=' . self::VIEWPORT_WIDTH . ',' . self::CAPTURE_HEIGHT
+            . ' --virtual-time-budget=8000 --screenshot=' . $q( $paths['screenshot'] )
+            . ' ' . $q( $url ) . ' >' . $q( $paths['log'] ) . " 2>&1\r\n"
+            . '> ' . $q( $paths['done'] ) . " echo done\r\n"
+            . "del \"%~f0\" >nul 2>&1\r\n";
+    }
 
+    private static function unix_runner( string $browser, string $url, array $paths ): string {
+        $q = static fn( string $value ): string => escapeshellarg( $value );
+        return "#!/bin/sh\n"
+            . "sleep 1\n"
+            . $q( $browser )
+            . ' --headless=new --disable-gpu --disable-dev-shm-usage --hide-scrollbars --mute-audio --no-first-run --no-default-browser-check --disable-extensions --disable-background-networking --disable-sync --metrics-recording-only --disable-logging --log-level=3 --ignore-certificate-errors --allow-insecure-localhost --timeout=12000'
+            . ' --user-data-dir=' . $q( $paths['profile'] )
+            . ' --window-size=' . self::VIEWPORT_WIDTH . ',' . self::CAPTURE_HEIGHT
+            . ' --virtual-time-budget=8000 --screenshot=' . $q( $paths['screenshot'] )
+            . ' ' . $q( $url ) . ' >' . $q( $paths['log'] ) . " 2>&1\n"
+            . 'printf done >' . $q( $paths['done'] ) . "\n"
+            . 'rm -f ' . $q( $paths['runner'] ) . "\n";
+    }
+
+    private static function launch_runner( string $runner ) {
+        if ( ! self::process_available() ) return new WP_Error( 'elementize_visual_process_unavailable', 'PHP proc_open is unavailable.' );
+        $null = 'Windows' === PHP_OS_FAMILY ? 'NUL' : '/dev/null';
+        $spec = [ 0 => [ 'file', $null, 'r' ], 1 => [ 'file', $null, 'a' ], 2 => [ 'file', $null, 'a' ] ];
+        $pipes = [];
+        $command = 'Windows' === PHP_OS_FAMILY
+            ? [ 'cmd.exe', '/d', '/s', '/c', 'start', '', '/b', 'cmd.exe', '/d', '/s', '/c', $runner ]
+            : [ '/bin/sh', '-c', 'nohup /bin/sh ' . escapeshellarg( $runner ) . ' >/dev/null 2>&1 &' ];
+        $proc = @proc_open( $command, $spec, $pipes, null, null, [ 'bypass_shell' => true ] );
+        if ( ! is_resource( $proc ) ) return new WP_Error( 'elementize_visual_runner_start_failed', 'Could not start the asynchronous local capture runner.' );
         $started = microtime( true );
-        $timed_out = false;
-        $screenshot_ready = false;
-        $last_size = -1;
-        $stable_ticks = 0;
-
         do {
-            clearstatcache( true, $paths['screenshot'] );
-            $size = is_file( $paths['screenshot'] ) ? (int) @filesize( $paths['screenshot'] ) : 0;
-            if ( $size >= 1000 ) {
-                if ( $size === $last_size ) $stable_ticks++; else $stable_ticks = 0;
-                $last_size = $size;
-                if ( $stable_ticks >= 5 ) {
-                    $screenshot_ready = true;
-                    $status = proc_get_status( $proc );
-                    if ( ! empty( $status['running'] ) ) @proc_terminate( $proc );
-                    break;
-                }
-            }
-
             $status = proc_get_status( $proc );
             if ( empty( $status['running'] ) ) break;
-            if ( microtime( true ) - $started > self::CAPTURE_TIMEOUT_SECONDS ) {
-                $timed_out = true;
-                @proc_terminate( $proc );
-                break;
-            }
-            usleep( 100000 );
+            if ( microtime( true ) - $started > 2 ) break;
+            usleep( 50000 );
         } while ( true );
-
         @proc_close( $proc );
-        clearstatcache( true, $paths['screenshot'] );
-        if ( ! $screenshot_ready && is_file( $paths['screenshot'] ) && (int) @filesize( $paths['screenshot'] ) >= 1000 ) $screenshot_ready = true;
-        $diagnostic = self::read_capture_log( $paths['log'] );
-        @unlink( $paths['log'] );
+        return true;
+    }
 
-        if ( ! $screenshot_ready ) {
-            @unlink( $paths['screenshot'] );
-            self::remove_dir( $paths['profile'] );
-            $message = $timed_out ? 'Local browser capture exceeded ' . self::CAPTURE_TIMEOUT_SECONDS . ' seconds without producing a stable screenshot.' : 'The local browser did not create a usable screenshot.';
-            if ( '' !== $diagnostic ) $message .= ' Browser detail: ' . $diagnostic;
-            return new WP_Error( $timed_out ? 'elementize_visual_browser_timeout' : 'elementize_visual_no_screenshot', self::clip( $message, 500 ) );
+    private static function finalize_capture_job( array $job ) {
+        $paths = is_array( $job['paths'] ?? null ) ? $job['paths'] : [];
+        $screenshot = (string) ( $paths['screenshot'] ?? '' );
+        clearstatcache( true, $screenshot );
+        if ( '' === $screenshot || ! is_file( $screenshot ) || (int) @filesize( $screenshot ) < 1000 ) {
+            $diagnostic = self::read_capture_log( (string) ( $paths['log'] ?? '' ) );
+            return new WP_Error( 'elementize_visual_no_screenshot', self::clip( 'The asynchronous local browser finished without a usable screenshot.' . ( '' !== $diagnostic ? ' Browser detail: ' . $diagnostic : '' ), 500 ) );
         }
-
-        self::trim_trailing_background( $paths['screenshot'] );
-        $bytes = @file_get_contents( $paths['screenshot'] );
-        if ( false === $bytes || '' === $bytes ) {
-            self::cleanup_paths( $paths );
-            return new WP_Error( 'elementize_visual_screenshot_read_failed', 'The captured screenshot could not be read.' );
-        }
-        if ( strlen( $bytes ) > self::MAX_SCREENSHOT_BYTES ) {
-            self::cleanup_paths( $paths );
-            return new WP_Error( 'elementize_visual_screenshot_too_large', 'The local screenshot exceeded the 10 MB safety limit.' );
-        }
-
+        self::trim_trailing_background( $screenshot );
+        $bytes = @file_get_contents( $screenshot );
+        if ( false === $bytes || '' === $bytes ) return new WP_Error( 'elementize_visual_screenshot_read_failed', 'The captured screenshot could not be read.' );
+        if ( strlen( $bytes ) > self::MAX_SCREENSHOT_BYTES ) return new WP_Error( 'elementize_visual_screenshot_too_large', 'The local screenshot exceeded the 10 MB safety limit.' );
         $width = null;
         $height = null;
         if ( function_exists( 'getimagesizefromstring' ) ) {
@@ -406,19 +487,11 @@ final class Elementize_Visual_QA {
                 $height = absint( $size[1] ?? 0 ) ?: null;
             }
         }
-        return [
-            'path' => $paths['screenshot'],
-            'profile_dir' => $paths['profile'],
-            'bytes' => $bytes,
-            'byte_count' => strlen( $bytes ),
-            'sha256' => hash( 'sha256', $bytes ),
-            'width' => $width,
-            'height' => $height,
-        ];
+        return [ 'bytes' => $bytes, 'byte_count' => strlen( $bytes ), 'sha256' => hash( 'sha256', $bytes ), 'width' => $width, 'height' => $height ];
     }
 
     private static function read_capture_log( string $path ): string {
-        if ( ! is_file( $path ) ) return '';
+        if ( '' === $path || ! is_file( $path ) ) return '';
         $raw = @file_get_contents( $path );
         if ( ! is_string( $raw ) || '' === trim( $raw ) ) return '';
         $raw = preg_replace( '/\\s+/', ' ', trim( $raw ) ) ?: trim( $raw );
@@ -426,13 +499,26 @@ final class Elementize_Visual_QA {
     }
 
     private static function cleanup_paths( array $paths ): void {
-        foreach ( [ 'screenshot', 'log' ] as $key ) if ( isset( $paths[ $key ] ) && is_string( $paths[ $key ] ) ) @unlink( $paths[ $key ] );
+        foreach ( [ 'screenshot', 'log', 'done', 'runner' ] as $key ) if ( isset( $paths[ $key ] ) && is_string( $paths[ $key ] ) ) @unlink( $paths[ $key ] );
         if ( isset( $paths['profile'] ) && is_string( $paths['profile'] ) ) self::remove_dir( $paths['profile'] );
     }
 
-    private static function cleanup_capture_files( array $capture ): void {
-        if ( isset( $capture['path'] ) && is_string( $capture['path'] ) ) @unlink( $capture['path'] );
-        if ( isset( $capture['profile_dir'] ) && is_string( $capture['profile_dir'] ) ) self::remove_dir( $capture['profile_dir'] );
+    private static function cleanup_job( array $job ): void {
+        self::cleanup_paths( is_array( $job['paths'] ?? null ) ? $job['paths'] : [] );
+    }
+
+    private static function cleanup_stale_temp_files(): void {
+        $base = trailingslashit( function_exists( 'get_temp_dir' ) ? get_temp_dir() : sys_get_temp_dir() );
+        $items = @scandir( $base );
+        if ( ! is_array( $items ) ) return;
+        $cutoff = time() - 900;
+        foreach ( $items as $item ) {
+            if ( ! str_starts_with( $item, 'elementize-visual-' ) && ! str_starts_with( $item, 'elementize-chrome-' ) ) continue;
+            $path = $base . $item;
+            $mtime = @filemtime( $path );
+            if ( false === $mtime || $mtime > $cutoff ) continue;
+            if ( is_dir( $path ) ) self::remove_dir( $path ); else @unlink( $path );
+        }
     }
 
     private static function trim_trailing_background( string $path ): void {
