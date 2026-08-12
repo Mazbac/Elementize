@@ -242,6 +242,43 @@ paths:
         '403': { description: Creative Control disabled or enabled for a different page }
         '409': { description: Page content or capability revision changed after the creative read }
 
+  /wp-json/elementize/v1/activity:
+    get:
+      operationId: listElementizeActivity
+      summary: Read recent Elementize Activity and guarded Undo availability
+      description: Returns recent activity records with page identity, revision hashes, Creative metadata, snapshot availability, and whether each record is currently safe to undo.
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200': { description: Recent Activity records and fresh undo availability }
+        '401': { description: Authentication required }
+        '403': { description: Administrator permission required }
+
+  /wp-json/elementize/v1/activity/{activity_id}/undo:
+    post:
+      operationId: undoElementizeActivity
+      summary: Guardedly undo one exact Activity record
+      description: Restores the verified pre-change snapshot only when the page still matches that Activity after-hash. Creative managed-root metadata is restored atomically with the page content.
+      parameters:
+        - { name: activity_id, in: path, required: true, schema: { type: string, pattern: '^[A-Fa-f0-9-]{36}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm_undo]
+              properties:
+                confirm_undo: { type: boolean, enum: [true] }
+                confirm_published_page: { type: boolean, default: false }
+      responses:
+        '200': { description: Activity undone with persisted verification and restored Creative managed metadata when applicable }
+        '400': { description: Undo confirmation missing or published-page confirmation required }
+        '403': { description: Administrator or page-edit permission required }
+        '404': { description: Activity record or page not found }
+        '409': { description: Activity already undone, snapshot invalid, or page changed after the activity }
+
   /wp-json/elementize/v1/media/images:
     get:
       operationId: searchElementizeMediaImages
