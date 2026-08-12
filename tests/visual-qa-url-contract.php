@@ -98,4 +98,8 @@ foreach ( [
 }
 if ( false !== strpos( $source, 'start "" /b' ) ) fail_visual_qa_url_contract( 'Broken cmd.exe start /b launcher returned.' );
 
+foreach ( [ 'settle_preview_motion', 'elementize-visual-settle-motion', '.animate-in,.group-animate-in,.animating,[data-anim-type]', "[ 'draft', 'publish' ]" ] as $motion_needle ) {
+    if ( false === strpos( $source, $motion_needle ) ) fail_visual_qa_url_contract( 'Missing deterministic motion-settling marker: ' . $motion_needle );
+}
+
 echo "Visual QA URL contract OK\n";

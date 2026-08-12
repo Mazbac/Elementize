@@ -22,6 +22,7 @@ final class Elementize_Visual_QA {
         add_filter( 'rest_request_after_callbacks', [ self::class, 'annotate_status' ], 95, 3 );
         add_action( 'pre_get_posts', [ self::class, 'allow_signed_draft_query' ], 1 );
         add_action( 'template_redirect', [ self::class, 'guard_preview_request' ], 0 );
+        add_action( 'wp_head', [ self::class, 'settle_preview_motion' ], PHP_INT_MAX );
         add_filter( 'redirect_canonical', [ self::class, 'disable_canonical_for_preview' ], 10, 2 );
     }
 
@@ -84,7 +85,7 @@ final class Elementize_Visual_QA {
             return new WP_REST_Response( $base, 200 );
         }
 
-        $candidate_url = 'publish' === $post->post_status ? get_permalink( $id ) : self::signed_preview_url( $id, $hash, $revision );
+        $candidate_url = self::signed_preview_url( $id, $hash, $revision );
         $url = self::normalize_capture_url( $candidate_url );
         if ( '' === $url ) {
             $base['capture_state'] = 'failed';
@@ -351,14 +352,14 @@ final class Elementize_Visual_QA {
         $sig = isset( $_GET['elementize_visual_sig'] ) ? sanitize_text_field( wp_unslash( $_GET['elementize_visual_sig'] ) ) : '';
         if ( $id < 1 || $revision < 1 || $expires < time() || $expires > time() + self::TTL + 30 || ! preg_match( '/^[a-f0-9]{64}$/', $hash ) || ! preg_match( '/^[a-f0-9]{64}$/', $sig ) ) return self::$validated_preview = $bad;
         $post = get_post( $id );
-        if ( ! $post || 'page' !== $post->post_type || 'draft' !== $post->post_status ) return self::$validated_preview = $bad;
+        if ( ! $post || 'page' !== $post->post_type || ! in_array( (string) $post->post_status, [ 'draft', 'publish' ], true ) ) return self::$validated_preview = $bad;
         $state = Elementize_Capabilities::state();
         if ( empty( $state['creative_enabled'] ) || absint( $state['scope_page_id'] ) !== $id || absint( $state['revision'] ) !== $revision ) return self::$validated_preview = $bad;
         if ( ! hash_equals( self::preview_signature( $id, $hash, $revision, $expires ), $sig ) ) return self::$validated_preview = $bad;
         $loaded = Elementize_Core::elements( $id );
         $current = is_wp_error( $loaded ) ? '' : Elementize_Core::hash_elements( $loaded['elements'] );
         if ( '' === $current || ! hash_equals( $current, $hash ) ) return self::$validated_preview = [ 'valid' => false, 'reason' => 'stale' ];
-        return self::$validated_preview = [ 'valid' => true, 'id' => $id, 'hash' => $hash, 'revision' => $revision, 'expires' => $expires ];
+        return self::$validated_preview = [ 'valid' => true, 'id' => $id, 'hash' => $hash, 'revision' => $revision, 'expires' => $expires, 'status' => (string) $post->post_status ];
     }
 
     public static function allow_signed_draft_query( WP_Query $query ): void {
@@ -367,8 +368,9 @@ final class Elementize_Visual_QA {
         if ( empty( $valid['valid'] ) ) return;
         $query->set( 'page_id', (int) $valid['id'] );
         $query->set( 'post_type', 'page' );
-        $query->set( 'post_status', 'draft' );
-        $query->set( 'preview', true );
+        $status = (string) ( $valid['status'] ?? 'draft' );
+        $query->set( 'post_status', $status );
+        if ( 'draft' === $status ) $query->set( 'preview', true );
     }
 
     public static function guard_preview_request(): void {
@@ -387,6 +389,15 @@ final class Elementize_Visual_QA {
         header( 'Referrer-Policy: no-referrer', true );
     }
 
+    public static function settle_preview_motion(): void {
+        if ( ! self::preview_requested() ) return;
+        $valid = self::validate_preview_request();
+        if ( empty( $valid['valid'] ) ) return;
+        echo '<style id="elementize-visual-settle-motion">'
+            . '*,*::before,*::after{animation-delay:0s!important;animation-duration:0s!important;transition-delay:0s!important;transition-duration:0s!important;scroll-behavior:auto!important;caret-color:transparent!important}'
+            . '.animate-in,.group-animate-in,.animating,[data-anim-type]{visibility:visible!important;opacity:1!important;transform:none!important;animation:none!important;transition:none!important}'
+            . '</style>';
+    }
     public static function disable_canonical_for_preview( $redirect_url, $requested_url ) {
         return self::preview_requested() ? false : $redirect_url;
     }
