@@ -353,12 +353,25 @@ final class Elementize_Creative {
         if ( ! $ok ) return self::operation_error( $index, 'style expected_json is invalid JSON.' );
         $new_ok = false; $new = Elementize_Design::decode_json_value( $op['value_json'], $new_ok );
         if ( ! $new_ok ) return self::operation_error( $index, 'style value_json is invalid JSON.' );
+
+        $node = Elementize_Tree::find_node( $elements, $id );
+        if ( ! is_array( $node ) ) return self::operation_error( $index, 'The design target no longer exists.' );
+        $widget = sanitize_key( (string) ( $node['widgetType'] ?? '' ) );
         $old = null;
-        $result = Elementize_Tree::mutate_setting( $elements, $id, $path, static function( &$cursor ) use ( $expected, $new, $path, &$old ) {
+        $result = Elementize_Tree::mutate_setting( $elements, $id, $path, static function( &$cursor ) use ( $expected, $new, $path, $widget, &$old ) {
             if ( Elementize_Design::canonical_json( $cursor ) !== Elementize_Design::canonical_json( $expected ) ) return new WP_Error( 'elementize_design_value_changed', 'The design setting changed after the creative read.', [ 'status' => 409 ] );
-            $category = Elementize_Design::classify_control( $path, $cursor );
-            if ( false === $category ) return new WP_Error( 'elementize_design_control_invalid', 'This setting is not an approved creative design control.', [ 'status' => 400 ] );
-            $validated = Elementize_Design::validate_control_value( $category, $new, $cursor );
+            $category = Elementize_Design::classify_control( $path, $cursor, $widget );
+            if ( false === $category ) return new WP_Error( 'elementize_design_control_invalid', 'This setting is not an approved creative design control for the exact target widget.', [ 'status' => 400 ] );
+
+            if ( str_starts_with( $category, 'pixfort_theme_color:' ) ) {
+                $setting_key = sanitize_key( substr( $category, strlen( 'pixfort_theme_color:' ) ) );
+                if ( '' === $widget || '' === $setting_key || ! class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ) {
+                    return new WP_Error( 'elementize_pixfort_theme_token_unavailable', 'Pixfort semantic theme-color validation is unavailable for the exact target widget.', [ 'status' => 400 ] );
+                }
+                $validated = Elementize_Pixfort_Theme_Tokens::validate_transition( $widget, $setting_key, $cursor, $new );
+            } else {
+                $validated = Elementize_Design::validate_control_value( $category, $new, $cursor );
+            }
             if ( is_wp_error( $validated ) ) return $validated;
             $old = $cursor;
             $cursor = $validated;
@@ -366,7 +379,8 @@ final class Elementize_Creative {
         } );
         if ( is_wp_error( $result ) ) return $result;
         if ( ! is_array( $result ) ) return self::operation_error( $index, 'The design target no longer exists.' );
-        $changes[] = [ 'kind' => 'design_' . $result['category'], 'element_id' => $id, 'setting_path' => $path, 'old_value' => $old, 'new_value' => $result['new'] ];
+        $kind_category = sanitize_key( str_replace( ':', '_', (string) $result['category'] ) );
+        $changes[] = [ 'kind' => 'design_' . $kind_category, 'element_id' => $id, 'setting_path' => $path, 'old_value' => $old, 'new_value' => $result['new'] ];
         return true;
     }
 
