@@ -36,7 +36,7 @@ Do not add page creation, publishing/unpublishing/trash/restore, unrestricted El
 Rendered Visual QA is read-only and page-scoped. Elementize may capture a signed local Chromium render, settle transient motion, bound tall screenshots, and return a ZIP through the GPT Action `openaiFileResponse` contract. Native ChatGPT vision performs the visual judgment after extracting `screenshot.png`; server-side `visual_analysis_verified=false` is expected for that handoff. Never expose preview URLs or claim visual verification without an actual inspected render.
 ## Mutation rules
 
-Every mutation must fail closed and use fresh exact state. Never weaken these rules in Creative Control.
+Every mutation must fail closed and use fresh exact state. Never weaken these rules in Creative Control. For visual repairs, the intended visual scope must fit within the selected control's declared effective scope; reject broader controls for narrower repairs.
 
 Content-only writes require fresh page identity/hash, exact target IDs/paths/current values, a pre-change revision, one verified save, persisted `_elementor_data` verification and rollback on failure.
 

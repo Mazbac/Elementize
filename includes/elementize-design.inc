@@ -200,28 +200,28 @@ final class Elementize_Design {
             if ( count( $controls ) >= $limit || (int) $state['visits'] >= self::MAX_VISITS ) return;
             if ( ! is_array( $element ) ) continue;
             $id = trim( (string) ( $element['id'] ?? '' ) );
-            if ( '' !== $id && ( '' === $filter || $filter === $id ) && is_array( $element['settings'] ?? null ) ) self::collect_settings( $element['settings'], [], $id, (string) ( $element['widgetType'] ?? '' ), $controls, $state, $limit );
+            if ( '' !== $id && ( '' === $filter || $filter === $id ) && is_array( $element['settings'] ?? null ) ) self::collect_settings( $element['settings'], [], $id, (string) ( $element['widgetType'] ?? '' ), $controls, $state, $limit, $element['settings'] );
             if ( '' === $filter || $filter !== $id ) if ( is_array( $element['elements'] ?? null ) ) self::collect_elements( $element['elements'], $controls, $state, $filter, $depth + 1, $limit );
         }
     }
 
-    private static function collect_settings( $value, array $path, string $id, string $widget, array &$controls, array &$state, int $limit ): void {
+    private static function collect_settings( $value, array $path, string $id, string $widget, array &$controls, array &$state, int $limit, array $root_settings ): void {
         if ( count( $controls ) >= $limit || count( $path ) > self::MAX_PATH || (int) $state['visits'] >= self::MAX_VISITS ) return;
         $state['visits'] = (int) $state['visits'] + 1;
         if ( is_array( $value ) ) {
             $category = self::classify_control( $path, $value, $widget );
-            if ( false !== $category ) { $controls[] = self::control( $category, $id, $widget, $path, $value ); return; }
+            if ( false !== $category ) { $controls[] = self::control( $category, $id, $widget, $path, $value, $root_settings ); return; }
             foreach ( $value as $key => $child ) {
-                self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $widget, $controls, $state, $limit );
+                self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $widget, $controls, $state, $limit, $root_settings );
                 if ( count( $controls ) >= $limit || (int) $state['visits'] >= self::MAX_VISITS ) return;
             }
             return;
         }
         $category = self::classify_control( $path, $value, $widget );
-        if ( false !== $category ) $controls[] = self::control( $category, $id, $widget, $path, $value );
+        if ( false !== $category ) $controls[] = self::control( $category, $id, $widget, $path, $value, $root_settings );
     }
 
-    private static function control( string $category, string $id, string $widget, array $path, $value ): array {
+    private static function control( string $category, string $id, string $widget, array $path, $value, array $root_settings ): array {
         $setting_key = (string) end( $path );
         $semantic = str_starts_with( $category, 'pixfort_theme_color:' );
         $public_category = $semantic ? 'pixfort_theme_color' : $category;
@@ -235,7 +235,17 @@ final class Elementize_Design {
             'value_json' => self::canonical_json( $value ),
             'value_semantics' => $semantic ? 'pixfort_theme_token' : ( 'color' === $category ? 'literal_css_color' : 'bounded_elementor_value' ),
             'writable_in_creative_mode' => true,
+            'control_scope' => self::control_scope( $path ),
         ];
+        if ( 'pix-highlighted-text' === sanitize_key( $widget ) && 'title_size' === $setting_key && 'element' === $out['control_scope'] ) {
+            $targets = self::highlighted_text_targets( $root_settings );
+            if ( $targets ) {
+                $out['control_effect'] = 'all_highlighted_text_items';
+                $out['applies_to_visible_text_targets'] = $targets;
+                $out['line_specific_safe'] = false;
+                $out['control_scope_warning'] = 'This widget-level title_size control affects every visible highlighted-text item; do not use it for a line-specific repair.';
+            }
+        }
         if ( $semantic && class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ) {
             $meta = Elementize_Pixfort_Theme_Tokens::control_meta( $widget, $setting_key, $value );
             if ( is_array( $meta ) ) {
@@ -247,6 +257,26 @@ final class Elementize_Design {
             }
         }
         return $out;
+    }
+
+    private static function control_scope( array $path ): string {
+        foreach ( $path as $part ) if ( is_int( $part ) ) return 'repeater_item';
+        return 'element';
+    }
+
+    private static function highlighted_text_targets( array $settings ): array {
+        $items = is_array( $settings['items'] ?? null ) ? $settings['items'] : [];
+        $targets = [];
+        foreach ( $items as $index => $item ) {
+            if ( ! is_int( $index ) || ! is_array( $item ) ) continue;
+            $text = trim( wp_strip_all_tags( (string) ( $item['text'] ?? '' ) ) );
+            if ( '' === $text ) continue;
+            $targets[] = [
+                'setting_path' => [ 'items', $index, 'text' ],
+                'text' => substr( $text, 0, 240 ),
+            ];
+        }
+        return $targets;
     }
 
     private static function global_references_for_elements( array $elements, string $filter = '' ): array {

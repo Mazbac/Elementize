@@ -157,6 +157,8 @@ final class Elementize_Pixfort_Repeater_Colors {
             'value_json' => Elementize_Design::canonical_json( $current ),
             'value_semantics' => 'pixfort_theme_token',
             'writable_in_creative_mode' => true,
+            'control_scope' => 'repeater_item',
+            'line_specific_safe' => true,
             'token_source' => 'installed_elementor_pixfort_repeater_control',
             'normalization_options' => $normalization,
             'companion_setting_path' => [ $repeater_key, $index, 'has_color' ],

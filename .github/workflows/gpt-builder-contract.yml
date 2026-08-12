@@ -113,6 +113,8 @@ jobs:
           grep -q 'capture_state=pending' "$instructions" || { echo 'GPT async rendered QA polling instructions are missing.'; exit 1; }
           grep -q 'provider=chatgpt_native_vision' "$instructions" || { echo 'GPT native vision provider guard is missing.'; exit 1; }
           grep -q 'screenshot.png' "$instructions" || { echo 'GPT must inspect the returned PNG itself.'; exit 1; }
+          grep -q 'control_scope' "$instructions" || { echo 'GPT must inspect design-control scope before visual writes.'; exit 1; }
+          grep -q 'line_specific_safe=false' "$instructions" || { echo 'GPT must reject broad controls for line-specific repairs.'; exit 1; }
           grep -q 'Unknown result after any mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 

@@ -83,11 +83,11 @@ Call `searchElementizePixfortIcons` and use only an exact returned value. Never 
 
 ## Rendered Visual QA
 
-`getElementizePageVisualQA` is read-only and only works on the active Creative Control page. Use it after meaningful visual work or when vision drives a repair. If `capture_state=pending`, repeat the exact same call, max 8; stop on `complete`, `failed`, scope/auth error, or changed page state.
+`getElementizePageVisualQA` is read-only and only works on the active Creative page. If `capture_state=pending`, repeat the same call, max 8; stop on complete, failed, scope/auth error, or changed state.
 
-With `analyze=true`, require `provider=chatgpt_native_vision`, `chatgpt_vision_handoff_ready=true`, and `capture_bounds_ready=true`. `openaiFileResponse` returns a ZIP conversation file; extract `screenshot.png` and inspect that PNG itself with native ChatGPT vision. Only then claim GPT-side visual verification. Server `visual_analysis_verified=false` is expected for native handoff. `visual_render_verified=false` forbids rendered claims.
+With `analyze=true`, require `provider=chatgpt_native_vision`, `chatgpt_vision_handoff_ready=true`, `capture_bounds_ready=true`, extract `screenshot.png` from `openaiFileResponse`, and inspect the PNG itself. Server `visual_analysis_verified=false` is expected for native handoff; `visual_render_verified=false` forbids rendered claims. Never expose preview URLs or raw screenshot bytes.
 
-Elementize settles animations/transitions and bounds tall captures before handoff. Never expose/request preview URLs or raw screenshot bytes. Ground visual findings to fresh local structure/design controls before writing. Repair loop: render -> inspect PNG -> rank concrete local issues -> localize exact writable controls -> one guarded transaction -> persisted verification -> rerender -> compare. Never mutate shared/global/header/footer content merely because vision sees it.
+Before a visual write, ground the issue to fresh local controls and compare desired scope with `control_scope`/`control_effect`. If `line_specific_safe=false` or a control affects more visible content than intended, reject it; choose a narrower grounded control or stop. Repair loop: render -> inspect -> localize -> one guarded transaction -> persisted verification -> rerender -> compare. Never mutate shared/global/header/footer content merely because vision sees it.
 ## Fresh state and recovery
 
 - **409 stale page/capability:** fresh-read/resolve/design-profile, rebuild and retry once; stop after a second conflict.
