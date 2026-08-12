@@ -55,7 +55,7 @@ final class Elementize_Templates {
         $filtered = [];
         foreach ( $items as $item ) {
             if ( 'all' !== $provider && $provider !== (string) $item['provider'] ) continue;
-            if ( 'all' !== $type && $type !== strtolower( (string) ( $item['type'] ?? '' ) ) ) continue;
+            if ( 'all' !== $type && $type !== strtolower( (string) ( $item['type'] ?? '' ) ) continue;
             if ( '' !== $q ) {
                 $haystack = self::lower( implode( ' ', [
                     (string) $item['title'],
@@ -75,7 +75,7 @@ final class Elementize_Templates {
         } );
 
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
         $total = count( $filtered );
         $sources = self::source_descriptors();
 
@@ -292,7 +292,7 @@ final class Elementize_Templates {
             'source_id' => self::PIXFORT_SOURCE_ID,
             'provider' => 'pixfort',
             'class' => $class_ready ? '\\Elementor\\TemplateLibrary\\Source_Pixfort' : 'pixfort_elementor_library_data',
-            'adapter' => $class_ready ? 'pixfort_native_source' : 'pixfort_remote_fallback',
+            'adapter' => $class_ready ? 'pixfort_native_then_registered_ajax' : 'pixfort_registered_ajax_then_remote',
         ];
     }
 
@@ -367,9 +367,28 @@ final class Elementize_Templates {
             return new WP_Error( 'elementize_pixfort_template_not_found', 'The requested Pixfort template is not present in the installed Pixfort library catalogue.', [ 'status' => 404 ] );
         }
 
-        $payload = self::load_pixfort_native_payload( $template_id );
-        if ( null === $payload ) $payload = self::fetch_pixfort_template_payload( $record );
-        if ( is_wp_error( $payload ) ) return $payload;
+        $scope_page_id = self::pixfort_scope_page_id();
+        $native = self::load_pixfort_native_payload( $template_id );
+        $payload = is_array( $native ) ? $native : null;
+        $ajax = null;
+        $remote = null;
+
+        // The captured real Elementor/Pixfort network flow uses this local AJAX action. Prefer it when the
+        // lower-level Source_Pixfort adapter rejects the non-editor REST context with its generic corruption error.
+        if ( null === $payload && class_exists( 'Elementize_Pixfort_Transport' ) ) {
+            $ajax = Elementize_Pixfort_Transport::load_template_via_registered_ajax( $template_id, $scope_page_id );
+            if ( is_array( $ajax ) ) $payload = $ajax;
+        }
+
+        // Keep the bounded direct remote loader only as a final fallback when no native source exists at all.
+        if ( null === $payload && null === $native ) {
+            $remote = self::fetch_pixfort_template_payload( $record );
+            if ( is_array( $remote ) ) $payload = $remote;
+        }
+
+        if ( null === $payload ) {
+            return self::pixfort_transport_failure( $native, $ajax, $remote, $scope_page_id );
+        }
 
         if ( ! empty( $payload['pixIsNested'] ) || ! empty( $payload['pixNestedTemplates'] ) ) {
             return new WP_Error(
@@ -399,11 +418,15 @@ final class Elementize_Templates {
         ];
     }
 
+    private static function pixfort_scope_page_id(): int {
+        $state = class_exists( 'Elementize_Capabilities' ) ? Elementize_Capabilities::state() : [];
+        return ! empty( $state['creative_enabled'] ) ? absint( $state['scope_page_id'] ?? 0 ) : 0;
+    }
+
     private static function load_pixfort_native_payload( string $template_id ) {
         if ( ! self::ensure_pixfort_source_class() ) return null;
 
-        $state = class_exists( 'Elementize_Capabilities' ) ? Elementize_Capabilities::state() : [];
-        $scope_page_id = ! empty( $state['creative_enabled'] ) ? absint( $state['scope_page_id'] ?? 0 ) : 0;
+        $scope_page_id = self::pixfort_scope_page_id();
         $args = [ 'template_id' => $template_id ];
         if ( $scope_page_id > 0 ) $args['editor_post_id'] = $scope_page_id;
 
@@ -442,6 +465,35 @@ final class Elementize_Templates {
             );
         }
         return $candidate;
+    }
+
+    private static function pixfort_transport_failure( $native, $ajax, $remote, int $scope_page_id ): WP_Error {
+        $data = [
+            'status' => 503,
+            'scope_page_id' => $scope_page_id,
+            'attempts' => [],
+        ];
+        foreach ( [ 'native' => $native, 'registered_ajax' => $ajax, 'remote_fallback' => $remote ] as $adapter => $error ) {
+            if ( ! is_wp_error( $error ) ) continue;
+            $entry = [
+                'adapter' => $adapter,
+                'code' => $error->get_error_code(),
+                'message' => $error->get_error_message(),
+            ];
+            $error_data = $error->get_error_data();
+            if ( is_array( $error_data ) ) {
+                foreach ( [ 'ajax_action', 'nonce_detection', 'response_bytes', 'response_kind', 'die_message', 'nonce_candidates' ] as $key ) {
+                    if ( isset( $error_data[ $key ] ) && is_scalar( $error_data[ $key ] ) ) $entry[ $key ] = $error_data[ $key ];
+                }
+            }
+            $data['attempts'][] = $entry;
+        }
+
+        return new WP_Error(
+            'elementize_pixfort_template_load_failed',
+            'Pixfort template loading failed through every safe adapter available in this request.',
+            $data
+        );
     }
 
     private static function pixfort_template_record( string $template_id ): ?array {
