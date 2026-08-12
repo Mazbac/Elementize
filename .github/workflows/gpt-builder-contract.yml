@@ -30,6 +30,7 @@ jobs:
           includes/elementize-media-library.inc
           includes/elementize-onboarding.inc
           includes/elementize-pixfort-icons.inc
+          includes/elementize-pixfort-theme-tokens.inc
           includes/elementize-pixfort-transport.inc
           includes/elementize-templates.inc
           includes/elementize-tree.inc
@@ -45,10 +46,10 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 15
+          test "$require_count" -eq 16
           test "$init_count" -eq 14
 
-          for module in core pixfort-icons pixfort-transport content context capabilities design tree templates creative media-library media-import activity connections onboarding; do
+          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens content context capabilities design tree templates creative media-library media-import activity connections onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
 
@@ -70,6 +71,9 @@ jobs:
           grep -q "class Elementize_Pixfort_Transport" includes/elementize-pixfort-transport.inc || { echo 'Pixfort authenticated transport adapter is missing.'; exit 1; }
           grep -q "pix_domain" includes/elementize-pixfort-transport.inc || { echo 'Pixfort transport domain header is missing.'; exit 1; }
           grep -q "purchase_key" includes/elementize-pixfort-transport.inc || { echo 'Pixfort transport purchase header is missing.'; exit 1; }
+          grep -q "class Elementize_Pixfort_Theme_Tokens" includes/elementize-pixfort-theme-tokens.inc || { echo 'Pixfort semantic theme-token adapter is missing.'; exit 1; }
+          grep -q "normalization_options" includes/elementize-pixfort-theme-tokens.inc || { echo 'Pixfort theme-token normalization grounding is missing.'; exit 1; }
+          grep -q "validate_any_transition" includes/elementize-pixfort-theme-tokens.inc || { echo 'Pixfort semantic token write guard is missing.'; exit 1; }
           grep -q "class Elementize_Creative" includes/elementize-creative.inc || { echo 'Creative transaction runtime is missing.'; exit 1; }
           grep -q "expected_capability_revision" includes/elementize-creative.inc || { echo 'Creative writes must use capability revision.'; exit 1; }
           grep -q "confirm_creative_write" includes/elementize-creative.inc || { echo 'Creative writes must require confirmation.'; exit 1; }
@@ -94,6 +98,7 @@ jobs:
           grep -q 'Never enable, disable, or change Creative Control yourself' "$instructions" || { echo 'GPT must not toggle Creative Control.'; exit 1; }
           grep -q 'Avoid Frankenstein pages' "$instructions" || { echo 'Design-coherence planning rules are missing.'; exit 1; }
           grep -q 'expected_capability_revision' "$instructions" || { echo 'Creative stale-state instructions are missing.'; exit 1; }
+          grep -q 'pixfort_theme_color' "$instructions" || { echo 'GPT Pixfort theme-token normalization instructions are missing.'; exit 1; }
           grep -q 'visual_render_verified=false' "$instructions" || { echo 'Visual QA overclaim guard is missing.'; exit 1; }
           grep -q 'Unknown result after any mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
