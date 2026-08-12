@@ -112,7 +112,13 @@ final class Elementize_Design {
         $key = strtolower( (string) end( $path ) );
         if ( '' === $key || str_starts_with( $key, '_' ) ) return false;
         if ( is_string( $value ) && self::dynamic( $value ) ) return false;
-        if ( preg_match( '/(^|_)(color|background_color|border_color|text_color|icon_color|fill_color|stroke_color)(_|$)/', $key ) ) return 'color';
+        if ( preg_match( '/(^|_)(color|background_color|border_color|text_color|icon_color|fill_color|stroke_color)(_|$)/', $key ) ) {
+            // Pixfort frequently stores semantic theme selectors such as
+            // gradient-primary, heading-default, body-default, primary and white
+            // in settings whose keys contain "color". Those are not literal CSS
+            // color fields and must not be treated as writable CSS controls.
+            return is_string( $value ) && self::safe_color( $value ) ? 'color' : false;
+        }
         if ( preg_match( '/(^|_)(padding|margin|gap|row_gap|column_gap|space_between)(_|$)/', $key ) ) return 'spacing';
         if ( preg_match( '/(^|_)(border_radius|radius)(_|$)/', $key ) ) return 'radius';
         if ( preg_match( '/(^|_)(text_align|align|alignment|justify_content|align_items|content_position|vertical_align)(_|$)/', $key ) ) return 'alignment';
@@ -128,7 +134,10 @@ final class Elementize_Design {
             }
         }
         if ( 'color' === $category ) {
-            if ( ! is_string( $value ) || strlen( $value ) > 128 || ! preg_match( '/^(#[0-9a-f]{3,8}|rgba?\([^\r\n]{1,90}\)|hsla?\([^\r\n]{1,90}\)|transparent|currentColor|var\(--[A-Za-z0-9_-]+\))$/i', trim( $value ) ) ) {
+            if ( ! is_string( $current ) || ! self::safe_color( $current ) ) {
+                return new WP_Error( 'elementize_design_color_semantic_token', 'This setting contains a theme color token rather than a literal CSS color and is not writable as a local CSS color.', [ 'status' => 400 ] );
+            }
+            if ( ! is_string( $value ) || ! self::safe_color( $value ) ) {
                 return new WP_Error( 'elementize_design_color_invalid', 'The design color is not an allowed CSS color value.', [ 'status' => 400 ] );
             }
             return trim( $value );
@@ -207,7 +216,17 @@ final class Elementize_Design {
     }
 
     private static function control( string $category, string $id, string $widget, array $path, $value ): array {
-        return [ 'category' => $category, 'element_id' => $id, 'widget_type' => $widget, 'setting_path' => array_values( $path ), 'setting_key' => (string) end( $path ), 'value' => $value, 'value_json' => self::canonical_json( $value ), 'writable_in_creative_mode' => true ];
+        return [
+            'category' => $category,
+            'element_id' => $id,
+            'widget_type' => $widget,
+            'setting_path' => array_values( $path ),
+            'setting_key' => (string) end( $path ),
+            'value' => $value,
+            'value_json' => self::canonical_json( $value ),
+            'value_semantics' => 'color' === $category ? 'literal_css_color' : 'bounded_elementor_value',
+            'writable_in_creative_mode' => true,
+        ];
     }
 
     private static function global_references_for_elements( array $elements, string $filter = '' ): array {
