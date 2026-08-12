@@ -7,9 +7,10 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Pixfort widgets store selector tokens such as `primary`, `gradient-primary`,
  * `heading-default` and `body-default` in settings whose names contain `color`.
  * They are not literal CSS colors. The installed Elementor widget control is the
- * authority for allowed selector values. For Primary/Secondary, Pixfort's own
- * theme options are the authority for the rendered color; matching Elementor Kit
- * `pixprimarycolor`/`pixsecondarycolor` entries are returned only as corroboration.
+ * authority for allowed selector values and writable exact selector transitions.
+ * For Primary/Secondary, Pixfort's own theme options remain the authority for the
+ * rendered color; matching Elementor Kit `pixprimarycolor`/`pixsecondarycolor`
+ * entries are returned only as corroboration.
  */
 final class Elementize_Pixfort_Theme_Tokens {
     private const MAX_OPTIONS = 80;
@@ -49,33 +50,37 @@ final class Elementize_Pixfort_Theme_Tokens {
         }
 
         $roles = self::theme_roles();
+        $allowed = [];
         $normalization = [];
-        foreach ( [ 'primary', 'secondary' ] as $token ) {
-            if ( ! array_key_exists( $token, $meta['options'] ) || ! isset( $roles[ $token ] ) || empty( $roles[ $token ]['authoritative'] ) ) continue;
-            $role = $roles[ $token ];
+        foreach ( array_slice( $meta['options'], 0, self::MAX_OPTIONS, true ) as $value => $label ) {
+            $value = (string) $value;
+            $label = (string) $label;
+            if ( 'custom' === $value ) continue;
+
+            $allowed[] = [ 'value' => $value, 'label' => $label ];
             $option = [
-                'value' => $token,
-                'label' => (string) $meta['options'][ $token ],
-                'theme_role' => $token,
-                'resolves_to' => (string) $role['value'],
-                'resolution_source' => (string) $role['source'],
-                'pixfort_option_key' => (string) $role['option_key'],
+                'value' => $value,
+                'label' => $label,
+                'selector_source' => 'installed_elementor_pixfort_widget_control',
                 'read_only_source' => true,
             ];
-            if ( ! empty( $role['site_token_id'] ) ) {
-                $option['site_token_id'] = (string) $role['site_token_id'];
-                $option['site_token_title'] = (string) $role['site_token_title'];
-                $option['site_token_scope'] = (string) $role['site_token_scope'];
-                $option['site_token_value'] = (string) $role['site_token_value'];
-                $option['site_token_matches_render_value'] = (bool) $role['site_token_matches_render_value'];
+
+            $theme_role = self::theme_role_for_token( $value );
+            if ( '' !== $theme_role ) $option['theme_role'] = $theme_role;
+            if ( in_array( $value, [ 'primary', 'secondary' ], true ) && isset( $roles[ $value ] ) && ! empty( $roles[ $value ]['authoritative'] ) ) {
+                $role = $roles[ $value ];
+                $option['resolves_to'] = (string) $role['value'];
+                $option['resolution_source'] = (string) $role['source'];
+                $option['pixfort_option_key'] = (string) $role['option_key'];
+                if ( ! empty( $role['site_token_id'] ) ) {
+                    $option['site_token_id'] = (string) $role['site_token_id'];
+                    $option['site_token_title'] = (string) $role['site_token_title'];
+                    $option['site_token_scope'] = (string) $role['site_token_scope'];
+                    $option['site_token_value'] = (string) $role['site_token_value'];
+                    $option['site_token_matches_render_value'] = (bool) $role['site_token_matches_render_value'];
+                }
             }
             $normalization[] = $option;
-        }
-
-        $allowed = [];
-        foreach ( array_slice( $meta['options'], 0, self::MAX_OPTIONS, true ) as $value => $label ) {
-            if ( 'custom' === $value ) continue;
-            $allowed[] = [ 'value' => (string) $value, 'label' => (string) $label ];
         }
 
         self::$diagnostics['recognized']++;
@@ -89,6 +94,7 @@ final class Elementize_Pixfort_Theme_Tokens {
             'current_label' => (string) ( $meta['options'][ $current_value ] ?? $current_value ),
             'current_theme_role' => self::theme_role_for_token( $current_value ),
             'allowed_values' => $allowed,
+            'writable_values' => $allowed,
             'normalization_options' => $normalization,
             'normalization_writable' => ! empty( $normalization ),
             'theme_roles_detected' => array_values( array_keys( $roles ) ),
@@ -115,21 +121,33 @@ final class Elementize_Pixfort_Theme_Tokens {
             return new WP_Error( 'elementize_pixfort_theme_token_invalid', 'Pixfort theme-color normalization requires an exact Pixfort widget, color selector setting, and string token values.', [ 'status' => 400 ] );
         }
         $new_value = trim( $new_value );
-        if ( ! in_array( $new_value, [ 'primary', 'secondary' ], true ) ) {
-            return new WP_Error( 'elementize_pixfort_theme_token_target_forbidden', 'Pixfort semantic color normalization is currently limited to the installed theme Primary or Secondary selector.', [ 'status' => 400 ] );
+        if ( '' === $new_value || 'custom' === $new_value ) {
+            return new WP_Error( 'elementize_pixfort_theme_token_target_forbidden', 'The Pixfort custom color selector is not writable through semantic token normalization.', [ 'status' => 400 ] );
         }
-        $roles = self::theme_roles();
-        if ( ! isset( $roles[ $new_value ] ) || empty( $roles[ $new_value ]['authoritative'] ) ) {
-            return new WP_Error( 'elementize_pixfort_theme_token_unresolved', 'The requested Pixfort theme role is not grounded in the active Pixfort theme options.', [ 'status' => 400 ] );
-        }
+
         $meta = self::control_meta( $widget_type, $setting_key, $current_value );
         if ( ! is_array( $meta ) ) {
             return new WP_Error( 'elementize_pixfort_theme_token_control_unverified', 'The exact installed Pixfort widget control could not be verified for this semantic color setting.', [ 'status' => 400 ] );
         }
+
+        $matched = false;
         foreach ( (array) $meta['normalization_options'] as $option ) {
-            if ( is_array( $option ) && (string) ( $option['value'] ?? '' ) === $new_value ) return $new_value;
+            if ( is_array( $option ) && (string) ( $option['value'] ?? '' ) === $new_value ) {
+                $matched = true;
+                break;
+            }
         }
-        return new WP_Error( 'elementize_pixfort_theme_token_not_allowed', 'The exact installed Pixfort widget control does not allow that semantic color-token transition.', [ 'status' => 400 ] );
+        if ( ! $matched ) {
+            return new WP_Error( 'elementize_pixfort_theme_token_not_allowed', 'The exact installed Pixfort widget control does not allow that semantic color-token transition.', [ 'status' => 400 ] );
+        }
+
+        if ( in_array( $new_value, [ 'primary', 'secondary' ], true ) ) {
+            $roles = self::theme_roles();
+            if ( ! isset( $roles[ $new_value ] ) || empty( $roles[ $new_value ]['authoritative'] ) ) {
+                return new WP_Error( 'elementize_pixfort_theme_token_unresolved', 'The requested Pixfort theme role is not grounded in the active Pixfort theme options.', [ 'status' => 400 ] );
+            }
+        }
+        return $new_value;
     }
 
     public static function validate_any_transition( string $setting_key, $current_value, $new_value ) {
