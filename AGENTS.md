@@ -31,10 +31,9 @@ Creative Control uses templates as structural building blocks. The target page's
 
 ## Still out of scope
 
-Do not add page creation, publishing/unpublishing/trash/restore, unrestricted Elementor JSON writes, site-wide/global design mutation, Elementor dynamic-value writes, shared/global/embedded template mutation, Theme Builder/header/footer mutation, plugin-internal browser automation, Ollama, autonomous aesthetic scoring, or claims of rendered visual QA without a real render/vision pipeline.
+Do not add page creation, publishing/unpublishing/trash/restore, unrestricted Elementor JSON writes, site-wide/global design mutation, Elementor dynamic-value writes, shared/global/embedded template mutation, Theme Builder/header/footer mutation, unrestricted browser automation, or autonomous aesthetic writes without grounded local controls.
 
-ChatGPT may use screenshots supplied by the user as locating context. Elementize itself does not capture or visually analyze screenshots.
-
+Rendered Visual QA is read-only and page-scoped. Elementize may capture a signed local Chromium render, settle transient motion, bound tall screenshots, and return a ZIP through the GPT Action `openaiFileResponse` contract. Native ChatGPT vision performs the visual judgment after extracting `screenshot.png`; server-side `visual_analysis_verified=false` is expected for that handoff. Never expose preview URLs or claim visual verification without an actual inspected render.
 ## Mutation rules
 
 Every mutation must fail closed and use fresh exact state. Never weaken these rules in Creative Control.

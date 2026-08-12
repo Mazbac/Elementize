@@ -118,6 +118,12 @@ If verification fails, Elementize attempts to restore the pre-change page.
 
 `visual_render_verified=false` means exactly what it says: persisted Elementor data was verified, but Elementize must not claim that a rendered browser view was visually inspected unless a real visual pipeline provided that verification.
 
+### Native rendered Visual QA
+
+On the active Creative Control page, `getElementizePageVisualQA` captures a signed local Chromium render without exposing the preview URL. Capture is asynchronous, settles CSS animation/transition states, and trims tall screenshots to meaningful content bounds. With `analyze=true`, Elementize returns a ZIP conversation file through `openaiFileResponse`; the Custom GPT extracts `screenshot.png` and inspects it with native ChatGPT vision.
+
+The server intentionally keeps `visual_analysis_verified=false` for native handoff. A GPT may only claim native visual verification after it actually inspected the returned PNG. Visual findings must be localized to fresh writable page-scoped controls before mutation. Shared/global/header/footer content may appear in the screenshot but remains outside page-scoped Creative Control.
+
 ## Requirements
 
 - WordPress 6.5+

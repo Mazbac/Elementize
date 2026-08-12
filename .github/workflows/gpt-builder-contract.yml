@@ -111,6 +111,8 @@ jobs:
           grep -q 'pixfort_theme_color' "$instructions" || { echo 'GPT Pixfort theme-token normalization instructions are missing.'; exit 1; }
           grep -q 'visual_render_verified=false' "$instructions" || { echo 'Visual QA overclaim guard is missing.'; exit 1; }
           grep -q 'capture_state=pending' "$instructions" || { echo 'GPT async rendered QA polling instructions are missing.'; exit 1; }
+          grep -q 'provider=chatgpt_native_vision' "$instructions" || { echo 'GPT native vision provider guard is missing.'; exit 1; }
+          grep -q 'screenshot.png' "$instructions" || { echo 'GPT must inspect the returned PNG itself.'; exit 1; }
           grep -q 'Unknown result after any mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 
@@ -161,6 +163,8 @@ jobs:
           grep -q 'openaiFileIdRefs:' "$schema" || { echo 'ChatGPT image file parameter is missing.'; exit 1; }
           grep -q 'generated_image_url:' "$schema" || { echo 'Generated-image URL fallback is missing.'; exit 1; }
           grep -q 'visual_clues:' "$schema" || { echo 'Screenshot clue parameter is missing.'; exit 1; }
+          grep -q 'openaiFileResponse:' "$schema" || { echo 'Canonical Visual QA returned-file schema is missing.'; exit 1; }
+          grep -q 'format: byte' "$schema" || { echo 'Returned-file base64 schema contract is missing.'; exit 1; }
           grep -q 'expected_capability_revision:' "$schema" || { echo 'Creative capability revision schema is missing.'; exit 1; }
           grep -q 'confirm_creative_write:' "$schema" || { echo 'Creative confirmation schema is missing.'; exit 1; }
           grep -q 'alias:originalTemplateElementId' "$schema" || { echo 'Inserted-template alias reference contract is missing.'; exit 1; }

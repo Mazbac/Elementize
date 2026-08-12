@@ -151,15 +151,31 @@ paths:
   /wp-json/elementize/v1/pages/{id}/visual-qa:
     get:
       operationId: getElementizePageVisualQA
-      summary: Render the active Creative page and optionally analyze it locally
-      description: Read-only rendered QA for the active Creative Control page. Captures a local Chromium screenshot and returns visual_render_verified. Optional local vision analysis never exposes screenshot bytes or preview URLs.
+      summary: Render the active Creative page for native ChatGPT visual QA
+      description: Read-only rendered QA for the active Creative Control page. Captures settled local Chromium output. With analyze=true, a bounded screenshot is returned to ChatGPT inside a ZIP conversation file for native vision inspection; preview URLs stay private.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: analyze, in: query, required: false, schema: { type: boolean, default: true } }
       responses:
-        '200': { description: Render verification, bounded screenshot metadata, and optional advisory local visual critique }
+        '200':
+          description: Render verification, bounded capture metadata, and optional native ChatGPT vision ZIP handoff
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  openaiFileResponse:
+                    type: array
+                    maxItems: 1
+                    items:
+                      type: object
+                      required: [name, mime_type, content]
+                      properties:
+                        name: { type: string }
+                        mime_type: { type: string }
+                        content: { type: string, format: byte }
         '403': { description: Page is not the active Creative Control page }
-
   /wp-json/elementize/v1/templates:
     get:
       operationId: searchElementizeTemplates

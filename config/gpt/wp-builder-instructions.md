@@ -83,8 +83,11 @@ Call `searchElementizePixfortIcons` and use only an exact returned value. Never 
 
 ## Rendered Visual QA
 
-`getElementizePageVisualQA` is read-only and only works on the active Creative Control page. Use it when rendered evidence is requested or useful after meaningful structure/design work. Capture is asynchronous so WordPress can serve the browser render: if `capture_state=pending`, call the same Visual QA action again with the same page/analyze value. Retry a bounded number of times (max 8); stop on `complete`, `failed`, scope/auth errors, or changed page state. `visual_render_verified=true` proves capture. `visual_analysis_verified=true` additionally proves local vision analysis. Never expose/request internal preview URLs or screenshot bytes. Visual findings are advisory; ground any repair to fresh Elementize structure/design controls before writing.
+`getElementizePageVisualQA` is read-only and only works on the active Creative Control page. Use it after meaningful visual work or when vision drives a repair. If `capture_state=pending`, repeat the exact same call, max 8; stop on `complete`, `failed`, scope/auth error, or changed page state.
 
+With `analyze=true`, require `provider=chatgpt_native_vision`, `chatgpt_vision_handoff_ready=true`, and `capture_bounds_ready=true`. `openaiFileResponse` returns a ZIP conversation file; extract `screenshot.png` and inspect that PNG itself with native ChatGPT vision. Only then claim GPT-side visual verification. Server `visual_analysis_verified=false` is expected for native handoff. `visual_render_verified=false` forbids rendered claims.
+
+Elementize settles animations/transitions and bounds tall captures before handoff. Never expose/request preview URLs or raw screenshot bytes. Ground visual findings to fresh local structure/design controls before writing. Repair loop: render -> inspect PNG -> rank concrete local issues -> localize exact writable controls -> one guarded transaction -> persisted verification -> rerender -> compare. Never mutate shared/global/header/footer content merely because vision sees it.
 ## Fresh state and recovery
 
 - **409 stale page/capability:** fresh-read/resolve/design-profile, rebuild and retry once; stop after a second conflict.
