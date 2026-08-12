@@ -96,6 +96,7 @@ final class Elementize_Template_Response {
 
         $score = 0;
         $category_scores = [
+            'pixfort_theme_color' => 98,
             'color' => 90,
             'radius' => 50,
             'typography' => 45,
@@ -141,6 +142,7 @@ final class Elementize_Template_Response {
             }
         }
 
+        if ( 'pixfort_theme_color' === $category && ! empty( $control['normalization_options'] ) ) $score += 28;
         if ( is_string( $value ) && preg_match( '/^(#[0-9a-f]{3,8}|rgba?\([^\r\n]+\)|hsla?\([^\r\n]+\)|transparent|currentColor|var\(--[A-Za-z0-9_-]+\))$/i', trim( $value ) ) ) {
             $score += 22;
         }
@@ -169,13 +171,13 @@ final class Elementize_Template_Response {
         arsort( $widgets );
 
         return [
-            'strategy' => count( $all ) > self::CONTROL_LIMIT ? 'visibility_priority_v1' : 'all_controls_fit',
+            'strategy' => count( $all ) > self::CONTROL_LIMIT ? 'visibility_priority_v2' : 'all_controls_fit',
             'total_available' => count( $all ),
             'returned' => count( $selected ),
             'omitted' => max( 0, count( $all ) - count( $selected ) ),
             'returned_categories' => $categories,
             'returned_widget_types' => array_slice( $widgets, 0, 20, true ),
-            'note' => 'Selection prioritizes direct visible component styles and repeated feature/card/button/badge widgets; exact controls remain unchanged and must still be grounded before mutation.',
+            'note' => 'Selection prioritizes validated Pixfort theme-color selectors, literal visible component styles, and repeated feature/card/button/badge widgets; exact controls remain grounded and guarded before mutation.',
         ];
     }
 }
