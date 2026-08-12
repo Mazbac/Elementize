@@ -47,6 +47,7 @@ final class Elementize_Template_Response {
             'design_controls_returned' => count( $selected_controls ),
             'design_controls_truncated' => count( $controls ) > self::CONTROL_LIMIT,
             'design_control_selection' => $selection,
+            'pixfort_theme_token_diagnostics' => class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ? Elementize_Pixfort_Theme_Tokens::diagnostics() : [ 'available' => false ],
         ];
         $data['editable_content_fields'] = array_slice( $fields, 0, self::FIELD_LIMIT );
         $data['design_controls'] = $selected_controls;
@@ -158,25 +159,38 @@ final class Elementize_Template_Response {
     }
 
     private static function selection_summary( array $selected, array $all ): array {
-        $categories = [];
-        $widgets = [];
+        $returned_categories = [];
+        $returned_widgets = [];
+        $available_categories = [];
+        $available_widgets = [];
+        foreach ( $all as $control ) {
+            if ( ! is_array( $control ) ) continue;
+            $category = sanitize_key( (string) ( $control['category'] ?? '' ) );
+            $widget = sanitize_key( (string) ( $control['widget_type'] ?? '' ) );
+            if ( '' !== $category ) $available_categories[ $category ] = ( $available_categories[ $category ] ?? 0 ) + 1;
+            if ( '' !== $widget ) $available_widgets[ $widget ] = ( $available_widgets[ $widget ] ?? 0 ) + 1;
+        }
         foreach ( $selected as $control ) {
             if ( ! is_array( $control ) ) continue;
             $category = sanitize_key( (string) ( $control['category'] ?? '' ) );
             $widget = sanitize_key( (string) ( $control['widget_type'] ?? '' ) );
-            if ( '' !== $category ) $categories[ $category ] = ( $categories[ $category ] ?? 0 ) + 1;
-            if ( '' !== $widget ) $widgets[ $widget ] = ( $widgets[ $widget ] ?? 0 ) + 1;
+            if ( '' !== $category ) $returned_categories[ $category ] = ( $returned_categories[ $category ] ?? 0 ) + 1;
+            if ( '' !== $widget ) $returned_widgets[ $widget ] = ( $returned_widgets[ $widget ] ?? 0 ) + 1;
         }
-        arsort( $categories );
-        arsort( $widgets );
+        arsort( $returned_categories );
+        arsort( $returned_widgets );
+        arsort( $available_categories );
+        arsort( $available_widgets );
 
         return [
-            'strategy' => count( $all ) > self::CONTROL_LIMIT ? 'visibility_priority_v2' : 'all_controls_fit',
+            'strategy' => count( $all ) > self::CONTROL_LIMIT ? 'visibility_priority_v3' : 'all_controls_fit',
             'total_available' => count( $all ),
             'returned' => count( $selected ),
             'omitted' => max( 0, count( $all ) - count( $selected ) ),
-            'returned_categories' => $categories,
-            'returned_widget_types' => array_slice( $widgets, 0, 20, true ),
+            'available_categories' => $available_categories,
+            'available_widget_types' => array_slice( $available_widgets, 0, 20, true ),
+            'returned_categories' => $returned_categories,
+            'returned_widget_types' => array_slice( $returned_widgets, 0, 20, true ),
             'note' => 'Selection prioritizes validated Pixfort theme-color selectors, literal visible component styles, and repeated feature/card/button/badge widgets; exact controls remain grounded and guarded before mutation.',
         ];
     }
