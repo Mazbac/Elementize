@@ -4,12 +4,12 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 /**
  * Read-only adapter for Pixfort semantic color selectors.
  *
- * Pixfort widgets commonly store values such as `primary`, `gradient-primary`,
+ * Pixfort widgets store selector tokens such as `primary`, `gradient-primary`,
  * `heading-default` and `body-default` in settings whose names contain `color`.
- * Those values are CSS/theme selector tokens, not literal CSS colors. This
- * adapter never invents such tokens: it discovers exact allowed values from the
- * currently registered Elementor widget controls and exposes normalization only
- * when the active Elementor Kit contains Pixfort's corresponding theme role.
+ * They are not literal CSS colors. The installed Elementor widget control is the
+ * authority for allowed selector values. For Primary/Secondary, Pixfort's own
+ * theme options are the authority for the rendered color; matching Elementor Kit
+ * `pixprimarycolor`/`pixsecondarycolor` entries are returned only as corroboration.
  */
 final class Elementize_Pixfort_Theme_Tokens {
     private const MAX_OPTIONS = 80;
@@ -34,18 +34,25 @@ final class Elementize_Pixfort_Theme_Tokens {
         $roles = self::theme_roles();
         $normalization = [];
         foreach ( [ 'primary', 'secondary' ] as $token ) {
-            if ( ! isset( $meta['options'][ $token ] ) || ! isset( $roles[ $token ] ) ) continue;
-            $normalization[] = [
+            if ( ! isset( $meta['options'][ $token ] ) || ! isset( $roles[ $token ] ) || empty( $roles[ $token ]['authoritative'] ) ) continue;
+            $role = $roles[ $token ];
+            $option = [
                 'value' => $token,
                 'label' => (string) $meta['options'][ $token ],
                 'theme_role' => $token,
-                'resolves_to' => (string) $roles[ $token ]['value'],
-                'site_token_id' => (string) $roles[ $token ]['token_id'],
-                'site_token_title' => (string) $roles[ $token ]['title'],
-                'site_token_scope' => (string) $roles[ $token ]['scope'],
-                'resolution_source' => 'active_elementor_kit_pixfort_theme_role',
+                'resolves_to' => (string) $role['value'],
+                'resolution_source' => (string) $role['source'],
+                'pixfort_option_key' => (string) $role['option_key'],
                 'read_only_source' => true,
             ];
+            if ( ! empty( $role['site_token_id'] ) ) {
+                $option['site_token_id'] = (string) $role['site_token_id'];
+                $option['site_token_title'] = (string) $role['site_token_title'];
+                $option['site_token_scope'] = (string) $role['site_token_scope'];
+                $option['site_token_value'] = (string) $role['site_token_value'];
+                $option['site_token_matches_render_value'] = (bool) $role['site_token_matches_render_value'];
+            }
+            $normalization[] = $option;
         }
 
         $allowed = [];
@@ -81,13 +88,6 @@ final class Elementize_Pixfort_Theme_Tokens {
         return false;
     }
 
-    /**
-     * Writer-side fallback. The design writer historically receives only the
-     * setting path/current value, not the widget type. Keep this fail-closed by
-     * requiring an exact installed Pixfort color control with the same setting
-     * key/current token, and only allow normalization to primary/secondary when
-     * the active Kit exposes the corresponding Pixfort theme role.
-     */
     public static function validate_any_transition( string $setting_key, $current_value, $new_value ) {
         $setting_key = sanitize_key( $setting_key );
         if ( ! self::looks_like_color_key( $setting_key ) || ! is_string( $current_value ) || ! is_string( $new_value ) ) {
@@ -98,8 +98,8 @@ final class Elementize_Pixfort_Theme_Tokens {
             return new WP_Error( 'elementize_pixfort_theme_token_target_forbidden', 'Pixfort semantic color normalization is currently limited to the installed theme Primary or Secondary selector.', [ 'status' => 400 ] );
         }
         $roles = self::theme_roles();
-        if ( ! isset( $roles[ $new_value ] ) ) {
-            return new WP_Error( 'elementize_pixfort_theme_token_unresolved', 'The requested Pixfort theme role is not grounded in the active Elementor Kit.', [ 'status' => 400 ] );
+        if ( ! isset( $roles[ $new_value ] ) || empty( $roles[ $new_value ]['authoritative'] ) ) {
+            return new WP_Error( 'elementize_pixfort_theme_token_unresolved', 'The requested Pixfort theme role is not grounded in the active Pixfort theme options.', [ 'status' => 400 ] );
         }
 
         foreach ( self::pixfort_widget_types() as $widget_type ) {
@@ -115,19 +115,53 @@ final class Elementize_Pixfort_Theme_Tokens {
     public static function theme_roles(): array {
         if ( null !== self::$theme_roles ) return self::$theme_roles;
         self::$theme_roles = [];
-        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->kits_manager ) ) return self::$theme_roles;
-        $manager = \Elementor\Plugin::$instance->kits_manager;
-        if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_current_settings' ) ) return self::$theme_roles;
 
+        $kit_roles = self::elementor_kit_roles();
+        $role_options = [
+            'primary' => 'opt-primary-color',
+            'secondary' => 'opt-secondary-color',
+        ];
+        foreach ( $role_options as $role => $option_key ) {
+            $value = '';
+            if ( function_exists( 'pix_plugin_get_option' ) ) {
+                try { $candidate = pix_plugin_get_option( $option_key ); } catch ( Throwable $ignored ) { $candidate = ''; }
+                if ( is_scalar( $candidate ) ) $value = trim( (string) $candidate );
+            }
+            if ( ! self::literal_css_color( $value ) ) continue;
+
+            $entry = [
+                'value' => $value,
+                'source' => 'pixfort_theme_option',
+                'option_key' => $option_key,
+                'authoritative' => true,
+                'read_only' => true,
+            ];
+            if ( isset( $kit_roles[ $role ] ) ) {
+                $kit = $kit_roles[ $role ];
+                $entry['site_token_id'] = (string) $kit['token_id'];
+                $entry['site_token_title'] = (string) $kit['title'];
+                $entry['site_token_scope'] = (string) $kit['scope'];
+                $entry['site_token_value'] = (string) $kit['value'];
+                $entry['site_token_matches_render_value'] = 0 === strcasecmp( $value, (string) $kit['value'] );
+            }
+            self::$theme_roles[ $role ] = $entry;
+        }
+        return self::$theme_roles;
+    }
+
+    private static function elementor_kit_roles(): array {
+        $roles = [];
+        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->kits_manager ) ) return $roles;
+        $manager = \Elementor\Plugin::$instance->kits_manager;
+        if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_current_settings' ) ) return $roles;
         try {
             $groups = [
                 'system' => $manager->get_current_settings( 'system_colors' ),
                 'custom' => $manager->get_current_settings( 'custom_colors' ),
             ];
         } catch ( Throwable $ignored ) {
-            $groups = [];
+            return $roles;
         }
-
         foreach ( $groups as $scope => $colors ) {
             foreach ( is_array( $colors ) ? $colors : [] as $item ) {
                 if ( ! is_array( $item ) ) continue;
@@ -136,16 +170,16 @@ final class Elementize_Pixfort_Theme_Tokens {
                 if ( '' === $role ) continue;
                 $value = trim( (string) ( $item['color'] ?? '' ) );
                 if ( ! self::literal_css_color( $value ) ) continue;
-                self::$theme_roles[ $role ] = [
+                $roles[ $role ] = [
                     'token_id' => $id,
-                    'title' => sanitize_text_field( (string) ( $item['title'] ?? ( 'Theme ' . ucfirst( $role ) . ' Color' ) ) ),
+                    'title' => sanitize_text_field( (string) ( $item['title'] ?? $id ) ),
                     'value' => $value,
                     'scope' => sanitize_key( (string) $scope ),
                     'read_only' => true,
                 ];
             }
         }
-        return self::$theme_roles;
+        return $roles;
     }
 
     private static function read_control_meta( string $widget_type, string $setting_key ): ?array {
