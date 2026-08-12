@@ -1,5 +1,5 @@
 import { Check, Copy, Download, ExternalLink, KeyRound, Terminal } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,15 +16,14 @@ type Props = {
   onNavigate: (page: PageKey) => void;
 };
 
-function ActionRow({ number, title, description, action }: { number: number; title: string; description: string; action: ReactNode }) {
+function Step({ number, title, children }: { number: number; title: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 py-1 sm:flex-row sm:items-center">
-      <Badge variant="secondary" className="h-7 w-7 shrink-0 justify-center p-0">{number}</Badge>
-      <div className="min-w-0 flex-1">
+    <div className="grid gap-3 sm:grid-cols-[32px_1fr]">
+      <Badge variant="secondary" className="h-7 w-7 justify-center p-0">{number}</Badge>
+      <div className="min-w-0 space-y-3">
         <p className="font-medium">{title}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        {children}
       </div>
-      <div className="shrink-0">{action}</div>
     </div>
   );
 }
@@ -47,44 +46,25 @@ function cloudflareCommand(siteOrigin: string): string {
 
 export function SetupPage({ config, onNavigate }: Props) {
   const needsTunnel = !config.environment.sitePublicHttps;
-  const websiteReady =
+  const coreReady =
     config.requirements.elementor &&
     config.requirements.pixfort &&
     config.requirements.revisions &&
     config.requirements.applicationPasswords &&
-    config.environment.connectionReady &&
     config.materialsReady;
 
+  const [connectionSummary, setConnectionSummary] = useState<ConnectionSummary | null>(null);
+  const [connectionSummaryError, setConnectionSummaryError] = useState('');
   const [connectionKey, setConnectionKey] = useState('');
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState('');
   const [copied, setCopied] = useState('');
-  const [connectionSummary, setConnectionSummary] = useState<ConnectionSummary | null>(null);
-  const [connectionSummaryError, setConnectionSummaryError] = useState('');
-  const tunnelCommand = cloudflareCommand(config.environment.siteOrigin);
-  const previouslyVerified = Boolean(connectionSummary?.connected);
-  const existingKeyCount = connectionSummary?.activeCount ?? 0;
-  const connectionSummaryLoading = connectionSummary === null && !connectionSummaryError;
 
-  const requirements = useMemo(
-    () => [
-      ['Elementor', config.requirements.elementor, config.requirements.elementorDetail],
-      ['Pixfort Core', config.requirements.pixfort, config.requirements.pixfortDetail],
-      ['WordPress revisions', config.requirements.revisions, config.requirements.revisions ? 'Enabled' : 'Enable revisions before editing'],
-      ['Secure login', config.requirements.applicationPasswords, config.requirements.applicationPasswords ? 'Application Passwords available' : 'Application Passwords unavailable'],
-      [
-        'Public HTTPS address',
-        config.environment.connectionReady,
-        config.environment.connectionReady
-          ? needsTunnel
-            ? `${config.environment.effectiveOrigin} (saved tunnel address)`
-            : config.environment.effectiveOrigin
-          : 'A public HTTPS address is required',
-      ],
-      ['GPT setup materials', config.materialsReady, config.materialsReady ? 'Instructions and Action schema available' : 'Setup files could not be loaded'],
-    ] as const,
-    [config, needsTunnel]
-  );
+  const tunnelCommand = cloudflareCommand(config.environment.siteOrigin);
+  const summaryLoading = connectionSummary === null && !connectionSummaryError;
+  const existingKeyCount = connectionSummary?.activeCount ?? 0;
+  const hasExistingKey = existingKeyCount > 0;
+  const firstTimePairing = config.environment.connectionReady && !summaryLoading && !hasExistingKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +96,7 @@ export function SetupPage({ config, onNavigate }: Props) {
       try {
         setConnectionSummary(await getConnections(config));
       } catch {
-        // The generated key is still valid even if the optional status refresh fails.
+        // The generated key remains valid even if this optional refresh fails.
       }
     } catch (error) {
       setKeyError(error instanceof Error ? error.message : 'Could not generate the connection key.');
@@ -130,28 +110,34 @@ export function SetupPage({ config, onNavigate }: Props) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Setup</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Set up once, then use the same page whenever a local tunnel needs reconnecting.</p>
+          <p className="mt-1 text-sm text-muted-foreground">One place for first-time pairing and future Local reconnects.</p>
+          {config.notice === 'connection_saved' && (
+            <p className="mt-1 text-xs text-muted-foreground">Tunnel address saved. Use the refreshed Action schema below.</p>
+          )}
         </div>
-        <Badge variant={websiteReady ? 'default' : 'secondary'} className="w-fit">{websiteReady ? 'WordPress ready' : 'Website needs attention'}</Badge>
+        <Badge variant={coreReady ? 'default' : 'secondary'} className="w-fit">{coreReady ? 'WordPress ready' : 'Needs attention'}</Badge>
       </div>
 
-      {!websiteReady && (
+      {!coreReady && (
         <Card>
           <CardHeader>
-            <CardTitle>Website checks</CardTitle>
-            <CardDescription>Resolve these before connecting ChatGPT.</CardDescription>
+            <CardTitle>WordPress checks</CardTitle>
+            <CardDescription>Fix only the items marked below before pairing ChatGPT.</CardDescription>
           </CardHeader>
-          <CardContent>
-            {requirements.map(([label, ready, detail], index) => (
-              <div key={label}>
-                {index > 0 && <Separator className="my-3" />}
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-medium">{label}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-                  </div>
-                  <Badge variant={ready ? 'outline' : 'secondary'}>{ready ? 'Ready' : 'Fix'}</Badge>
+          <CardContent className="grid gap-2 sm:grid-cols-2">
+            {[
+              ['Elementor', config.requirements.elementor, config.requirements.elementorDetail],
+              ['Pixfort Core', config.requirements.pixfort, config.requirements.pixfortDetail],
+              ['Revisions', config.requirements.revisions, config.requirements.revisions ? 'Enabled' : 'Required'],
+              ['Application Passwords', config.requirements.applicationPasswords, config.requirements.applicationPasswords ? 'Available' : 'Unavailable'],
+              ['GPT materials', config.materialsReady, config.materialsReady ? 'Ready' : 'Missing'],
+            ].map(([label, ready, detail]) => (
+              <div key={String(label)} className="flex items-start justify-between gap-3 rounded-md border p-3">
+                <div>
+                  <p className="text-sm font-medium">{String(label)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{String(detail)}</p>
                 </div>
+                <Badge variant={ready ? 'outline' : 'secondary'}>{ready ? 'Ready' : 'Fix'}</Badge>
               </div>
             ))}
           </CardContent>
@@ -163,62 +149,38 @@ export function SetupPage({ config, onNavigate }: Props) {
           <CardHeader>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle>Local site connection</CardTitle>
-                <CardDescription className="mt-1">
-                  Your WordPress site is not public HTTPS, so ChatGPT reaches it through a temporary Cloudflare Quick Tunnel. Reconnect it here after a PC or tunnel restart.
-                </CardDescription>
+                <CardTitle>Local connection</CardTitle>
+                <CardDescription className="mt-1">After a PC restart, these are the only three steps you normally need.</CardDescription>
               </div>
-              <Badge variant={config.environment.connectionReady ? 'outline' : 'secondary'} className="w-fit">
-                {config.environment.connectionReady ? 'Tunnel address saved' : 'Needs tunnel'}
+              <Badge variant={config.environment.connectionReady ? 'outline' : 'secondary'}>
+                {config.environment.connectionReady ? 'Tunnel URL saved' : 'Needs tunnel URL'}
               </Badge>
             </div>
           </CardHeader>
-          <CardContent>
-            {config.environment.storedPublic && (
-              <Alert variant="accent" className="mb-4">
-                <AlertTitle>Quick Tunnel addresses are temporary</AlertTitle>
-                <AlertDescription>
-                  If cloudflared or your PC was restarted, the old <code>trycloudflare.com</code> address can stop working. Run the command below, save the new address, then refresh the GPT Action schema. Your existing connection key does not need to change.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <ActionRow
-              number={1}
-              title="Start or restart the tunnel"
-              description="Run this exact command in PowerShell or Command Prompt and keep that terminal open. The Host header is pinned to your Local site so Local routes the request to the correct WordPress install."
-              action={
-                <Button asChild variant="outline" size="sm">
-                  <a href="https://developers.cloudflare.com/tunnel/downloads/" target="_blank" rel="noreferrer">
-                    <Download /> cloudflared <ExternalLink />
-                  </a>
+          <CardContent className="space-y-5">
+            <Step number={1} title="Start Cloudflare">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Textarea readOnly value={tunnelCommand} className="min-h-11 flex-1 resize-none font-mono text-xs" />
+                <Button variant="outline" size="sm" onClick={() => handleCopy(tunnelCommand, 'tunnel-command')}>
+                  {copied === 'tunnel-command' ? <Check /> : <Terminal />}
+                  {copied === 'tunnel-command' ? 'Copied' : 'Copy command'}
                 </Button>
-              }
-            />
-            <div className="mt-3 space-y-3">
-              <Textarea readOnly value={tunnelCommand} className="min-h-16 resize-none font-mono text-xs" />
-              <Button variant="outline" size="sm" onClick={() => handleCopy(tunnelCommand, 'tunnel-command')}>
-                {copied === 'tunnel-command' ? <Check /> : <Terminal />}
-                {copied === 'tunnel-command' ? 'Copied' : 'Copy tunnel command'}
-              </Button>
-            </div>
-
-            <Separator className="my-4" />
-
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <Badge variant="secondary" className="h-7 w-7 shrink-0 justify-center p-0">2</Badge>
-                <div>
-                  <p className="font-medium">Save the new Cloudflare address</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Copy the generated <code>https://…trycloudflare.com</code> URL from the terminal and replace the saved address below. Save only the origin, without <code>/wp-json</code>.</p>
-                </div>
               </div>
+              <Button asChild variant="ghost" size="sm" className="px-0">
+                <a href="https://developers.cloudflare.com/tunnel/downloads/" target="_blank" rel="noreferrer">
+                  <Download /> Install cloudflared <ExternalLink />
+                </a>
+              </Button>
+            </Step>
 
-              <form method="post" action={config.urls.adminPost} className="space-y-3">
+            <Separator />
+
+            <Step number={2} title="Paste the new tunnel URL">
+              <form method="post" action={config.urls.adminPost} className="space-y-2">
                 <input type="hidden" name="action" value="elementize_save_connection" />
                 <input type="hidden" name="_wpnonce" value={config.nonces.saveConnection} />
-                <div className="space-y-2">
-                  <Label htmlFor="elementize_setup_public_api_origin">Public HTTPS address</Label>
+                <Label htmlFor="elementize_setup_public_api_origin" className="sr-only">Public HTTPS address</Label>
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
                     id="elementize_setup_public_api_origin"
                     name="elementize_public_api_origin"
@@ -226,212 +188,150 @@ export function SetupPage({ config, onNavigate }: Props) {
                     defaultValue={config.environment.storedPublic}
                     placeholder="https://random-words.trycloudflare.com"
                     required
+                    className="flex-1"
                   />
-                  {config.environment.effectiveOrigin && (
-                    <p className="text-xs text-muted-foreground">Currently saved: <span className="font-medium break-all">{config.environment.effectiveOrigin}</span></p>
-                  )}
+                  <Button type="submit" size="sm">Save URL</Button>
                 </div>
-                <Button type="submit" size="sm">Save & continue setup</Button>
               </form>
-            </div>
+            </Step>
 
-            <Alert className="mt-4">
-              <AlertTitle>Stay on this Setup page</AlertTitle>
-              <AlertDescription>After saving, Elementize reloads with the new address and regenerates the Action schema for that tunnel. You should not need the separate Connection page for a normal restart.</AlertDescription>
-            </Alert>
+            <Separator />
 
-            {config.environment.connectionReady && config.schema && (
-              <>
-                <Separator className="my-4" />
-                <ActionRow
-                  number={3}
-                  title="Refresh the GPT Action"
-                  description={previouslyVerified
-                    ? 'Open your existing GPT Action and paste the fresh schema. Keep the current API key; only the temporary tunnel address changed.'
-                    : 'Paste this fresh schema into the GPT Action. If this is your first setup, continue with the pairing steps below afterward.'}
-                  action={
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => handleCopy(config.schema, 'schema-reconnect')}>
-                        {copied === 'schema-reconnect' ? <Check /> : <Copy />}
-                        {copied === 'schema-reconnect' ? 'Copied' : 'Copy fresh schema'}
-                      </Button>
-                      <Button asChild variant="outline" size="sm">
-                        <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
-                      </Button>
-                    </div>
-                  }
-                />
-                <div className="mt-3 flex flex-wrap gap-2 pl-0 sm:pl-10">
+            <Step number={3} title="Refresh the GPT Action">
+              {config.environment.connectionReady && config.schema ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => handleCopy(config.schema, 'schema-reconnect')}>
+                    {copied === 'schema-reconnect' ? <Check /> : <Copy />}
+                    {copied === 'schema-reconnect' ? 'Copied' : 'Copy fresh schema'}
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'reconnect-test')}>
                     {copied === 'reconnect-test' ? <Check /> : <Copy />}
-                    {copied === 'reconnect-test' ? 'Copied' : 'Copy connection test'}
+                    {copied === 'reconnect-test' ? 'Copied' : 'Copy test'}
                   </Button>
                 </div>
-              </>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground">Save the tunnel URL first. The fresh schema will appear here.</p>
+              )}
+              {hasExistingKey && (
+                <p className="text-xs text-muted-foreground">Keep your current API key. A tunnel restart does not require a new key or new Instructions.</p>
+              )}
+            </Step>
           </CardContent>
         </Card>
       )}
 
-      {config.environment.sitePublicHttps && !config.environment.connectionReady && (
+      {!needsTunnel && !config.environment.connectionReady && (
         <Card>
           <CardHeader>
-            <CardTitle>Public HTTPS address</CardTitle>
-            <CardDescription>Elementize needs a public HTTPS origin before it can generate the GPT Action schema.</CardDescription>
+            <CardTitle>Public website address</CardTitle>
+            <CardDescription>Save the public HTTPS origin Elementize should use for the GPT Action.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form method="post" action={config.urls.adminPost} className="space-y-3">
+            <form method="post" action={config.urls.adminPost} className="flex flex-col gap-2 sm:flex-row">
               <input type="hidden" name="action" value="elementize_save_connection" />
               <input type="hidden" name="_wpnonce" value={config.nonces.saveConnection} />
-              <div className="space-y-2">
-                <Label htmlFor="elementize_public_api_origin">Public HTTPS address</Label>
-                <Input
-                  id="elementize_public_api_origin"
-                  name="elementize_public_api_origin"
-                  type="url"
-                  defaultValue={config.environment.storedPublic}
-                  placeholder="https://your-secure-address.example"
-                  required
-                />
-              </div>
-              <Button type="submit" size="sm">Save & continue setup</Button>
+              <Label htmlFor="elementize_setup_public_api_origin" className="sr-only">Public HTTPS address</Label>
+              <Input
+                id="elementize_setup_public_api_origin"
+                name="elementize_public_api_origin"
+                type="url"
+                defaultValue={config.environment.storedPublic}
+                placeholder="https://your-site.example"
+                required
+                className="flex-1"
+              />
+              <Button type="submit" size="sm">Save URL</Button>
             </form>
           </CardContent>
         </Card>
       )}
 
-      {config.environment.connectionReady && connectionSummaryLoading && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Checking ChatGPT pairing…</CardTitle>
-            <CardDescription>Elementize is checking whether this WordPress connection has already completed a successful Action call.</CardDescription>
-          </CardHeader>
-        </Card>
+      {summaryLoading && config.environment.connectionReady && (
+        <p className="text-sm text-muted-foreground">Checking existing Elementize key…</p>
       )}
 
-      {config.environment.connectionReady && !connectionSummaryLoading && previouslyVerified && (
+      {connectionSummaryError && config.environment.connectionReady && (
+        <Alert>
+          <AlertTitle>Could not check existing keys</AlertTitle>
+          <AlertDescription>{connectionSummaryError}</AlertDescription>
+        </Alert>
+      )}
+
+      {firstTimePairing && (
         <Card>
           <CardHeader>
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle>ChatGPT already paired</CardTitle>
-                <CardDescription className="mt-1">A current Elementize key has successfully authenticated before.</CardDescription>
+                <CardTitle>First-time GPT pairing</CardTitle>
+                <CardDescription className="mt-1">Do this once. Future Local restarts use only the three steps above.</CardDescription>
               </div>
-              <Badge variant="default">Previously verified</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              For a normal Local/Cloudflare restart, use the three reconnect steps above. Do not create a new API key or repaste the Instructions unless you intentionally want to replace the GPT connection.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'paired-test')}>
-                {copied === 'paired-test' ? <Check /> : <Copy />}
-                {copied === 'paired-test' ? 'Copied' : 'Copy connection test'}
-              </Button>
               <Button asChild variant="outline" size="sm">
                 <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => onNavigate('connection')}>Manage keys</Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {config.environment.connectionReady && !connectionSummaryLoading && !previouslyVerified && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Connect ChatGPT</CardTitle>
-            <CardDescription>First-time pairing stays on this Setup page. Once a successful Action call is received, future tunnel restarts use the short reconnect flow above.</CardDescription>
           </CardHeader>
-          <CardContent>
-            {connectionSummaryError && (
-              <Alert className="mb-4">
-                <AlertTitle>Connection status could not be checked</AlertTitle>
-                <AlertDescription>{connectionSummaryError}</AlertDescription>
-              </Alert>
-            )}
-
-            {existingKeyCount > 0 && (
-              <Alert variant="accent" className="mb-4">
-                <AlertTitle>An Elementize key already exists</AlertTitle>
-                <AlertDescription>If that key is already pasted into GPT Builder, keep using it. Generate another key only if you still need a one-time key value to paste.</AlertDescription>
-              </Alert>
-            )}
-
-            <ActionRow
-              number={1}
-              title="Open GPT Builder"
-              description="Keep this WordPress Setup page open while you configure the GPT."
-              action={
-                <Button asChild variant="outline" size="sm">
-                  <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
-                </Button>
-              }
-            />
-            <Separator className="my-4" />
-            <ActionRow
-              number={2}
-              title="Copy instructions"
-              description="Paste them into the GPT Instructions field."
-              action={<Button size="sm" disabled={!config.instructions} onClick={() => handleCopy(config.instructions, 'instructions')}>{copied === 'instructions' ? <Check /> : <Copy />}{copied === 'instructions' ? 'Copied' : 'Copy instructions'}</Button>}
-            />
-            <Separator className="my-4" />
-            <ActionRow
-              number={3}
-              title="Copy Action schema"
-              description="Create one Action in GPT Builder and paste the schema generated for the current public address."
-              action={<Button size="sm" disabled={!config.schema} onClick={() => handleCopy(config.schema, 'schema')}>{copied === 'schema' ? <Check /> : <Copy />}{copied === 'schema' ? 'Copied' : 'Copy Action schema'}</Button>}
-            />
-            <Separator className="my-4" />
-            <ActionRow
-              number={4}
-              title="Generate connection key"
-              description="Choose API Key → Basic in Action authentication and paste this key. The key survives tunnel and PC restarts."
-              action={<Button size="sm" disabled={keyBusy || !websiteReady} onClick={handleGenerateKey}><KeyRound />{keyBusy ? 'Generating…' : 'Generate key'}</Button>}
-            />
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => handleCopy(config.instructions, 'instructions')} disabled={!config.instructions}>
+                {copied === 'instructions' ? <Check /> : <Copy />}
+                {copied === 'instructions' ? 'Copied' : '1. Copy instructions'}
+              </Button>
+              <Button size="sm" onClick={() => handleCopy(config.schema, 'schema')} disabled={!config.schema}>
+                {copied === 'schema' ? <Check /> : <Copy />}
+                {copied === 'schema' ? 'Copied' : '2. Copy Action schema'}
+              </Button>
+              <Button size="sm" disabled={keyBusy} onClick={handleGenerateKey}>
+                <KeyRound />
+                {keyBusy ? 'Generating…' : '3. Generate key'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'first-test')}>
+                {copied === 'first-test' ? <Check /> : <Copy />}
+                {copied === 'first-test' ? 'Copied' : '4. Copy test'}
+              </Button>
+            </div>
 
             {connectionKey && (
-              <>
-                <Separator className="my-4" />
-                <div className="space-y-3">
-                  <div>
-                    <p className="font-medium">Connection key</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Shown once. Treat it like a password. You do not need a fresh key when only the Cloudflare URL changes.</p>
-                  </div>
+              <Alert variant="accent">
+                <AlertTitle>Connection key</AlertTitle>
+                <AlertDescription className="space-y-3">
+                  <p>Shown once. In GPT Builder choose API Key → Basic and paste this value.</p>
                   <Textarea readOnly value={connectionKey} className="min-h-20 resize-none font-mono text-xs" />
                   <Button variant="outline" size="sm" onClick={() => handleCopy(connectionKey, 'key')}>
                     {copied === 'key' ? <Check /> : <Copy />}
-                    {copied === 'key' ? 'Copied' : 'Copy connection key'}
+                    {copied === 'key' ? 'Copied' : 'Copy key'}
                   </Button>
-                </div>
-              </>
+                </AlertDescription>
+              </Alert>
             )}
 
             {keyError && (
-              <Alert className="mt-4">
+              <Alert>
                 <AlertTitle>Could not generate the key</AlertTitle>
                 <AlertDescription>{keyError}</AlertDescription>
               </Alert>
             )}
+          </CardContent>
+        </Card>
+      )}
 
-            <Separator className="my-4" />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-medium">Test the connection</p>
-                <p className="mt-1 text-sm text-muted-foreground">Send one status message from your Custom GPT. After the first successful call, Elementize will recognize this connection as paired.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'test')}>
-                  {copied === 'test' ? <Check /> : <Copy />}
-                  {copied === 'test' ? 'Copied' : 'Copy test message'}
-                </Button>
-                <Button asChild variant="outline" size="sm">
-                  <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => onNavigate('connection')}>Advanced connection</Button>
-              </div>
-            </div>
+      {!needsTunnel && config.environment.connectionReady && hasExistingKey && (
+        <Card>
+          <CardHeader>
+            <CardTitle>ChatGPT connection</CardTitle>
+            <CardDescription>Your existing Elementize key is available. No setup changes are required.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={config.urls.gptBuilder} target="_blank" rel="noreferrer">Open GPT Builder <ExternalLink /></a>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleCopy(config.testPrompt, 'public-test')}>
+              {copied === 'public-test' ? <Check /> : <Copy />}
+              {copied === 'public-test' ? 'Copied' : 'Copy connection test'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onNavigate('connection')}>Manage keys</Button>
           </CardContent>
         </Card>
       )}
