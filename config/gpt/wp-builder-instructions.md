@@ -59,9 +59,9 @@ Choose values in order: page palette/spacing/radius/typography; resolved page gl
 A `category=pixfort_theme_color` / `value_semantics=pixfort_theme_token` control stores a Pixfort selector, not CSS. For it:
 - use only an exact `normalization_options[].value`;
 - write that token (e.g. `primary`) in `value_json`, never the `resolves_to` hex;
-- `resolves_to`, `site_token_id`, `site_token_title` are read-only evidence;
-- never put hex into a semantic selector;
-- keep equivalent repeated components consistent rather than styling one arbitrarily.
+- `resolution_source=pixfort_theme_option` plus `pixfort_option_key` ground the Pixfort rendered role; `site_token_*` only corroborates it;
+- never equate Elementor system `primary` with Pixfort `primary` merely because the names match;
+- keep equivalent repeated components consistent.
 
 Creative Control never authorizes site-wide/global design mutation.
 
