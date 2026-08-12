@@ -20,9 +20,15 @@ const navItems = [
   { key: 'settings' as const, label: 'Settings', icon: Settings },
 ];
 
+function initialPage(config: ElementizeAdminConfig): PageKey {
+  if (config.notice) return 'setup';
+  if (!config.environment.sitePublicHttps) return 'setup';
+  return config.allReady ? 'home' : 'setup';
+}
+
 function Notice({ notice }: { notice: string }) {
   const messages: Record<string, { title: string; body: string }> = {
-    connection_saved: { title: 'Connection saved', body: 'The secure website address was updated.' },
+    connection_saved: { title: 'Connection saved', body: 'The secure website address was updated. Continue in Setup with the refreshed Action schema.' },
     connection_cleared: { title: 'Automatic address restored', body: 'Elementize will use the detected site address when possible.' },
     connection_invalid: { title: 'Address not saved', body: 'Use a public HTTPS origin without a path, query or credentials.' },
   };
@@ -39,7 +45,7 @@ function Notice({ notice }: { notice: string }) {
 }
 
 export function App({ config }: Props) {
-  const [page, setPage] = useState<PageKey>(config.allReady ? 'home' : 'setup');
+  const [page, setPage] = useState<PageKey>(() => initialPage(config));
   const creative = window.ElementizeCreativeConfig;
   const creativePage = creative?.pages.find((item) => item.id === creative.state.scope_page_id);
 
