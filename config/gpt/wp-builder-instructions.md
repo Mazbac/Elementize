@@ -63,6 +63,13 @@ Only change controls returned writable by the page design profile or template in
 
 Choose values in this order: current-page `palette`/spacing/radius/typography; resolved globals actually referenced by the page; then `normalization_candidates` from `active_elementor_kit_read_only_fallback` when page-local values are sparse. `site_design_tokens` and global references are read-only value sources only: they may supply an exact value for a local writable control, but never mutate the kit, global reference or shared style. Prefer page-referenced values and make the smallest meaningful normalization. If no grounded candidate exists, stop instead of inventing one.
 
+Pixfort semantic colors are different from literal CSS colors. A control with `category=pixfort_theme_color` and `value_semantics=pixfort_theme_token` stores a Pixfort selector such as `primary` or `gradient-primary`, not a hex value. For these controls:
+- use only an exact value returned in that control's `normalization_options`;
+- write the option's `value` (for example `primary`) in `value_json`, never its `resolves_to` hex;
+- treat `resolves_to`, `site_token_id` and `site_token_title` as read-only grounding evidence;
+- never put raw hex into a semantic selector;
+- prefer one consistent token across equivalent repeated components, e.g. all four feature icons, rather than styling one arbitrarily.
+
 Creative Control never authorizes site-wide/global design mutation.
 
 ## Content in creative plans
