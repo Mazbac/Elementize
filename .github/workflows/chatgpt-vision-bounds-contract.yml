@@ -1,0 +1,25 @@
+name: ChatGPT vision bounds contract
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-native-vision-bounds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate content-bounded native ChatGPT screenshot handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="includes/runtime/elementize-chatgpt-vision-bounds.inc"
+          test_file="tests/chatgpt-vision-bounds-contract.php"
+          test -f "$runtime" || { echo 'Native ChatGPT vision bounds runtime is missing.'; exit 1; }
+          test -f "$test_file" || { echo 'Native ChatGPT vision bounds contract test is missing.'; exit 1; }
+          grep -q "content_bounded_tall_desktop" "$runtime" || { echo 'Content-bounded capture marker is missing.'; exit 1; }
+          grep -q "trim_trailing_background" "$runtime" || { echo 'Trailing-background trim is missing.'; exit 1; }
+          grep -q "Elementize_ChatGPT_Vision::before_callbacks" "$runtime" || { echo 'Bounded handoff rebuild is missing.'; exit 1; }
+          php -l "$runtime"
+          php -l "$test_file"
+          php "$test_file"
