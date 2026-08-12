@@ -37,6 +37,7 @@ final class Elementize_Template_Response {
         $controls = is_array( $data['design_controls'] ?? null ) ? array_values( $data['design_controls'] ) : [];
         $selected_controls = self::prioritize_controls( $controls );
         $selection = self::selection_summary( $selected_controls, $controls );
+        $compacted_controls = array_values( array_map( [ self::class, 'compact_control_payload' ], $selected_controls ) );
 
         $data['inspection_payload'] = [
             'bounded_for_actions' => true,
@@ -44,16 +45,38 @@ final class Elementize_Template_Response {
             'editable_content_fields_returned' => min( count( $fields ), self::FIELD_LIMIT ),
             'editable_content_fields_truncated' => count( $fields ) > self::FIELD_LIMIT,
             'design_controls_available' => count( $controls ),
-            'design_controls_returned' => count( $selected_controls ),
+            'design_controls_returned' => count( $compacted_controls ),
             'design_controls_truncated' => count( $controls ) > self::CONTROL_LIMIT,
             'design_control_selection' => $selection,
+            'design_control_detail_compaction' => [
+                'semantic_allowed_values_omitted' => true,
+                'normalization_options_preserved' => true,
+                'reason' => 'Pixfort grouped selector controls can expose dozens of allowed values per control. Template inspection omits that repeated list while preserving exact current token metadata and full guarded normalization options.',
+            ],
             'pixfort_theme_token_diagnostics' => class_exists( 'Elementize_Pixfort_Theme_Tokens' ) ? Elementize_Pixfort_Theme_Tokens::diagnostics() : [ 'available' => false ],
         ];
         $data['editable_content_fields'] = array_slice( $fields, 0, self::FIELD_LIMIT );
-        $data['design_controls'] = $selected_controls;
+        $data['design_controls'] = $compacted_controls;
 
         $response->set_data( $data );
         return $response;
+    }
+
+    private static function compact_control_payload( array $control ): array {
+        $allowed = is_array( $control['allowed_values'] ?? null ) ? array_values( $control['allowed_values'] ) : [];
+        if ( array_key_exists( 'allowed_values', $control ) ) {
+            unset( $control['allowed_values'] );
+            $control['allowed_values_count'] = count( $allowed );
+            $control['allowed_values_omitted_from_inspection_response'] = ! empty( $allowed );
+        }
+
+        if ( 'pixfort_theme_color' === (string) ( $control['category'] ?? '' ) ) {
+            $normalization = is_array( $control['normalization_options'] ?? null ) ? array_values( $control['normalization_options'] ) : [];
+            $control['normalization_options'] = $normalization;
+            $control['normalization_writable'] = ! empty( $normalization );
+        }
+
+        return $control;
     }
 
     private static function prioritize_controls( array $controls ): array {
