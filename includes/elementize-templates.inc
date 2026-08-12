@@ -63,7 +63,7 @@ final class Elementize_Templates {
             return strcasecmp( (string) $a['title'], (string) $b['title'] );
         } );
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
-        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) );
+        $per_page = min( 100, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
         $total = count( $filtered );
         $sources = self::source_descriptors();
         return new WP_REST_Response( [
