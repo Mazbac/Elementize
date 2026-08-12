@@ -86,6 +86,10 @@ jobs:
           grep -q "visual_render_verified" includes/elementize-visual-qa.inc || { echo 'Rendered visual verification signal is missing.'; exit 1; }
           grep -q "elementize_visual_preview" includes/elementize-visual-qa.inc || { echo 'Hash-bound local rendered preview guard is missing.'; exit 1; }
           grep -q "preview_url_exposed' => false" includes/elementize-visual-qa.inc || { echo 'Rendered preview URL must remain internal.'; exit 1; }
+          grep -q "local_chromium_async" includes/elementize-visual-qa.inc || { echo 'Rendered capture must use the non-blocking local Chromium backend.'; exit 1; }
+          grep -q "start_capture_job" includes/elementize-visual-qa.inc || { echo 'Asynchronous rendered capture launcher is missing.'; exit 1; }
+          grep -q "pending_payload" includes/elementize-visual-qa.inc || { echo 'Asynchronous rendered capture polling contract is missing.'; exit 1; }
+          grep -q "capture_state.*pending" includes/elementize-visual-qa.inc || { echo 'Rendered capture pending state is missing.'; exit 1; }
 
           grep -q "_elementize_sha256" includes/elementize-media-import.inc || { echo 'Media import SHA-256 deduplication is missing.'; exit 1; }
           grep -q "deduplicated" includes/elementize-media-import.inc || { echo 'Media import retry result contract is missing.'; exit 1; }
@@ -106,6 +110,7 @@ jobs:
           grep -q 'expected_capability_revision' "$instructions" || { echo 'Creative stale-state instructions are missing.'; exit 1; }
           grep -q 'pixfort_theme_color' "$instructions" || { echo 'GPT Pixfort theme-token normalization instructions are missing.'; exit 1; }
           grep -q 'visual_render_verified=false' "$instructions" || { echo 'Visual QA overclaim guard is missing.'; exit 1; }
+          grep -q 'capture_state=pending' "$instructions" || { echo 'GPT async rendered QA polling instructions are missing.'; exit 1; }
           grep -q 'Unknown result after any mutation' "$instructions" || { echo 'Unknown-mutation recovery instructions are missing.'; exit 1; }
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 
