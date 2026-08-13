@@ -92,7 +92,14 @@ jobs:
           php tests/browser-probe-contract.php
           php tests/cdp-responsive-contract.php
           node --check assets/runtime/elementize-cdp-capture.mjs
-          probe_b64=$(php -r '$s=file_get_contents("includes/elementize-visual-qa.inc"); preg_match("/base64_decode\\( \'([A-Za-z0-9+\\/=]+)\', true \\)/",$s,$m); echo $m[1] ?? "";')
+          probe_b64=$(python3 <<'PY'
+          import re
+          from pathlib import Path
+          source = Path('includes/elementize-visual-qa.inc').read_text(encoding='utf-8')
+          match = re.search(r"base64_decode\( '([A-Za-z0-9+/=]+)', true \)", source)
+          print(match.group(1) if match else '')
+          PY
+          )
           test -n "$probe_b64"
           printf '%s' "$probe_b64" | base64 -d > /tmp/elementize-browser-probe.js
           node --check /tmp/elementize-browser-probe.js
