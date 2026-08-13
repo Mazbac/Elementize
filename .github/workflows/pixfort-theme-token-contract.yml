@@ -14,5 +14,8 @@ jobs:
         run: |
           set -euo pipefail
           php -l includes/elementize-pixfort-theme-tokens.inc
+          php -l includes/runtime/elementize-pixfort-repeater-colors.inc
           php -l tests/pixfort-theme-token-contract.php
+          php -l tests/pixfort-repeater-path-contract.php
           php tests/pixfort-theme-token-contract.php
+          php tests/pixfort-repeater-path-contract.php

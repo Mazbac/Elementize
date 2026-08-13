@@ -49,7 +49,9 @@ final class Elementize_Pixfort_Repeater_Colors {
     }
 
     public static function apply_style( array &$elements, string $element_id, array $path, $expected, $new, array &$changes ) {
-        if ( count( $path ) !== 3 || ! is_string( $path[0] ) || ! is_int( $path[1] ) || 'item_color' !== (string) $path[2] ) return null;
+        if ( count( $path ) !== 3 || ! is_string( $path[0] ) || 'item_color' !== (string) $path[2] ) return null;
+        $item_index = self::repeater_index( $path[1] );
+        if ( null === $item_index ) return null;
         $node = Elementize_Tree::find_node( $elements, $element_id );
         if ( ! is_array( $node ) ) return new WP_Error( 'elementize_design_target_missing', 'The repeater design target no longer exists.', [ 'status' => 409 ] );
         $widget = sanitize_key( (string) ( $node['widgetType'] ?? '' ) );
@@ -67,7 +69,7 @@ final class Elementize_Pixfort_Repeater_Colors {
             }
         }
 
-        $item_index = (int) $path[1];
+
         $old_color = null;
         $old_activation = null;
         $result = Elementize_Tree::mutate_setting( $elements, $element_id, [ $repeater_key ], static function( &$items ) use ( $item_index, $expected, $new, $meta, &$old_color, &$old_activation ) {
@@ -104,6 +106,12 @@ final class Elementize_Pixfort_Repeater_Colors {
             ];
         }
         return [ 'category' => 'pixfort_repeater_theme_color', 'new' => $new ];
+    }
+    private static function repeater_index( $value ): ?int {
+        if ( is_int( $value ) ) return $value >= 0 ? $value : null;
+        if ( ! is_string( $value ) || ! preg_match( '/^(0|[1-9][0-9]*)$/D', $value ) ) return null;
+        $validated = filter_var( $value, FILTER_VALIDATE_INT, [ 'options' => [ 'min_range' => 0 ] ] );
+        return false === $validated ? null : (int) $validated;
     }
     private static function collect_elements( array $elements, string $filter_id, array &$out, int $depth ): void {
         if ( $depth > 80 || count( $out ) >= self::MAX_SYNTHETIC_CONTROLS ) return;
