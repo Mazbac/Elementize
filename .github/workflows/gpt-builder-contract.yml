@@ -94,6 +94,7 @@ jobs:
           php tests/component-intelligence-contract.php
           php tests/browser-probe-contract.php
           php tests/visual-qa-timing-contract.php
+          php tests/visual-qa-quality-contract.php
           php tests/cdp-responsive-contract.php
           node --check assets/runtime/elementize-cdp-capture.mjs
           probe_b64=$(python3 <<'PY'
@@ -218,10 +219,14 @@ jobs:
           grep -q 'alias:originalTemplateElementId' "$schema" || { echo 'Inserted-template alias reference contract is missing.'; exit 1; }
           grep -q 'ElementizeReferenceObservation' "$schema" || { echo 'Reference observation Action schema is missing.'; exit 1; }
           grep -q 'ElementizeAcceptancePlan' "$schema" || { echo 'Acceptance-plan Action schema is missing.'; exit 1; }
+          grep -q 'ElementizeQualityGateEvaluation' "$schema" || { echo 'Visual QA quality-gate schema is missing.'; exit 1; }
+          grep -q 'ElementizeRepairSignal' "$schema" || { echo 'Visual QA repair-signal schema is missing.'; exit 1; }
           grep -q 'provider=pixfort' "$instructions" || { echo 'GPT must prefer Pixfort-native templates when suitable.'; exit 1; }
           grep -q 'Designer workflow' "$instructions" || { echo 'GPT senior-designer workflow is missing.'; exit 1; }
           grep -q 'desktop, tablet and mobile' "$instructions" || { echo 'GPT multi-viewport QA rule is missing.'; exit 1; }
           grep -q 'browser diagnostics' "$instructions" || { echo 'GPT browser-diagnostics rule is missing.'; exit 1; }
+          grep -q 'quality_gate_evaluation' "$instructions" || { echo 'GPT deterministic quality-gate rule is missing.'; exit 1; }
+          grep -q 'safe_to_autorepair=false' "$instructions" || { echo 'GPT repair signals must not authorize writes.'; exit 1; }
           grep -q 'interaction_probe=safe' "$instructions" || { echo 'GPT bounded interaction QA rule is missing.'; exit 1; }
           grep -q 'motion=live' "$instructions" || { echo 'GPT live-motion QA rule is missing.'; exit 1; }
           grep -q 'viewport_exact=true' "$instructions" || { echo 'GPT exact responsive QA guard is missing.'; exit 1; }

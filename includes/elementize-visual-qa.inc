@@ -2,11 +2,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Visual_QA {
-    private const VERSION = '10';
+    private const VERSION = '11';
     private const TTL = 180;
     private const JOB_TTL = 180;
     private const JOB_TIMEOUT_SECONDS = 75;
-    private const JOB_PREFIX = 'elementize_visual_qa_job_v10_';
+    private const JOB_PREFIX = 'elementize_visual_qa_job_v11_';
     private const CHROME_PATH_CONST = 'ELEMENTIZE_CHROME_PATH';
     private const NODE_PATH_CONST = 'ELEMENTIZE_NODE_PATH';
     private const VIEWPORT_WIDTH = 1440;
@@ -200,9 +200,185 @@ final class Elementize_Visual_QA {
 
         $base['browser_probe_verified'] = (bool) ( $capture['browser_probe']['verified'] ?? false );
         $base['browser_diagnostics'] = $capture['browser_probe']['diagnostics'] ?? null;
+        $quality = self::quality_report( $base );
+        $base['quality_gate_evaluation'] = $quality['quality_gate_evaluation'];
+        $base['repair_signal_summary'] = $quality['repair_signal_summary'];
+        $base['repair_signals'] = $quality['repair_signals'];
         $base['note'] = 'Rendered screenshot capture and passive browser diagnostics completed. Native ChatGPT visual analysis was not requested for this capture-only call.';
         self::cleanup_job( $job );
         return new WP_REST_Response( $base, 200 );
+    }
+
+    public static function quality_report( array $payload ): array {
+        $diagnostics = is_array( $payload['browser_diagnostics'] ?? null ) ? $payload['browser_diagnostics'] : [];
+        $counts = is_array( $diagnostics['counts'] ?? null ) ? $diagnostics['counts'] : [];
+        $document = is_array( $diagnostics['document'] ?? null ) ? $diagnostics['document'] : [];
+        $interactions = is_array( $diagnostics['interactions'] ?? null ) ? $diagnostics['interactions'] : [];
+        $screenshot = is_array( $payload['screenshot'] ?? null ) ? $payload['screenshot'] : [];
+        $probe_verified = true === ( $payload['browser_probe_verified'] ?? false );
+        $interaction_mode = 'safe' === strtolower( trim( (string) ( $payload['interaction_probe'] ?? 'passive' ) ) ) ? 'safe' : 'passive';
+        $viewport = strtolower( trim( (string) ( $payload['viewport'] ?? 'desktop' ) ) );
+        if ( ! in_array( $viewport, [ 'desktop', 'tablet', 'mobile' ], true ) ) $viewport = 'desktop';
+
+        $gates = [];
+        $gates['visual_render_verified'] = self::quality_gate( true === ( $payload['visual_render_verified'] ?? false ), [ 'verified' => (bool) ( $payload['visual_render_verified'] ?? false ) ] );
+        $exact = array_key_exists( 'viewport_exact', $payload ) ? $payload['viewport_exact'] : ( $screenshot['viewport_exact'] ?? null );
+        $gates['viewport_exact'] = self::quality_gate_nullable( $exact, [ 'viewport' => $viewport, 'exact' => $exact ] );
+        $complete = array_key_exists( 'document_capture_complete', $payload ) ? $payload['document_capture_complete'] : ( $screenshot['document_capture_complete'] ?? null );
+        $gates['document_capture_complete'] = self::quality_gate_nullable( $complete, [ 'complete' => $complete ] );
+        $gates['capture_bounds_ready'] = array_key_exists( 'capture_bounds_ready', $payload )
+            ? self::quality_gate_nullable( $payload['capture_bounds_ready'], [ 'ready' => $payload['capture_bounds_ready'] ] )
+            : [ 'state' => 'not_applicable', 'evidence' => [ 'requires_analyze' => true ] ];
+        $gates['browser_probe_verified'] = self::quality_gate( $probe_verified, [ 'verified' => $probe_verified ] );
+
+        if ( $probe_verified ) {
+            $overflow_count = isset( $counts['overflow'] ) ? max( 0, (int) $counts['overflow'] ) : count( (array) ( $diagnostics['overflow'] ?? [] ) );
+            $horizontal = true === ( $document['horizontalOverflow'] ?? null );
+            $gates['no_horizontal_overflow'] = self::quality_gate( ! $horizontal && 0 === $overflow_count, [ 'horizontal_overflow' => $horizontal, 'localized_count' => $overflow_count ] );
+            $anchor_count = isset( $counts['anchorIssues'] ) ? max( 0, (int) $counts['anchorIssues'] ) : count( (array) ( $diagnostics['anchorIssues'] ?? [] ) );
+            $gates['no_bad_internal_anchors'] = self::quality_gate( 0 === $anchor_count, [ 'issue_count' => $anchor_count ] );
+            $hidden_count = isset( $counts['hiddenMotion'] ) ? max( 0, (int) $counts['hiddenMotion'] ) : count( (array) ( $diagnostics['hiddenMotion'] ?? [] ) );
+            $gates['no_hidden_animated_elements'] = self::quality_gate( 0 === $hidden_count, [ 'hidden_motion_count' => $hidden_count ] );
+        } else {
+            foreach ( [ 'no_horizontal_overflow', 'no_bad_internal_anchors', 'no_hidden_animated_elements' ] as $gate ) $gates[ $gate ] = [ 'state' => 'unavailable', 'evidence' => [ 'browser_probe_verified' => false ] ];
+        }
+
+        if ( 'safe' !== $interaction_mode ) {
+            $gates['safe_interactions_pass'] = [ 'state' => 'not_applicable', 'evidence' => [ 'interaction_probe' => $interaction_mode ] ];
+        } elseif ( ! $probe_verified || ! $interactions ) {
+            $gates['safe_interactions_pass'] = [ 'state' => 'unavailable', 'evidence' => [ 'browser_probe_verified' => $probe_verified ] ];
+        } else {
+            $failed = max( 0, (int) ( $interactions['failed'] ?? 0 ) );
+            $restoration = max( 0, (int) ( $interactions['restorationFailures'] ?? 0 ) );
+            $gates['safe_interactions_pass'] = self::quality_gate( 0 === $failed && 0 === $restoration, [ 'tested' => max( 0, (int) ( $interactions['tested'] ?? 0 ) ), 'failed' => $failed, 'restoration_failures' => $restoration ] );
+        }
+
+        $summary = [ 'pass' => 0, 'fail' => 0, 'not_applicable' => 0, 'unavailable' => 0 ];
+        $failed_gates = [];
+        foreach ( $gates as $name => $gate ) {
+            $state = (string) ( $gate['state'] ?? 'unavailable' );
+            if ( ! isset( $summary[ $state ] ) ) $state = 'unavailable';
+            $summary[ $state ]++;
+            if ( 'fail' === $state ) $failed_gates[] = $name;
+        }
+
+        $signals = self::repair_signals_from_quality( $payload, $gates, $diagnostics, $viewport );
+        $signal_summary = self::repair_signal_summary( $signals );
+        return [
+            'quality_gate_evaluation' => [
+                'version' => '1',
+                'viewport' => $viewport,
+                'interaction_probe' => $interaction_mode,
+                'summary' => $summary,
+                'failed_gates' => $failed_gates,
+                'gates' => $gates,
+            ],
+            'repair_signal_summary' => $signal_summary,
+            'repair_signals' => $signals,
+        ];
+    }
+
+    private static function quality_gate( bool $pass, array $evidence ): array {
+        return [ 'state' => $pass ? 'pass' : 'fail', 'evidence' => $evidence ];
+    }
+
+    private static function quality_gate_nullable( $value, array $evidence ): array {
+        if ( ! is_bool( $value ) ) return [ 'state' => 'unavailable', 'evidence' => $evidence ];
+        return self::quality_gate( $value, $evidence );
+    }
+
+    private static function repair_signals_from_quality( array $payload, array $gates, array $diagnostics, string $viewport ): array {
+        $signals = [];
+        foreach ( [ 'visual_render_verified', 'viewport_exact', 'document_capture_complete', 'capture_bounds_ready', 'browser_probe_verified' ] as $gate ) {
+            if ( 'fail' !== (string) ( $gates[ $gate ]['state'] ?? '' ) ) continue;
+            self::push_repair_signal( $signals, 'infrastructure', 'blocker', $gate, $viewport, null, null, 'QA infrastructure failed; diagnose or retry capture before any page mutation.', $gates[ $gate ]['evidence'] ?? [], 'system', 'Do not repair this gate with Elementor content or design writes.' );
+        }
+
+        if ( 'fail' === (string) ( $gates['no_horizontal_overflow']['state'] ?? '' ) ) {
+            $items = array_slice( (array) ( $diagnostics['overflow'] ?? [] ), 0, 12 );
+            if ( ! $items ) self::push_repair_signal( $signals, 'responsive_overflow', 'high', 'no_horizontal_overflow', $viewport, null, null, 'Horizontal document overflow is present but no localized element was reported.', $gates['no_horizontal_overflow']['evidence'] ?? [], 'localize_first', 'Fresh-read structure/design controls before considering a local responsive repair.' );
+            foreach ( $items as $item ) self::push_repair_signal( $signals, 'responsive_overflow', 'high', 'no_horizontal_overflow', $viewport, $item['elementId'] ?? null, $item['documentId'] ?? null, 'A rendered element contributes to horizontal overflow.', self::bounded_evidence( $item ), 'local_if_verified', 'Inspect fresh local width/position/responsive controls; never guess a breakpoint write.' );
+        }
+
+        if ( 'fail' === (string) ( $gates['no_bad_internal_anchors']['state'] ?? '' ) ) {
+            foreach ( array_slice( (array) ( $diagnostics['anchorIssues'] ?? [] ), 0, 12 ) as $item ) {
+                $scope = ! empty( $item['elementId'] ) ? 'local_if_verified' : 'localize_first';
+                self::push_repair_signal( $signals, 'content_link', 'medium', 'no_bad_internal_anchors', $viewport, $item['elementId'] ?? null, $item['documentId'] ?? null, 'A rendered link has an empty, non-navigation or missing internal target.', self::bounded_evidence( $item ), $scope, 'Resolve the fresh local link control and change it only when the intended destination is grounded.' );
+            }
+        }
+
+        if ( 'fail' === (string) ( $gates['no_hidden_animated_elements']['state'] ?? '' ) ) {
+            foreach ( array_slice( (array) ( $diagnostics['hiddenMotion'] ?? [] ), 0, 8 ) as $item ) {
+                $scope = ! empty( $item['elementId'] ) ? 'local_if_verified' : 'localize_first';
+                self::push_repair_signal( $signals, 'motion_visibility', 'medium', 'no_hidden_animated_elements', $viewport, $item['elementId'] ?? null, $item['documentId'] ?? null, 'An animation-marked rendered element remains effectively hidden at probe time.', self::bounded_evidence( $item ), $scope, 'Inspect fresh animation/visibility controls and native screenshot evidence before changing motion.' );
+            }
+        }
+
+        if ( 'fail' === (string) ( $gates['safe_interactions_pass']['state'] ?? '' ) ) {
+            foreach ( array_slice( (array) ( $diagnostics['interactions']['items'] ?? [] ), 0, 8 ) as $item ) {
+                if ( ! empty( $item['passed'] ) ) continue;
+                self::push_repair_signal( $signals, 'interaction_restoration', 'high', 'safe_interactions_pass', $viewport, $item['elementId'] ?? null, $item['documentId'] ?? null, 'A bounded stateful interaction did not change and restore state safely.', self::bounded_evidence( $item ), 'local_if_verified', 'Inspect the exact local interaction widget/state wiring; never repair by following links or submitting forms.' );
+            }
+        }
+
+        foreach ( array_slice( (array) ( $diagnostics['tinyInteractive'] ?? [] ), 0, 4 ) as $item ) self::push_repair_signal( $signals, 'touch_target_review', 'low', null, $viewport, $item['elementId'] ?? null, $item['documentId'] ?? null, 'A visible interactive target is smaller than 40px in at least one dimension.', self::bounded_evidence( $item ), 'review_only', 'Treat as review evidence; use visual/context judgment before any spacing or size write.' );
+        return array_slice( $signals, 0, 24 );
+    }
+
+    private static function repair_signal_summary( array $signals ): array {
+        $categories = [];
+        $localized = 0;
+        $unlocalized = 0;
+        $blockers = 0;
+        foreach ( $signals as $signal ) {
+            $category = (string) ( $signal['category'] ?? 'unknown' );
+            $categories[ $category ] = ( $categories[ $category ] ?? 0 ) + 1;
+            if ( ! empty( $signal['element_id'] ) ) $localized++; else $unlocalized++;
+            if ( 'blocker' === (string) ( $signal['severity'] ?? '' ) ) $blockers++;
+        }
+        ksort( $categories );
+        return [
+            'count' => count( $signals ),
+            'localized' => $localized,
+            'unlocalized' => $unlocalized,
+            'blockers' => $blockers,
+            'categories' => $categories,
+            'automatic_writes_authorized' => false,
+        ];
+    }
+
+    private static function push_repair_signal( array &$signals, string $category, string $severity, ?string $gate, string $viewport, $element_id, $document_id, string $message, array $evidence, string $scope, string $write_hint ): void {
+        if ( count( $signals ) >= 24 ) return;
+        $element_id = is_scalar( $element_id ) ? self::clip( trim( (string) $element_id ), 80 ) : '';
+        $document_id = is_scalar( $document_id ) ? self::clip( trim( (string) $document_id ), 40 ) : '';
+        $encoded_evidence = function_exists( 'wp_json_encode' ) ? wp_json_encode( $evidence ) : json_encode( $evidence );
+        $seed = implode( '|', [ $category, (string) $gate, $viewport, $element_id, $document_id, (string) $encoded_evidence ] );
+        $signals[] = [
+            'id' => $category . '-' . substr( sha1( $seed ), 0, 12 ),
+            'severity' => $severity,
+            'category' => $category,
+            'gate' => $gate,
+            'viewport' => $viewport,
+            'message' => $message,
+            'element_id' => '' !== $element_id ? $element_id : null,
+            'document_id' => '' !== $document_id ? $document_id : null,
+            'evidence' => $evidence,
+            'repair_scope' => $scope,
+            'write_hint' => $write_hint,
+            'safe_to_autorepair' => false,
+        ];
+    }
+
+    private static function bounded_evidence( $item ): array {
+        if ( ! is_array( $item ) ) return [];
+        $allowed = [ 'tag', 'id', 'className', 'text', 'href', 'issue', 'left', 'right', 'width', 'height', 'role', 'changed', 'restored', 'passed', 'error', 'elementId', 'documentId' ];
+        $out = [];
+        foreach ( $allowed as $key ) {
+            if ( ! array_key_exists( $key, $item ) || is_array( $item[ $key ] ) || is_object( $item[ $key ] ) ) continue;
+            $value = $item[ $key ];
+            $out[ $key ] = is_string( $value ) ? self::clip( $value, 180 ) : $value;
+        }
+        return $out;
     }
 
     public static function annotate_status( $response, $handler, WP_REST_Request $request ) {

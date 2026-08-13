@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * blueprint/QA contracts so ChatGPT can reason page-wide before mutating.
  */
 final class Elementize_Designer {
-    private const VERSION = '5';
+    private const VERSION = '6';
     private const MAX_SECTIONS = 80;
 
     public static function init(): void {
@@ -159,6 +159,8 @@ final class Elementize_Designer {
             'visual' => [ 'hierarchy', 'rhythm', 'alignment', 'density', 'contrast', 'consistency', 'composition', 'cta_clarity', 'page_coherence' ],
             'responsive' => [ 'no_horizontal_overflow', 'no_overlap_or_clipping', 'readable_line_lengths', 'logical_stacking', 'touch_target_sizing', 'bounded_whitespace', 'media_scaling' ],
             'interaction' => [ 'links_and_anchors_resolve', 'controls_have_clear_states', 'toggles_do_not_break_layout', 'focus_visibility', 'no_elements_stuck_hidden_after_motion' ],
+            'deterministic_evidence' => 'Completed Visual QA returns quality_gate_evaluation plus bounded repair_signals. These classify verified telemetry only; they never replace native visual judgment or authorize a write.',
+            'repair_signal_rule' => 'Use localized element IDs only after fresh local-scope verification. Unlocalized signals require localization first. Infrastructure signals must never be repaired with page mutations.',
             'acceptance' => 'A build is not complete from persisted data alone. Required viewports must render cleanly and any relevant interaction probes must pass or have an explicit bounded exception.',
         ];
     }

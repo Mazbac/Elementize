@@ -228,6 +228,10 @@ final class Elementize_ChatGPT_Vision {
             'document_capture_complete' => $document_complete,
             'persisted' => false,
         ];
+        $quality = Elementize_Visual_QA::quality_report( $base );
+        $base['quality_gate_evaluation'] = $quality['quality_gate_evaluation'];
+        $base['repair_signal_summary'] = $quality['repair_signal_summary'];
+        $base['repair_signals'] = $quality['repair_signals'];
         $base['openaiFileResponse'] = [ [
             'name' => 'elementize-visual-' . $job_id . '.zip',
             'mime_type' => 'application/zip',

@@ -22,7 +22,7 @@ foreach ( [ 'desktop' => [1440,900,12000], 'tablet' => [768,1024,16000], 'mobile
 }
 $source = file_get_contents( __DIR__ . '/../includes/elementize-visual-qa.inc' );
 $runner = file_get_contents( __DIR__ . '/../assets/runtime/elementize-cdp-capture.mjs' );
-foreach ( [ "private const VERSION = '10'", 'local_chromium_cdp_async', 'cdp_capture_ready', 'viewport_exact', 'windows_cdp_runner', 'unix_cdp_runner', 'document_capture_complete' ] as $needle ) {
+foreach ( [ "private const VERSION = '11'", 'local_chromium_cdp_async', 'cdp_capture_ready', 'viewport_exact', 'windows_cdp_runner', 'unix_cdp_runner', 'document_capture_complete', 'quality_gate_evaluation', 'repair_signals' ] as $needle ) {
     if ( false === strpos( $source, $needle ) ) fail_cdp_contract( 'Visual QA CDP marker missing: ' . $needle );
 }
 foreach ( [ 'Emulation.setDeviceMetricsOverride', 'Emulation.setTouchEmulationEnabled', 'Page.captureScreenshot', 'captureBeyondViewport: true', 'scrollHeight', "from 'node:child_process'", '/json/new?about:blank', 'probeReady' ] as $needle ) {

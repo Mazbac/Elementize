@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.47.1
+  version: 0.48.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
@@ -208,6 +208,12 @@ paths:
                 type: object
                 additionalProperties: true
                 properties:
+                  quality_gate_evaluation: { $ref: '#/components/schemas/ElementizeQualityGateEvaluation' }
+                  repair_signal_summary: { $ref: '#/components/schemas/ElementizeRepairSignalSummary' }
+                  repair_signals:
+                    type: array
+                    maxItems: 24
+                    items: { $ref: '#/components/schemas/ElementizeRepairSignal' }
                   openaiFileResponse:
                     type: array
                     maxItems: 1
@@ -610,3 +616,68 @@ components:
         recommendation:
           type: string
           enum: [strong_candidate, inspect_and_compare, possible_but_normalization_heavy, weak_fit]
+    ElementizeQualityGateEvaluation:
+      type: object
+      additionalProperties: false
+      required: [version, viewport, interaction_probe, summary, failed_gates, gates]
+      properties:
+        version: { type: string }
+        viewport: { type: string, enum: [desktop, tablet, mobile] }
+        interaction_probe: { type: string, enum: [passive, safe] }
+        summary:
+          type: object
+          additionalProperties: false
+          required: [pass, fail, not_applicable, unavailable]
+          properties:
+            pass: { type: integer, minimum: 0 }
+            fail: { type: integer, minimum: 0 }
+            not_applicable: { type: integer, minimum: 0 }
+            unavailable: { type: integer, minimum: 0 }
+        failed_gates:
+          type: array
+          maxItems: 12
+          items: { type: string, maxLength: 80 }
+        gates:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ElementizeQualityGate' }
+    ElementizeQualityGate:
+      type: object
+      additionalProperties: false
+      required: [state, evidence]
+      properties:
+        state: { type: string, enum: [pass, fail, not_applicable, unavailable] }
+        evidence:
+          type: object
+          additionalProperties: true
+    ElementizeRepairSignalSummary:
+      type: object
+      additionalProperties: false
+      required: [count, localized, unlocalized, blockers, categories, automatic_writes_authorized]
+      properties:
+        count: { type: integer, minimum: 0, maximum: 24 }
+        localized: { type: integer, minimum: 0, maximum: 24 }
+        unlocalized: { type: integer, minimum: 0, maximum: 24 }
+        blockers: { type: integer, minimum: 0, maximum: 24 }
+        categories:
+          type: object
+          additionalProperties: { type: integer, minimum: 0, maximum: 24 }
+        automatic_writes_authorized: { type: boolean }
+    ElementizeRepairSignal:
+      type: object
+      additionalProperties: false
+      required: [id, severity, category, viewport, message, evidence, repair_scope, write_hint, safe_to_autorepair]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 100 }
+        severity: { type: string, enum: [blocker, high, medium, low] }
+        category: { type: string, enum: [infrastructure, responsive_overflow, content_link, motion_visibility, interaction_restoration, touch_target_review] }
+        gate: { type: [string, 'null'], maxLength: 80 }
+        viewport: { type: string, enum: [desktop, tablet, mobile] }
+        message: { type: string, maxLength: 300 }
+        element_id: { type: [string, 'null'], maxLength: 80 }
+        document_id: { type: [string, 'null'], maxLength: 40 }
+        evidence:
+          type: object
+          additionalProperties: true
+        repair_scope: { type: string, enum: [system, localize_first, local_if_verified, review_only] }
+        write_hint: { type: string, maxLength: 300 }
+        safe_to_autorepair: { type: boolean }

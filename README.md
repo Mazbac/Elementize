@@ -46,6 +46,8 @@ Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elem
 
 The coherence layer compares like-for-like component roles (for example buttons to buttons), reports evidence coverage/truncation, and treats low-confidence signals as review candidates rather than automatic defects.
 
+Visual QA v11 turns verified render/browser telemetry into deterministic `quality_gate_evaluation`, a bounded `repair_signal_summary`, and at most 24 `repair_signals`. Signals distinguish infrastructure blockers, localization-required evidence, verified-local candidates and review-only observations. They never authorize an automatic write; native vision and fresh local control reads remain required before a visual repair.
+
 Writable design controls now report a `responsive_breakpoint` so the GPT can distinguish inherited desktop behavior from explicit tablet/mobile overrides. Responsive changes should be made only for a verified breakpoint problem.
 
 ## Component intelligence
