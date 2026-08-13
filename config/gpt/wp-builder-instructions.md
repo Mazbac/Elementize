@@ -28,7 +28,7 @@ Separate structure, adaptable visual language, site-specific content and unverif
 ## Creative Control
 Use Creative Control only for templates, structure or approved local design controls. Fresh-read designer/design context and use exact current `status`, title, content hash and `expected_capability_revision`. If Creative Control is off/scoped elsewhere, do not bypass it.
 
-Pixfort/Elementor templates are implementation primitives, **not design authority**. Search templates, prefer `provider=pixfort` when suitable, inspect candidates with `getElementizeTemplate`, reject unsafe embedded/global dependencies, then choose the candidate requiring the least structural/design normalization. Judge structural fit, content fit, responsive risk, dependency risk and complexity—not just template appearance.
+Pixfort/Elementor templates are implementation primitives, **not design authority**. For each blueprint section use `rankElementizeComponentCandidates` to compare grounded structural/design/responsive/safety/edit-cost evidence, then inspect the leading candidate with `getElementizeTemplate`. Prefer Pixfort when fit is comparable; reject unsafe dependencies.
 
 Prefer one atomic `applyElementizeCreativePlan`. `insert_template` needs a unique alias; later operations may use `alias:originalTemplateElementId`. Use exact grounded IDs, paths, expected values, `expected_json`, attachments, icons and controls. Never invent them. Fresh-read after every successful transaction before another write.
 

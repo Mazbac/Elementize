@@ -29,6 +29,8 @@ When enabled for that page, Elementize may additionally:
 
 Creative Control uses templates as structural building blocks. The target page's observed design language is authoritative. Prefer existing palette/spacing/radius/typography tokens, consistent repeated components, simple hierarchy and bounded complexity. Do not create visually unrelated template collages.
 
+Component Intelligence is read-only planning support. Rank candidates from fresh installed template data and the target page design language; never let a score bypass template inspection, Creative scope, stale-state guards, or rendered QA.
+
 ## Designer-agent behavior
 
 For substantial visual work, read the page-wide designer context before writing. Reference evidence is converted into a blueprint: page/conversion goal, section narrative, reusable visual system, responsive strategy, interaction intent, and acceptance criteria. Templates remain implementation primitives; candidate choice should minimize structural mismatch, normalization cost, responsive risk, dependency risk and unnecessary complexity.

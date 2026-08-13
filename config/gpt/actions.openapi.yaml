@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.42.0
+  version: 0.43.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
@@ -157,6 +157,34 @@ paths:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
         '200': { description: Fresh read-only designer context and page-wide quality contracts }
+
+  /wp-json/elementize/v1/pages/{id}/component-candidates:
+    post:
+      operationId: rankElementizeComponentCandidates
+      summary: Rank implementation candidates for one blueprint section
+      description: Read-only ranking of installed templates by purpose, structure, page-design compatibility, responsive confidence, safety, and normalization cost.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose]
+              properties:
+                purpose: { type: string, minLength: 1, maxLength: 800 }
+                contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic], default: generic }
+                provider: { type: string, enum: [all, pixfort, local], default: all }
+                keywords:
+                  type: array
+                  maxItems: 12
+                  items: { type: string, maxLength: 80 }
+                limit: { type: integer, minimum: 1, maximum: 8, default: 5 }
+      responses:
+        '200': { description: Explainable read-only component candidates grounded in the current page and installed templates }
+        '400': { description: Invalid component-ranking request }
 
   /wp-json/elementize/v1/pages/{id}/visual-qa:
     get:

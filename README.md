@@ -46,6 +46,10 @@ Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elem
 
 Writable design controls now report a `responsive_breakpoint` so the GPT can distinguish inherited desktop behavior from explicit tablet/mobile overrides. Responsive changes should be made only for a verified breakpoint problem.
 
+## Component intelligence
+
+For substantial Creative builds, `rankElementizeComponentCandidates` compares installed Pixfort/Elementor sections against the current page and one blueprint-section purpose. Ranking is read-only and explainable: semantic fit, actual widget structure, page-design compatibility, responsive evidence, dependency safety, and estimated normalization cost. A high score is planning evidence only; ChatGPT must still inspect the chosen template and all Creative mutation guards remain unchanged.
+
 ## Media sources
 
 Every page image replacement uses a WordPress attachment ID. Elementize supports four ways to obtain one:
@@ -177,6 +181,7 @@ includes/
   elementize-context.inc
   elementize-design.inc
   elementize-designer.inc
+  elementize-component-intelligence.inc
   elementize-tree.inc
   elementize-templates.inc
   elementize-template-response.inc
