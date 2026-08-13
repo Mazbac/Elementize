@@ -5,12 +5,12 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Native ChatGPT vision handoff for Rendered Visual QA.
  *
  * GPT Actions cannot return image/video files directly. When the existing
- * Visual QA action is called with analyze=true, this adapter reuses the proven
+ * Visual QA action is called with analyze=true, this handoff reuses the proven
  * analyze=false Chromium capture job, wraps the completed PNG in a one-file ZIP
- * and returns it through openaiFileResponse. ChatGPT can then use Code
- * Interpreter to extract screenshot.png and inspect the actual image itself.
+ * and returns it through openaiFileResponse. ChatGPT extracts screenshot.png from
+ * the returned conversation ZIP and inspects the actual image itself.
  *
- * This adapter is read-only. It never changes page content, never exposes the
+ * This handoff is read-only. It never changes page content, never exposes the
  * internal preview URL and never claims visual_analysis_verified on the server.
  */
 final class Elementize_ChatGPT_Vision {
@@ -18,19 +18,13 @@ final class Elementize_ChatGPT_Vision {
     private const SCREENSHOT_ENTRY = 'screenshot.png';
     private const MAX_SCREENSHOT_BYTES = 10485760;
 
-    public static function init(): void {
-        add_filter( 'rest_request_before_callbacks', [ self::class, 'before_callbacks' ], 10, 3 );
-    }
-
-    public static function before_callbacks( $response, $handler, WP_REST_Request $request ) {
-        if ( null !== $response ) return $response;
-
+    public static function handle( WP_REST_Request $request ) {
         $route = (string) $request->get_route();
-        if ( ! preg_match( '#^/' . preg_quote( Elementize_Core::NS, '#' ) . '/pages/(?P<id>\\d+)/visual-qa$#', $route ) ) return $response;
+        if ( ! preg_match( '#^/' . preg_quote( Elementize_Core::NS, '#' ) . '/pages/(?P<id>\\d+)/visual-qa$#', $route ) ) return new WP_Error( 'elementize_visual_qa_route_invalid', 'Native ChatGPT vision received an unexpected route.', [ 'status' => 400 ] );
 
         $raw_analyze = $request->get_param( 'analyze' );
         $analyze = null === $raw_analyze ? true : (bool) filter_var( $raw_analyze, FILTER_VALIDATE_BOOLEAN );
-        if ( ! $analyze ) return $response;
+        if ( ! $analyze ) return new WP_Error( 'elementize_chatgpt_vision_not_requested', 'Native ChatGPT vision requires analyze=true.', [ 'status' => 400 ] );
 
         $allowed = Elementize_Core::can_edit_page( $request );
         if ( is_wp_error( $allowed ) ) return $allowed;
@@ -52,33 +46,24 @@ final class Elementize_ChatGPT_Vision {
 
         $hash = Elementize_Core::hash_elements( $loaded['elements'] );
         $revision = absint( $state['revision'] );
-        $capture_version = self::visual_qa_version();
-        if ( '' === $capture_version ) {
-            return new WP_REST_Response( self::base_payload( $id, $loaded, $hash, $revision, '' ) + [
-                'capture_state' => 'failed',
-                'stage' => 'chatgpt_vision_handoff',
-                'reason' => 'The active Rendered Visual QA version could not be resolved safely.',
-            ], 200 );
-        }
-
-        // Always reuse an analyze=false browser job. The local vision backend is
-        // therefore never invoked for the native ChatGPT vision path.
-        $job_id = self::job_id( $id, $hash, $revision, false );
-        $paths = self::temp_paths( $job_id );
+        $context = Elementize_Visual_QA::capture_context( $id, $hash, $revision );
+        $capture_version = (string) $context['version'];
+        $job_id = (string) $context['job_id'];
+        $job_key = (string) $context['job_key'];
+        $paths = (array) $context['paths'];
         $base = self::base_payload( $id, $loaded, $hash, $revision, $capture_version );
 
-        if ( self::png_file_complete( $paths['screenshot'] ) ) {
+        if ( Elementize_Visual_QA::png_file_complete( $paths['screenshot'] ) ) {
             return self::complete_payload( $base, $job_id, $paths['screenshot'] );
         }
 
-        $job_key = 'elementize_visual_qa_job_v' . $capture_version . '_' . $job_id;
         $job = get_transient( $job_key );
         if ( is_array( $job ) ) {
             return new WP_REST_Response( self::pending_payload( $base, $job_id, $paths, $job ), 200 );
         }
 
         // No matching capture is active yet. Start the proven Chromium pipeline
-        // directly with analyze=false. Later analyze=true calls poll this adapter
+        // directly with analyze=false. Later analyze=true calls poll this handoff
         // before the original Visual QA collector can consume/clean the PNG.
         $capture_request = new WP_REST_Request( 'GET', '/' . Elementize_Core::NS . '/pages/' . $id . '/visual-qa' );
         $capture_request->set_param( 'id', $id );
@@ -128,7 +113,6 @@ final class Elementize_ChatGPT_Vision {
             'analysis_backend' => 'chatgpt_native_vision',
             'analysis_requested' => true,
             'analysis_ready' => false,
-            'local_vision_required' => false,
             'visual_render_verified' => false,
             'visual_analysis_verified' => false,
             'screenshot_persisted' => false,
@@ -147,12 +131,16 @@ final class Elementize_ChatGPT_Vision {
         $base['capture_elapsed_ms'] = isset( $job['started_microtime'] )
             ? max( 0, (int) round( ( microtime( true ) - (float) $job['started_microtime'] ) * 1000 ) )
             : 0;
-        $base['capture_artifact_state'] = self::capture_artifact_state( $paths );
+        $base['capture_artifact_state'] = Elementize_Visual_QA::capture_artifact_state( $paths );
         $base['note'] = 'The real browser capture is running. Call the same read-only Visual QA action again with analyze=true. Do not switch to analyze=false while collecting the ChatGPT vision handoff.';
         return $base;
     }
 
     private static function complete_payload( array $base, string $job_id, string $screenshot ) {
+        $bounds = class_exists( 'Elementize_Visual_QA' )
+            ? Elementize_Visual_QA::bound_screenshot( $screenshot )
+            : [ 'available' => false, 'trimmed' => false, 'original_height' => null, 'bounded_height' => null ];
+
         $bytes = @file_get_contents( $screenshot );
         if ( false === $bytes || '' === $bytes ) {
             $base['capture_state'] = 'failed';
@@ -191,6 +179,15 @@ final class Elementize_ChatGPT_Vision {
         $base['capture_job_id'] = $job_id;
         $base['visual_render_verified'] = true;
         $base['chatgpt_vision_handoff_ready'] = true;
+        $base['chatgpt_vision_bounds_version'] = '2';
+        $base['capture_bounds_ready'] = ! empty( $bounds['available'] );
+        $base['capture_bounds_trimmed'] = (bool) ( $bounds['trimmed'] ?? false );
+        $base['capture_original_height'] = $bounds['original_height'] ?? null;
+        $base['capture_bounded_height'] = $bounds['bounded_height'] ?? null;
+        $base['capture_mode'] = ! empty( $bounds['available'] ) ? 'content_bounded_tall_desktop' : 'tall_desktop';
+        if ( empty( $bounds['available'] ) ) {
+            $base['capture_bounds_reason'] = 'Content-bounds normalization was unavailable; native visual analysis must not claim bounded capture verification.';
+        }
         $base['screenshot'] = [
             'captured' => true,
             'mime_type' => 'image/png',
@@ -205,63 +202,9 @@ final class Elementize_ChatGPT_Vision {
             'mime_type' => 'application/zip',
             'content' => base64_encode( $archive ),
         ] ];
-        $base['note'] = 'Rendered capture succeeded. The returned ZIP contains screenshot.png. Use Code Interpreter/Data Analysis to extract it, then inspect the extracted PNG itself with ChatGPT vision. Do not claim visual analysis from metadata or ZIP existence alone.';
+        $base['note'] = 'Rendered capture succeeded. The returned ZIP contains screenshot.png. Extract screenshot.png from that conversation ZIP, then inspect the PNG itself with ChatGPT vision. Do not claim visual analysis from metadata or ZIP existence alone.';
 
         return new WP_REST_Response( $base, 200 );
-    }
-
-    private static function visual_qa_version(): string {
-        if ( ! class_exists( 'Elementize_Visual_QA' ) ) return '';
-        try {
-            $reflection = new ReflectionClass( Elementize_Visual_QA::class );
-            $constant = $reflection->getReflectionConstant( 'VERSION' );
-            if ( ! $constant ) return '';
-            $value = trim( (string) $constant->getValue() );
-            return preg_match( '/^\\d+$/', $value ) ? $value : '';
-        } catch ( Throwable $error ) {
-            return '';
-        }
-    }
-
-    private static function job_id( int $id, string $hash, int $revision, bool $analyze ): string {
-        return substr( hash( 'sha256', $id . "\n" . $revision . "\n" . $hash . "\n" . ( $analyze ? '1' : '0' ) ), 0, 24 );
-    }
-
-    private static function temp_paths( string $job_id ): array {
-        $base = trailingslashit( function_exists( 'get_temp_dir' ) ? get_temp_dir() : sys_get_temp_dir() );
-        $prefix = $base . 'elementize-visual-' . $job_id;
-        return [
-            'screenshot' => $prefix . '.png',
-            'log' => $prefix . '.log',
-            'done' => $prefix . '.done',
-            'runner' => $prefix . ( 'Windows' === PHP_OS_FAMILY ? '.cmd' : '.sh' ),
-        ];
-    }
-
-    private static function png_file_complete( string $path ): bool {
-        if ( '' === $path || ! is_file( $path ) ) return false;
-        clearstatcache( true, $path );
-        $size = (int) @filesize( $path );
-        if ( $size < 1000 || $size > self::MAX_SCREENSHOT_BYTES ) return false;
-        $handle = @fopen( $path, 'rb' );
-        if ( ! is_resource( $handle ) ) return false;
-        $tail = '';
-        if ( 0 === @fseek( $handle, -12, SEEK_END ) ) $tail = (string) @fread( $handle, 12 );
-        @fclose( $handle );
-        return "\x00\x00\x00\x00IEND\xAE\x42\x60\x82" === $tail;
-    }
-
-    private static function capture_artifact_state( array $paths ): array {
-        $screenshot = (string) ( $paths['screenshot'] ?? '' );
-        clearstatcache( true, $screenshot );
-        return [
-            'runner_exists' => isset( $paths['runner'] ) && is_string( $paths['runner'] ) && is_file( $paths['runner'] ),
-            'log_exists' => isset( $paths['log'] ) && is_string( $paths['log'] ) && is_file( $paths['log'] ),
-            'done_exists' => isset( $paths['done'] ) && is_string( $paths['done'] ) && is_file( $paths['done'] ),
-            'screenshot_exists' => '' !== $screenshot && is_file( $screenshot ),
-            'screenshot_bytes' => '' !== $screenshot && is_file( $screenshot ) ? max( 0, (int) @filesize( $screenshot ) ) : 0,
-            'screenshot_complete' => self::png_file_complete( $screenshot ),
-        ];
     }
 
     private static function zip_single_file( string $filename, string $bytes ) {

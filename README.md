@@ -164,29 +164,33 @@ elementize.php
 includes/
   elementize-bootstrap.inc
   elementize-core.inc
-  elementize-pixfort-icons.inc
-  elementize-pixfort-transport.inc
-  elementize-pixfort-theme-tokens.inc
+  elementize-capabilities.inc
   elementize-content.inc
+  elementize-context.inc
   elementize-design.inc
   elementize-tree.inc
   elementize-templates.inc
+  elementize-template-response.inc
   elementize-creative.inc
+  elementize-creative-save-diagnostics.inc
+  elementize-pixfort-icons.inc
+  elementize-pixfort-transport.inc
+  elementize-pixfort-theme-tokens.inc
+  elementize-pixfort-repeater-colors.inc
+  elementize-visual-qa.inc
+  elementize-chatgpt-vision.inc
   elementize-media-library.inc
   elementize-media-import.inc
   elementize-activity.inc
   elementize-connections.inc
   elementize-onboarding.inc
-includes/runtime/
-  elementize-template-response.inc
 config/gpt/
   actions.openapi.yaml
   wp-builder-instructions.md
 frontend/
   src/
 tests/
-  creative-control-contract.php
-  natural-targeting-contract.php
+  *.php
 ```
 
-CI covers the frontend build, the GPT/Elementize contract, and PHP syntax. The plugin header remains on the current product version while the Creative Control branch is being finalized.
+CI covers the frontend build, canonical GPT/Action contract, Creative save/control guards, Pixfort selector contracts, native Visual QA handoff/bounds, and PHP syntax. The plugin header remains on the current product version while the Creative Control branch is being finalized.

@@ -133,8 +133,9 @@ assert_same_creative( 'heading', $canonical_save_filter[1]['originalWidgetType']
 $capabilities_source = file_get_contents( __DIR__ . '/../includes/elementize-capabilities.inc' );
 $creative_source = file_get_contents( __DIR__ . '/../includes/elementize-creative.inc' );
 $design_source = file_get_contents( __DIR__ . '/../includes/elementize-design.inc' );
-$repeater_color_source = file_get_contents( __DIR__ . '/../includes/runtime/elementize-pixfort-repeater-colors.inc' );
+$repeater_color_source = file_get_contents( __DIR__ . '/../includes/elementize-pixfort-repeater-colors.inc' );
 $template_source = file_get_contents( __DIR__ . '/../includes/elementize-templates.inc' );
+$bootstrap_source = file_get_contents( __DIR__ . '/../includes/elementize-bootstrap.inc' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );
 assert_true_creative( is_string( $capabilities_source ) && false !== strpos( $capabilities_source, "PROFILE_STANDARD = 'standard'" ), 'Standard editing must remain the server-side default profile.' );
 assert_true_creative( false !== strpos( $capabilities_source, 'require_creative' ) && false !== strpos( $capabilities_source, 'elementize_capabilities_changed' ), 'Creative writes must enforce page scope and stale capability revision.' );
@@ -143,6 +144,7 @@ assert_true_creative( false !== strpos( $creative_source, 'ACTIVITY_SNAPSHOT_MET
 assert_true_creative( false !== strpos( $creative_source, 'classify_control( $path, $cursor, $widget )' ), 'Creative style writes must classify the exact target widget rather than a context-free setting.' );
 assert_true_creative( false !== strpos( $creative_source, 'validate_transition( $widget, $setting_key, $cursor, $new )' ), 'Pixfort semantic theme-color writes must validate the exact target widget transition inside the authoritative Creative transaction.' );
 assert_true_creative( false !== strpos( $creative_source, 'Elementize_Pixfort_Repeater_Colors::apply_style' ), 'Creative style writes must delegate exact dormant Pixfort repeater color controls to the guarded adapter.' );
+assert_true_creative( is_string( $bootstrap_source ) && false === strpos( $bootstrap_source, 'Elementize_Creative_Style_Preflight' ), 'Superseded semantic style preflight must stay removed; the Creative transaction is the single write authority.' );
 assert_true_creative( false !== strpos( $creative_source, 'canonical_save_input_elements' ), 'Creative save-input verification must normalize only explicitly recognized Elementor bookkeeping before hash comparison.' );
 assert_true_creative( is_string( $repeater_color_source ) && false !== strpos( $repeater_color_source, "'has_color'" ) && false !== strpos( $repeater_color_source, "'item_color'" ), 'Pixfort repeater color adapter must bind the installed activation and selector fields.' );
 assert_true_creative( false !== strpos( $repeater_color_source, "[ 'custom', 'custom-gradient' ]" ), 'Pixfort repeater semantic color writes must reject arbitrary custom selectors.' );

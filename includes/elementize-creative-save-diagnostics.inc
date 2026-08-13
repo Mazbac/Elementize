@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Read-only diagnostics for Creative transactions rejected because Elementor's
  * document/save/data filter changed the already validated transaction.
  *
- * The Creative guard remains authoritative and still rolls back. This adapter
+ * The Creative guard remains authoritative and still rolls back. This module
  * only adds a bounded path-level diff to that specific error response so a
  * legitimate Elementor/Pixfort normalization can be distinguished from an
  * unsafe third-party mutation before any guard is relaxed.

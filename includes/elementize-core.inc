@@ -83,8 +83,6 @@ final class Elementize_Core {
             'design_controls' => false,
             'color_controls' => false,
             'page_lifecycle_controls' => false,
-            'visual_ai' => false,
-            'ollama_required' => false,
             'shared_template_writes' => false,
             'write_guards' => [
                 'fresh_content_hash' => true,

@@ -20,7 +20,7 @@ expect_scope( [ 'items', 0, 'text' ] === $control['applies_to_visible_text_targe
 expect_scope( [ 'items', 1, 'text' ] === $control['applies_to_visible_text_targets'][1]['setting_path'], 'Second visible text path is wrong.' );
 $item = $method->invoke( null, 'color', '27ba85fb', 'pix-highlighted-text', [ 'items', 1, 'item_color' ], 'dark-opacity-6', $settings );
 expect_scope( 'repeater_item' === ( $item['control_scope'] ?? null ), 'Integer setting paths must be repeater-item scoped.' );
-$adapter = file_get_contents( __DIR__ . '/../includes/runtime/elementize-pixfort-repeater-colors.inc' );
+$adapter = file_get_contents( __DIR__ . '/../includes/elementize-pixfort-repeater-colors.inc' );
 expect_scope( is_string( $adapter ) && false !== strpos( $adapter, "'control_scope' => 'repeater_item'" ), 'Synthetic Pixfort repeater controls must publish repeater-item scope.' );
 expect_scope( false !== strpos( $adapter, "'line_specific_safe' => true" ), 'Synthetic Pixfort repeater colors must advertise line-specific safety.' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );

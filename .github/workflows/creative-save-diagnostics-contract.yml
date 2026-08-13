@@ -13,6 +13,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          php -l includes/runtime/elementize-creative-save-diagnostics.inc
+          php -l includes/elementize-creative-save-diagnostics.inc
           php -l tests/creative-save-diagnostics-contract.php
           php tests/creative-save-diagnostics-contract.php

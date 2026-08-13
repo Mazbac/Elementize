@@ -1,40 +1,28 @@
 <?php
 
 define( 'ABSPATH', __DIR__ . '/../' );
+require_once __DIR__ . '/../includes/elementize-visual-qa.inc';
 
 function fail_chatgpt_vision_bounds_contract( string $message ): void {
     fwrite( STDERR, $message . PHP_EOL );
     exit( 1 );
 }
 
-$source = file_get_contents( __DIR__ . '/../includes/runtime/elementize-chatgpt-vision-bounds.inc' );
-if ( ! is_string( $source ) ) fail_chatgpt_vision_bounds_contract( 'Could not read native ChatGPT vision bounds runtime.' );
-
-foreach ( [
-    "final class Elementize_ChatGPT_Vision_Bounds",
-    "add_filter( 'rest_dispatch_request'",
-    "'chatgpt_native_vision'",
-    "'capture_state'",
-    "'complete'",
-    "'chatgpt_vision_handoff_ready'",
-    "trim_trailing_background",
-    "Elementize_ChatGPT_Vision::before_callbacks",
-    "'content_bounded_tall_desktop'",
-    "'capture_original_height'",
-    "'capture_bounded_height'",
-] as $needle ) {
-    if ( false === strpos( $source, $needle ) ) fail_chatgpt_vision_bounds_contract( 'Missing native bounds marker: ' . $needle );
+$visual = file_get_contents( __DIR__ . '/../includes/elementize-visual-qa.inc' );
+$handoff = file_get_contents( __DIR__ . '/../includes/elementize-chatgpt-vision.inc' );
+if ( ! is_string( $visual ) || ! is_string( $handoff ) ) fail_chatgpt_vision_bounds_contract( 'Could not read unified native visual bounds sources.' );
+$method = new ReflectionMethod( Elementize_Visual_QA::class, 'bound_screenshot' );
+if ( ! $method->isPublic() || ! $method->isStatic() ) fail_chatgpt_vision_bounds_contract( 'Unified screenshot bounds helper must be public static for native handoff reuse.' );
+foreach ( [ 'bound_screenshot', "'available' => false", "'trimmed' => false", 'imagecrop', 'imagepng' ] as $needle ) {
+    if ( false === strpos( $visual, $needle ) ) fail_chatgpt_vision_bounds_contract( 'Missing unified bounds marker: ' . $needle );
 }
-
-if ( false !== strpos( $source, 'update_post_meta' ) || false !== strpos( $source, 'wp_update_post' ) ) {
-    fail_chatgpt_vision_bounds_contract( 'Native bounds adapter must remain read-only.' );
+foreach ( [ 'Elementize_Visual_QA::bound_screenshot', "'capture_bounds_ready'", "'capture_original_height'", "'capture_bounded_height'", "'content_bounded_tall_desktop'" ] as $needle ) {
+    if ( false === strpos( $handoff, $needle ) ) fail_chatgpt_vision_bounds_contract( 'Missing native handoff bounds marker: ' . $needle );
 }
-
-$plugin = file_get_contents( __DIR__ . '/../elementize.php' );
-if ( ! is_string( $plugin )
-    || false === strpos( $plugin, "includes/runtime/elementize-chatgpt-vision-bounds.inc" )
-    || false === strpos( $plugin, 'Elementize_ChatGPT_Vision_Bounds::init();' ) ) {
-    fail_chatgpt_vision_bounds_contract( 'Native ChatGPT vision bounds adapter is not loaded by the plugin.' );
+if ( file_exists( __DIR__ . '/../includes/runtime/elementize-chatgpt-vision-bounds.inc' ) ) {
+    fail_chatgpt_vision_bounds_contract( 'Separate native bounds runtime must stay removed after consolidation.' );
 }
-
+if ( false !== strpos( $visual, 'update_post_meta' ) || false !== strpos( $handoff, 'wp_update_post' ) ) {
+    fail_chatgpt_vision_bounds_contract( 'Native bounds flow must remain read-only.' );
+}
 echo "ChatGPT native vision bounds contract OK\n";

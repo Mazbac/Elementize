@@ -246,7 +246,7 @@ final class Elementize_Templates {
                 while ( $reflection ) {
                     if ( $reflection->hasProperty( $property_name ) ) {
                         $property = $reflection->getProperty( $property_name );
-                        $property->setAccessible( true );
+                        if ( PHP_VERSION_ID < 80100 ) $property->setAccessible( true );
                         $registered = $property->getValue( $manager );
                         if ( is_array( $registered ) ) {
                             foreach ( $registered as $id => $source ) {

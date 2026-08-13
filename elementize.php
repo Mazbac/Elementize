@@ -17,17 +17,5 @@ define( 'ELEMENTIZE_FILE', __FILE__ );
 define( 'ELEMENTIZE_DIR', __DIR__ );
 
 require_once __DIR__ . '/includes/elementize-bootstrap.inc';
-require_once __DIR__ . '/includes/runtime/elementize-chatgpt-vision.inc';
-Elementize_ChatGPT_Vision::init();
-require_once __DIR__ . '/includes/runtime/elementize-chatgpt-vision-dispatch.inc';
-Elementize_ChatGPT_Vision_Dispatch::init();
-require_once __DIR__ . '/includes/runtime/elementize-chatgpt-vision-bounds.inc';
-Elementize_ChatGPT_Vision_Bounds::init();
-require_once __DIR__ . '/includes/runtime/elementize-creative-save-diagnostics.inc';
-Elementize_Creative_Save_Diagnostics::init();
-require_once __DIR__ . '/includes/runtime/elementize-pixfort-repeater-colors.inc';
-Elementize_Pixfort_Repeater_Colors::init();
-require_once __DIR__ . '/includes/runtime/elementize-template-response.inc';
-Elementize_Template_Response::init();
 
 register_activation_hook( __FILE__, [ Elementize_Onboarding::class, 'activate' ] );

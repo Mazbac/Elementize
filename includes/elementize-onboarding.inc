@@ -120,7 +120,7 @@ final class Elementize_Onboarding {
         ?>
         <div class="wrap elz-wrap">
             <h1>Elementize Setup</h1>
-            <p class="elz-lead">Connect a Custom GPT to guarded content editing for existing Elementor + Pixfort pages. Layout and visual design stay in Elementor.</p>
+            <p class="elz-lead">Connect a Custom GPT to guarded editing for existing Elementor + Pixfort pages. Standard mode handles recognized content, media, and icons; optional Creative Control unlocks guarded page-scoped design and structure.</p>
             <?php self::render_notice( $notice ); ?>
             <style>
                 .elz-wrap{max-width:1040px}.elz-lead{font-size:15px;color:#50575e;max-width:850px}.elz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:20px 0}.elz-card{background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:20px;margin:16px 0}.elz-card h2{margin:0 0 10px}.elz-check{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px}.elz-ok{color:#087b2d;font-weight:700}.elz-bad{color:#b32d2e;font-weight:700}.elz-muted{color:#646970}.elz-code{font-family:monospace;word-break:break-all;background:#f6f7f7;border:1px solid #dcdcde;padding:10px;border-radius:6px}.elz-step{display:grid;grid-template-columns:34px 1fr;gap:12px;margin:18px 0}.elz-num{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f0f0f1;font-weight:700}.elz-hidden{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}.elz-note{border-left:4px solid #dba617;background:#fff8e5;padding:10px 12px;margin:12px 0}.elz-ready{border-left:4px solid #00a32a;background:#edfaef;padding:12px;margin:16px 0}.elz-error{display:none;color:#b32d2e;margin-top:8px}
@@ -174,14 +174,14 @@ final class Elementize_Onboarding {
             </section>
 
             <section class="elz-card"><h2>3. Ready</h2>
-                <?php if ( $all_ready ) : ?><div class="elz-ready"><strong>WordPress is ready.</strong><br>Elementize can change recognized copy, links, WordPress images, and Pixfort icons. Layout and design controls stay in Elementor for the human.</div>
+                <?php if ( $all_ready ) : ?><div class="elz-ready"><strong>WordPress is ready.</strong><br>Elementize can safely edit recognized copy, links, WordPress images, and Pixfort icons in Standard mode. When an administrator enables Creative Control for one page, guarded page-scoped design and structural controls become available too.</div>
                 <?php else : ?><p class="elz-muted">Resolve the requirements marked in red above.</p><?php endif; ?>
             </section>
         </div>
         <script>
         (function(){
-            function legacyCopy(text){var area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(area);return ok;}
-            function copyText(text){if(navigator.clipboard&&window.isSecureContext){return navigator.clipboard.writeText(text);}return legacyCopy(text)?Promise.resolve():Promise.reject(new Error('Clipboard access is unavailable in this browser.'));}
+            function fallbackCopy(text){var area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(area);return ok;}
+            function copyText(text){if(navigator.clipboard&&window.isSecureContext){return navigator.clipboard.writeText(text);}return fallbackCopy(text)?Promise.resolve():Promise.reject(new Error('Clipboard access is unavailable in this browser.'));}
             function copyTarget(id,button){var element=document.getElementById(id);if(!element)return;var text=('value' in element)?element.value:element.textContent;copyText(text).then(function(){var original=button.textContent;button.textContent='Copied';setTimeout(function(){button.textContent=original;},1400);}).catch(function(error){window.alert(error.message);});}
             document.querySelectorAll('.elz-copy').forEach(function(button){button.addEventListener('click',function(){copyTarget(button.getAttribute('data-target'),button);});});
             var keyButton=document.getElementById('elz-key-btn');if(!keyButton)return;
