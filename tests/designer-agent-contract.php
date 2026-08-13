@@ -32,7 +32,7 @@ foreach ( [ 'blueprint_contract', 'reference_analysis_contract', 'quality_contra
 foreach ( [ "'responsive_breakpoint'", 'responsive_breakpoint( array $path )' ] as $needle ) {
     if ( false === strpos( $design, $needle ) ) fail_designer_agent( 'Design controls missing breakpoint metadata: ' . $needle );
 }
-foreach ( [ "'desktop', 'tablet', 'mobile'", 'browser_probe_script', 'browser_probe_result', 'capture_job_complete' ] as $needle ) {
+foreach ( [ "'desktop', 'tablet', 'mobile'", 'browser_probe_script', 'browser_probe_for_job', 'capture_job_complete', 'receive_browser_probe' ] as $needle ) {
     if ( false === strpos( $visual, $needle ) ) fail_designer_agent( 'Visual QA designer capability missing: ' . $needle );
 }
 if ( false === strpos( $schema, 'operationId: getElementizeDesignerContext' ) ) fail_designer_agent( 'Designer context Action is missing.' );

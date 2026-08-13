@@ -105,6 +105,9 @@ jobs:
           grep -q "start_capture_job" includes/elementize-visual-qa.inc || { echo 'Asynchronous rendered capture launcher is missing.'; exit 1; }
           grep -q "pending_payload" includes/elementize-visual-qa.inc || { echo 'Asynchronous rendered capture polling contract is missing.'; exit 1; }
           grep -q "capture_state.*pending" includes/elementize-visual-qa.inc || { echo 'Rendered capture pending state is missing.'; exit 1; }
+          grep -q "wp_ajax_nopriv_elementize_visual_probe" includes/elementize-visual-qa.inc || { echo 'Signed browser telemetry receiver is missing.'; exit 1; }
+          grep -q "elementize_visual_browser_probe_v2_" includes/elementize-visual-qa.inc || { echo 'Browser telemetry transient contract is missing.'; exit 1; }
+          if grep -q -- '--dump-dom' includes/elementize-visual-qa.inc; then echo 'Legacy Chrome stdout DOM probe returned.'; exit 1; fi
 
           grep -q "_elementize_sha256" includes/elementize-media-import.inc || { echo 'Media import SHA-256 deduplication is missing.'; exit 1; }
           grep -q "deduplicated" includes/elementize-media-import.inc || { echo 'Media import retry result contract is missing.'; exit 1; }

@@ -20,6 +20,8 @@ final class Elementize_Visual_QA {
         add_action( 'template_redirect', [ self::class, 'guard_preview_request' ], 0 );
         add_action( 'wp_head', [ self::class, 'settle_preview_motion' ], PHP_INT_MAX );
         add_action( 'wp_footer', [ self::class, 'browser_probe_script' ], PHP_INT_MAX );
+        add_action( 'wp_ajax_nopriv_elementize_visual_probe', [ self::class, 'receive_browser_probe' ] );
+        add_action( 'wp_ajax_elementize_visual_probe', [ self::class, 'receive_browser_probe' ] );
         add_filter( 'redirect_canonical', [ self::class, 'disable_canonical_for_preview' ], 10, 2 );
     }
 
@@ -100,7 +102,8 @@ final class Elementize_Visual_QA {
             return new WP_REST_Response( $base, 200 );
         }
 
-        $candidate_url = self::signed_preview_url( $id, $hash, $revision, $motion, $interaction );
+        $context = self::capture_context( $id, $hash, $revision, $viewport, $motion, $interaction );
+        $candidate_url = self::signed_preview_url( $id, $hash, $revision, $viewport, $motion, $interaction );
         $url = self::normalize_capture_url( $candidate_url );
         if ( '' === $url ) {
             $base['capture_state'] = 'failed';
@@ -109,7 +112,6 @@ final class Elementize_Visual_QA {
             return new WP_REST_Response( $base, 200 );
         }
 
-        $context = self::capture_context( $id, $hash, $revision, $viewport, $motion, $interaction );
         $job_id = $context['job_id'];
         $job_key = $context['job_key'];
         $job = get_transient( $job_key );
@@ -133,7 +135,7 @@ final class Elementize_Visual_QA {
         }
 
         $paths = is_array( $job['paths'] ?? null ) ? $job['paths'] : [];
-        $capture_complete = self::capture_job_complete( $paths );
+        $capture_complete = self::capture_job_complete( $paths, $job_id );
         if ( ! $capture_complete ) {
             $elapsed = max( 0, time() - absint( $job['started_at'] ?? 0 ) );
             if ( $elapsed <= self::JOB_TIMEOUT_SECONDS ) return new WP_REST_Response( self::pending_payload( $base, $job_id, $job ), 200 );
@@ -149,7 +151,7 @@ final class Elementize_Visual_QA {
             return new WP_REST_Response( $base, 200 );
         }
 
-        $capture = self::finalize_capture_job( $job );
+        $capture = self::finalize_capture_job( $job, $job_id );
         delete_transient( $job_key );
         if ( is_wp_error( $capture ) ) {
             self::cleanup_job( $job );
@@ -271,17 +273,19 @@ final class Elementize_Visual_QA {
         ];
     }
 
-    private static function signed_preview_url( int $id, string $hash, int $revision, string $motion = 'settled', string $interaction = 'passive' ): string {
+    private static function signed_preview_url( int $id, string $hash, int $revision, string $viewport = 'desktop', string $motion = 'settled', string $interaction = 'passive' ): string {
         $expires = time() + self::TTL;
+        $viewport = self::normalize_viewport( $viewport );
         $motion = self::normalize_motion( $motion );
         $interaction = self::normalize_interaction( $interaction );
-        $sig = self::preview_signature( $id, $hash, $revision, $expires, $motion, $interaction );
+        $sig = self::preview_signature( $id, $hash, $revision, $expires, $viewport, $motion, $interaction );
         return add_query_arg( [
             'page_id' => $id,
             'elementize_visual_preview' => 1,
             'elementize_visual_expires' => $expires,
             'elementize_visual_hash' => $hash,
             'elementize_visual_revision' => $revision,
+            'elementize_visual_viewport' => $viewport,
             'elementize_visual_motion' => $motion,
             'elementize_visual_interaction' => $interaction,
             'elementize_visual_sig' => $sig,
@@ -324,8 +328,8 @@ final class Elementize_Visual_QA {
         return $safe;
     }
 
-    private static function preview_signature( int $id, string $hash, int $revision, int $expires, string $motion = 'settled', string $interaction = 'passive' ): string {
-        return hash_hmac( 'sha256', $id . "\n" . $revision . "\n" . $expires . "\n" . $hash . "\n" . self::normalize_motion( $motion ) . "\n" . self::normalize_interaction( $interaction ), wp_salt( 'auth' ) );
+    private static function preview_signature( int $id, string $hash, int $revision, int $expires, string $viewport = 'desktop', string $motion = 'settled', string $interaction = 'passive' ): string {
+        return hash_hmac( 'sha256', $id . "\n" . $revision . "\n" . $expires . "\n" . $hash . "\n" . self::normalize_viewport( $viewport ) . "\n" . self::normalize_motion( $motion ) . "\n" . self::normalize_interaction( $interaction ), wp_salt( 'auth' ) );
     }
 
     private static function preview_requested(): bool {
@@ -340,6 +344,7 @@ final class Elementize_Visual_QA {
         $expires = isset( $_GET['elementize_visual_expires'] ) ? absint( wp_unslash( $_GET['elementize_visual_expires'] ) ) : 0;
         $revision = isset( $_GET['elementize_visual_revision'] ) ? absint( wp_unslash( $_GET['elementize_visual_revision'] ) ) : 0;
         $hash = isset( $_GET['elementize_visual_hash'] ) ? sanitize_text_field( wp_unslash( $_GET['elementize_visual_hash'] ) ) : '';
+        $viewport = self::normalize_viewport( isset( $_GET['elementize_visual_viewport'] ) ? (string) wp_unslash( $_GET['elementize_visual_viewport'] ) : 'desktop' );
         $motion = self::normalize_motion( isset( $_GET['elementize_visual_motion'] ) ? (string) wp_unslash( $_GET['elementize_visual_motion'] ) : 'settled' );
         $interaction = self::normalize_interaction( isset( $_GET['elementize_visual_interaction'] ) ? (string) wp_unslash( $_GET['elementize_visual_interaction'] ) : 'passive' );
         $sig = isset( $_GET['elementize_visual_sig'] ) ? sanitize_text_field( wp_unslash( $_GET['elementize_visual_sig'] ) ) : '';
@@ -348,11 +353,11 @@ final class Elementize_Visual_QA {
         if ( ! $post || 'page' !== $post->post_type || ! in_array( (string) $post->post_status, [ 'draft', 'publish' ], true ) ) return self::$validated_preview = $bad;
         $state = Elementize_Capabilities::state();
         if ( empty( $state['creative_enabled'] ) || absint( $state['scope_page_id'] ) !== $id || absint( $state['revision'] ) !== $revision ) return self::$validated_preview = $bad;
-        if ( ! hash_equals( self::preview_signature( $id, $hash, $revision, $expires, $motion, $interaction ), $sig ) ) return self::$validated_preview = $bad;
+        if ( ! hash_equals( self::preview_signature( $id, $hash, $revision, $expires, $viewport, $motion, $interaction ), $sig ) ) return self::$validated_preview = $bad;
         $loaded = Elementize_Core::elements( $id );
         $current = is_wp_error( $loaded ) ? '' : Elementize_Core::hash_elements( $loaded['elements'] );
         if ( '' === $current || ! hash_equals( $current, $hash ) ) return self::$validated_preview = [ 'valid' => false, 'reason' => 'stale' ];
-        return self::$validated_preview = [ 'valid' => true, 'id' => $id, 'hash' => $hash, 'revision' => $revision, 'expires' => $expires, 'status' => (string) $post->post_status, 'motion' => $motion, 'interaction' => $interaction ];
+        return self::$validated_preview = [ 'valid' => true, 'id' => $id, 'hash' => $hash, 'revision' => $revision, 'expires' => $expires, 'status' => (string) $post->post_status, 'viewport' => $viewport, 'motion' => $motion, 'interaction' => $interaction, 'sig' => $sig ];
     }
 
     public static function allow_signed_draft_query( WP_Query $query ): void {
@@ -392,6 +397,59 @@ final class Elementize_Visual_QA {
             . '.animate-in,.group-animate-in,.animating,[data-anim-type]{visibility:visible!important;opacity:1!important;transform:none!important;animation:none!important;transition:none!important}'
             . '</style>';
     }
+    private static function probe_key( string $job_id ): string {
+        return 'elementize_visual_browser_probe_v2_' . $job_id;
+    }
+
+    public static function browser_probe_for_job( string $job_id ): array {
+        $empty = [ 'verified' => false, 'available' => false, 'diagnostics' => null ];
+        if ( ! preg_match( '/^[a-f0-9]{24}$/', $job_id ) ) return $empty;
+        $stored = get_transient( self::probe_key( $job_id ) );
+        if ( ! is_array( $stored ) || empty( $stored['verified'] ) || ! is_array( $stored['diagnostics'] ?? null ) ) return $empty;
+        return [ 'verified' => true, 'available' => true, 'diagnostics' => $stored['diagnostics'] ];
+    }
+
+    public static function receive_browser_probe(): void {
+        $input = is_array( $_POST ) ? wp_unslash( $_POST ) : [];
+        $id = absint( $input['page_id'] ?? 0 );
+        $expires = absint( $input['elementize_visual_expires'] ?? 0 );
+        $revision = absint( $input['elementize_visual_revision'] ?? 0 );
+        $hash = sanitize_text_field( (string) ( $input['elementize_visual_hash'] ?? '' ) );
+        $sig = sanitize_text_field( (string) ( $input['elementize_visual_sig'] ?? '' ) );
+        $viewport = self::normalize_viewport( (string) ( $input['elementize_visual_viewport'] ?? 'desktop' ) );
+        $motion = self::normalize_motion( (string) ( $input['elementize_visual_motion'] ?? 'settled' ) );
+        $interaction = self::normalize_interaction( (string) ( $input['elementize_visual_interaction'] ?? 'passive' ) );
+        $bad = static function( string $code ): void { wp_send_json_error( [ 'code' => $code ], 404 ); };
+        if ( $id < 1 || $revision < 1 || $expires < time() || $expires > time() + self::TTL + 30 || ! preg_match( '/^[a-f0-9]{64}$/', $hash ) || ! preg_match( '/^[a-f0-9]{64}$/', $sig ) ) $bad( 'invalid_signature_fields' );
+        if ( ! hash_equals( self::preview_signature( $id, $hash, $revision, $expires, $viewport, $motion, $interaction ), $sig ) ) $bad( 'signature_mismatch' );
+        $state = Elementize_Capabilities::state();
+        if ( empty( $state['creative_enabled'] ) || absint( $state['scope_page_id'] ) !== $id || absint( $state['revision'] ) !== $revision ) $bad( 'scope_mismatch' );
+        $loaded = Elementize_Core::elements( $id );
+        $current = is_wp_error( $loaded ) ? '' : Elementize_Core::hash_elements( $loaded['elements'] );
+        if ( '' === $current || ! hash_equals( $current, $hash ) ) $bad( 'stale_page' );
+        $job_id = self::job_id( $id, $hash, $revision, $viewport, $motion, $interaction );
+        $job = get_transient( self::job_key( $job_id ) );
+        if ( ! is_array( $job ) || ! self::job_matches( $job, $id, $hash, $revision ) ) $bad( 'capture_job_missing' );
+        $raw = (string) ( $input['diagnostics'] ?? '' );
+        if ( '' === $raw || strlen( $raw ) > 65536 ) $bad( 'diagnostics_size' );
+        $decoded = json_decode( $raw, true );
+        if ( ! is_array( $decoded ) || ! self::bounded_probe_value( $decoded, 0 ) ) $bad( 'diagnostics_shape' );
+        set_transient( self::probe_key( $job_id ), [ 'verified' => true, 'diagnostics' => $decoded ], self::JOB_TTL );
+        wp_send_json_success( [ 'accepted' => true, 'job_id' => $job_id ] );
+    }
+
+    private static function bounded_probe_value( $value, int $depth ): bool {
+        if ( $depth > 8 ) return false;
+        if ( is_bool( $value ) || null === $value || is_int( $value ) || is_float( $value ) ) return true;
+        if ( is_string( $value ) ) return strlen( $value ) <= 600;
+        if ( ! is_array( $value ) || count( $value ) > 80 ) return false;
+        foreach ( $value as $key => $child ) {
+            if ( is_string( $key ) && strlen( $key ) > 80 ) return false;
+            if ( ! self::bounded_probe_value( $child, $depth + 1 ) ) return false;
+        }
+        return true;
+    }
+
     public static function browser_probe_script(): void {
         if ( ! self::preview_requested() ) return;
         $valid = self::validate_preview_request();
@@ -400,8 +458,20 @@ final class Elementize_Visual_QA {
             'safe' => 'safe' === (string) ( $valid['interaction'] ?? 'passive' ),
             'motion' => (string) ( $valid['motion'] ?? 'settled' ),
             'delay' => 'live' === (string) ( $valid['motion'] ?? 'settled' ) ? 1200 : 300,
+            'endpoint' => admin_url( 'admin-ajax.php' ),
+            'auth' => [
+                'action' => 'elementize_visual_probe',
+                'page_id' => (int) $valid['id'],
+                'elementize_visual_expires' => (int) $valid['expires'],
+                'elementize_visual_revision' => (int) $valid['revision'],
+                'elementize_visual_hash' => (string) $valid['hash'],
+                'elementize_visual_viewport' => (string) $valid['viewport'],
+                'elementize_visual_motion' => (string) $valid['motion'],
+                'elementize_visual_interaction' => (string) $valid['interaction'],
+                'elementize_visual_sig' => (string) $valid['sig'],
+            ],
         ];
-        $script = base64_decode( 'KGZ1bmN0aW9uKGNmZyl7Y29uc3Qgd2FpdD1tcz0+bmV3IFByb21pc2Uocj0+c2V0VGltZW91dChyLG1zKSk7Y29uc3QgdmlzPWVsPT57aWYoIWVsKXJldHVybiBudWxsO2NvbnN0IHI9ZWwuZ2V0Qm91bmRpbmdDbGllbnRSZWN0KCksYz1nZXRDb21wdXRlZFN0eWxlKGVsKTtyZXR1cm4gci53aWR0aD4wJiZyLmhlaWdodD4wJiZjLmRpc3BsYXkhPT0ibm9uZSImJmMudmlzaWJpbGl0eSE9PSJoaWRkZW4iJiZwYXJzZUZsb2F0KGMub3BhY2l0eXx8IjEiKT4uMDJ9O2NvbnN0IHRhcmdldD1lbD0+e2xldCBpZD0oZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWNvbnRyb2xzIil8fCIiKS50cmltKCk7aWYoIWlkKXtsZXQgdj0oZWwuZ2V0QXR0cmlidXRlKCJkYXRhLWJzLXRhcmdldCIpfHwiIikudHJpbSgpO2lmKHYuY2hhckF0KDApPT09IiMiKWlkPXYuc2xpY2UoMSl9cmV0dXJuIGlkP2RvY3VtZW50LmdldEVsZW1lbnRCeUlkKGlkKTpudWxsfTtjb25zdCBzbmFwPShlbCx0KT0+KHtleHBhbmRlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtZXhwYW5kZWQiKSxzZWxlY3RlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtc2VsZWN0ZWQiKSxjbGFzc05hbWU6KHR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiIpLnNsaWNlKDAsMTgwKSx0YXJnZXRWaXNpYmxlOnZpcyh0KX0pO2NvbnN0IHNhbWU9KGEsYik9PmEuZXhwYW5kZWQ9PT1iLmV4cGFuZGVkJiZhLnNlbGVjdGVkPT09Yi5zZWxlY3RlZCYmYS50YXJnZXRWaXNpYmxlPT09Yi50YXJnZXRWaXNpYmxlO2FzeW5jIGZ1bmN0aW9uIGludGVyYWN0aW9ucygpe2lmKCFjZmcuc2FmZSlyZXR1cm57bW9kZToicGFzc2l2ZSIsdGVzdGVkOjAscGFzc2VkOjAsZmFpbGVkOjAscmVzdG9yYXRpb25GYWlsdXJlczowLGl0ZW1zOltdfTtsZXQgZWxzPVsuLi5kb2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCdidXR0b25bYXJpYS1leHBhbmRlZF0sW3JvbGU9ImJ1dHRvbiJdW2FyaWEtZXhwYW5kZWRdLFtyb2xlPSJ0YWIiXVthcmlhLWNvbnRyb2xzXScpXS5maWx0ZXIoZT0+IWUuZGlzYWJsZWQmJiFlLmNsb3Nlc3QoImZvcm0iKSkuc2xpY2UoMCwxMiksaXRlbXM9W107Zm9yKGNvbnN0IGVsIG9mIGVscyl7bGV0IHQ9dGFyZ2V0KGVsKSxiZWZvcmU9c25hcChlbCx0KSxyb2xlPShlbC5nZXRBdHRyaWJ1dGUoInJvbGUiKXx8IiIpLnRvTG93ZXJDYXNlKCksb3JpZ2luYWw9bnVsbDtpZihyb2xlPT09InRhYiIpe2xldCBncm91cD1lbC5jbG9zZXN0KCdbcm9sZT0idGFibGlzdCJdJyl8fGVsLnBhcmVudEVsZW1lbnQ7b3JpZ2luYWw9Z3JvdXAmJmdyb3VwLnF1ZXJ5U2VsZWN0b3IoJ1tyb2xlPSJ0YWIiXVthcmlhLXNlbGVjdGVkPSJ0cnVlIl0nKX10cnl7ZWwuY2xpY2soKTthd2FpdCB3YWl0KDEyMCk7bGV0IGFmdGVyPXNuYXAoZWwsdCksY2hhbmdlZD0hc2FtZShiZWZvcmUsYWZ0ZXIpO2lmKHJvbGU9PT0idGFiIiYmb3JpZ2luYWwmJm9yaWdpbmFsIT09ZWwpb3JpZ2luYWwuY2xpY2soKTtlbHNlIGlmKGNoYW5nZWQpZWwuY2xpY2soKTthd2FpdCB3YWl0KDEwMCk7bGV0IHJlc3RvcmVkPXNhbWUoYmVmb3JlLHNuYXAoZWwsdCkpO2l0ZW1zLnB1c2goe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCkscm9sZTpyb2xlLHRleHQ6KGVsLmlubmVyVGV4dHx8ZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWxhYmVsIil8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGNoYW5nZWQ6Y2hhbmdlZCxyZXN0b3JlZDpyZXN0b3JlZCxwYXNzZWQ6Y2hhbmdlZCYmcmVzdG9yZWR9KTt9Y2F0Y2goZSl7aXRlbXMucHVzaCh7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxyb2xlOnJvbGUsZXJyb3I6U3RyaW5nKGUmJmUubWVzc2FnZXx8ZSkscGFzc2VkOmZhbHNlLHJlc3RvcmVkOmZhbHNlfSl9fXJldHVybnttb2RlOiJzYWZlIix0ZXN0ZWQ6aXRlbXMubGVuZ3RoLHBhc3NlZDppdGVtcy5maWx0ZXIoeD0+eC5wYXNzZWQpLmxlbmd0aCxmYWlsZWQ6aXRlbXMuZmlsdGVyKHg9PiF4LnBhc3NlZCkubGVuZ3RoLHJlc3RvcmF0aW9uRmFpbHVyZXM6aXRlbXMuZmlsdGVyKHg9PnguY2hhbmdlZCYmIXgucmVzdG9yZWQpLmxlbmd0aCxpdGVtczppdGVtc319ZnVuY3Rpb24gc3RhdGljQ2hlY2tzKCl7bGV0IGQ9ZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50LGI9ZG9jdW1lbnQuYm9keSxhbGw9Wy4uLmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImJvZHkgKiIpXSx2dz1pbm5lcldpZHRoLG92ZXJmbG93PVtdLHRpbnk9W10saGlkZGVuTW90aW9uPVtdLGFuY2hvcnM9W107YWxsLmZvckVhY2goZWw9PntsZXQgcj1lbC5nZXRCb3VuZGluZ0NsaWVudFJlY3QoKTtpZihyLndpZHRoPjAmJnIuaGVpZ2h0PjAmJihyLnJpZ2h0PnZ3KzJ8fHIubGVmdDwtMikmJm92ZXJmbG93Lmxlbmd0aDwzMClvdmVyZmxvdy5wdXNoKHt0YWc6ZWwudGFnTmFtZS50b0xvd2VyQ2FzZSgpLGlkOihlbC5pZHx8IiIpLnNsaWNlKDAsODApLGNsYXNzTmFtZToodHlwZW9mIGVsLmNsYXNzTmFtZT09PSJzdHJpbmciP2VsLmNsYXNzTmFtZToiIikuc2xpY2UoMCwxMjApLGxlZnQ6TWF0aC5yb3VuZChyLmxlZnQpLHJpZ2h0Ok1hdGgucm91bmQoci5yaWdodCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKX0pO2xldCBpbnRlcj1lbC5tYXRjaGVzJiZlbC5tYXRjaGVzKCJhW2hyZWZdLGJ1dHRvbixpbnB1dCxzZWxlY3QsdGV4dGFyZWEsW3JvbGU9YnV0dG9uXSxbcm9sZT10YWJdLFt0YWJpbmRleF0iKTtpZihpbnRlciYmci53aWR0aD4wJiZyLmhlaWdodD4wJiYoci53aWR0aDw0MHx8ci5oZWlnaHQ8NDApJiZ0aW55Lmxlbmd0aDwzMCl0aW55LnB1c2goe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCksdGV4dDooZWwuaW5uZXJUZXh0fHxlbC5nZXRBdHRyaWJ1dGUoImFyaWEtbGFiZWwiKXx8IiIpLnRyaW0oKS5zbGljZSgwLDEwMCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKSxoZWlnaHQ6TWF0aC5yb3VuZChyLmhlaWdodCl9KTtsZXQgY2xzPXR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiI7aWYoKC9hbmltYXRlfGFuaW1hdGluZy8udGVzdChjbHMpfHxlbC5oYXNBdHRyaWJ1dGUoImRhdGEtYW5pbS10eXBlIikpJiZyLndpZHRoPjAmJnIuaGVpZ2h0PjApe2xldCBjcz1nZXRDb21wdXRlZFN0eWxlKGVsKTtpZigocGFyc2VGbG9hdChjcy5vcGFjaXR5KXx8MCk8LjA1fHxjcy52aXNpYmlsaXR5PT09ImhpZGRlbiIpaWYoaGlkZGVuTW90aW9uLmxlbmd0aDwzMCloaWRkZW5Nb3Rpb24ucHVzaCh7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxjbGFzc05hbWU6Y2xzLnNsaWNlKDAsMTIwKX0pfX0pO2RvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImFbaHJlZl0iKS5mb3JFYWNoKGE9PntpZihhbmNob3JzLmxlbmd0aD49NDApcmV0dXJuO2xldCBoPShhLmdldEF0dHJpYnV0ZSgiaHJlZiIpfHwiIikudHJpbSgpO2lmKCFofHxoPT09IiMifHwvXmphdmFzY3JpcHQ6L2kudGVzdChoKSl7YW5jaG9ycy5wdXNoKHtocmVmOmgsdGV4dDooYS5pbm5lclRleHR8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGlzc3VlOiJlbXB0eV9vcl9ub25fbmF2aWdhdGlvbiJ9KTtyZXR1cm59aWYoaFswXT09PSIjIiYmaC5sZW5ndGg+MSYmIWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKGguc2xpY2UoMSkpKWFuY2hvcnMucHVzaCh7aHJlZjpoLHRleHQ6KGEuaW5uZXJUZXh0fHwiIikudHJpbSgpLnNsaWNlKDAsMTAwKSxpc3N1ZToibWlzc2luZ19pbnRlcm5hbF90YXJnZXQifSl9KTtsZXQgYW5pbT1bXTt0cnl7YW5pbT1kb2N1bWVudC5nZXRBbmltYXRpb25zP2RvY3VtZW50LmdldEFuaW1hdGlvbnMoKTpbXX1jYXRjaChlKXt9bGV0IHJ1bm5pbmc9YW5pbS5maWx0ZXIoYT0+YS5wbGF5U3RhdGU9PT0icnVubmluZyIpLmxlbmd0aCxpbmZpbml0ZT1hbmltLmZpbHRlcihhPT57dHJ5e3JldHVybiBhLmVmZmVjdCYmYS5lZmZlY3QuZ2V0VGltaW5nKCkuaXRlcmF0aW9ucz09PUluZmluaXR5fWNhdGNoKGUpe3JldHVybiBmYWxzZX19KS5sZW5ndGg7cmV0dXJue3ZpZXdwb3J0Ont3aWR0aDp2dyxoZWlnaHQ6aW5uZXJIZWlnaHR9LGRvY3VtZW50OntzY3JvbGxXaWR0aDpNYXRoLm1heChkLnNjcm9sbFdpZHRoLGI/Yi5zY3JvbGxXaWR0aDowKSxjbGllbnRXaWR0aDpkLmNsaWVudFdpZHRoLGhvcml6b250YWxPdmVyZmxvdzpNYXRoLm1heChkLnNjcm9sbFdpZHRoLGI/Yi5zY3JvbGxXaWR0aDowKT5kLmNsaWVudFdpZHRoKzJ9LGNvdW50czp7ZWxlbWVudHM6YWxsLmxlbmd0aCxvdmVyZmxvdzpvdmVyZmxvdy5sZW5ndGgsdGlueUludGVyYWN0aXZlOnRpbnkubGVuZ3RoLGhpZGRlbk1vdGlvbjpoaWRkZW5Nb3Rpb24ubGVuZ3RoLGFuY2hvcklzc3VlczphbmNob3JzLmxlbmd0aH0sb3ZlcmZsb3c6b3ZlcmZsb3csdGlueUludGVyYWN0aXZlOnRpbnksaGlkZGVuTW90aW9uOmhpZGRlbk1vdGlvbixhbmNob3JJc3N1ZXM6YW5jaG9ycyxtb3Rpb246e21vZGU6Y2ZnLm1vdGlvbixydW5uaW5nQW5pbWF0aW9uczpydW5uaW5nLGluZmluaXRlQW5pbWF0aW9uczppbmZpbml0ZX19fWFzeW5jIGZ1bmN0aW9uIHJ1bigpe3RyeXthd2FpdCB3YWl0KGNmZy5kZWxheSk7bGV0IGludGVyPWF3YWl0IGludGVyYWN0aW9ucygpLHJlc3VsdD1zdGF0aWNDaGVja3MoKTtyZXN1bHQudmVyc2lvbj0yO3Jlc3VsdC5pbnRlcmFjdGlvbnM9aW50ZXI7bGV0IG9sZD1kb2N1bWVudC5nZXRFbGVtZW50QnlJZCgiZWxlbWVudGl6ZS1icm93c2VyLXFhLXJlc3VsdCIpO2lmKG9sZClvbGQucmVtb3ZlKCk7bGV0IG91dD1kb2N1bWVudC5jcmVhdGVFbGVtZW50KCJzY3JpcHQiKTtvdXQudHlwZT0iYXBwbGljYXRpb24vanNvbiI7b3V0LmlkPSJlbGVtZW50aXplLWJyb3dzZXItcWEtcmVzdWx0IjtvdXQudGV4dENvbnRlbnQ9SlNPTi5zdHJpbmdpZnkocmVzdWx0KS5yZXBsYWNlKC88L2csIlxcdTAwM2MiKTtkb2N1bWVudC5ib2R5LmFwcGVuZENoaWxkKG91dCl9Y2F0Y2goZSl7bGV0IG91dD1kb2N1bWVudC5jcmVhdGVFbGVtZW50KCJzY3JpcHQiKTtvdXQudHlwZT0iYXBwbGljYXRpb24vanNvbiI7b3V0LmlkPSJlbGVtZW50aXplLWJyb3dzZXItcWEtcmVzdWx0IjtvdXQudGV4dENvbnRlbnQ9SlNPTi5zdHJpbmdpZnkoe3ZlcnNpb246MixlcnJvcjpTdHJpbmcoZSYmZS5tZXNzYWdlfHxlKX0pO2RvY3VtZW50LmJvZHkuYXBwZW5kQ2hpbGQob3V0KX19aWYoZG9jdW1lbnQucmVhZHlTdGF0ZT09PSJjb21wbGV0ZSIpcnVuKCk7ZWxzZSBhZGRFdmVudExpc3RlbmVyKCJsb2FkIixydW4se29uY2U6dHJ1ZX0pO30p', true );
+        $script = base64_decode( 'KGZ1bmN0aW9uKGNmZyl7Y29uc3Qgd2FpdD1tcz0+bmV3IFByb21pc2Uocj0+c2V0VGltZW91dChyLG1zKSk7Y29uc3QgdmlzPWVsPT57aWYoIWVsKXJldHVybiBudWxsO2NvbnN0IHI9ZWwuZ2V0Qm91bmRpbmdDbGllbnRSZWN0KCksYz1nZXRDb21wdXRlZFN0eWxlKGVsKTtyZXR1cm4gci53aWR0aD4wJiZyLmhlaWdodD4wJiZjLmRpc3BsYXkhPT0ibm9uZSImJmMudmlzaWJpbGl0eSE9PSJoaWRkZW4iJiZwYXJzZUZsb2F0KGMub3BhY2l0eXx8IjEiKT4uMDJ9O2NvbnN0IHRhcmdldD1lbD0+e2xldCBpZD0oZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWNvbnRyb2xzIil8fCIiKS50cmltKCk7aWYoIWlkKXtsZXQgdj0oZWwuZ2V0QXR0cmlidXRlKCJkYXRhLWJzLXRhcmdldCIpfHwiIikudHJpbSgpO2lmKHYuY2hhckF0KDApPT09IiMiKWlkPXYuc2xpY2UoMSl9cmV0dXJuIGlkP2RvY3VtZW50LmdldEVsZW1lbnRCeUlkKGlkKTpudWxsfTtjb25zdCBzbmFwPShlbCx0KT0+KHtleHBhbmRlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtZXhwYW5kZWQiKSxzZWxlY3RlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtc2VsZWN0ZWQiKSxjbGFzc05hbWU6KHR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiIpLnNsaWNlKDAsMTgwKSx0YXJnZXRWaXNpYmxlOnZpcyh0KX0pO2NvbnN0IHNhbWU9KGEsYik9PmEuZXhwYW5kZWQ9PT1iLmV4cGFuZGVkJiZhLnNlbGVjdGVkPT09Yi5zZWxlY3RlZCYmYS50YXJnZXRWaXNpYmxlPT09Yi50YXJnZXRWaXNpYmxlO2FzeW5jIGZ1bmN0aW9uIGludGVyYWN0aW9ucygpe2lmKCFjZmcuc2FmZSlyZXR1cm57bW9kZToicGFzc2l2ZSIsdGVzdGVkOjAscGFzc2VkOjAsZmFpbGVkOjAscmVzdG9yYXRpb25GYWlsdXJlczowLGl0ZW1zOltdfTtsZXQgZWxzPVsuLi5kb2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCdidXR0b25bYXJpYS1leHBhbmRlZF0sW3JvbGU9ImJ1dHRvbiJdW2FyaWEtZXhwYW5kZWRdLFtyb2xlPSJ0YWIiXVthcmlhLWNvbnRyb2xzXScpXS5maWx0ZXIoZT0+IWUuZGlzYWJsZWQmJiFlLmNsb3Nlc3QoImZvcm0iKSkuc2xpY2UoMCwxMiksaXRlbXM9W107Zm9yKGNvbnN0IGVsIG9mIGVscyl7bGV0IHQ9dGFyZ2V0KGVsKSxiZWZvcmU9c25hcChlbCx0KSxyb2xlPShlbC5nZXRBdHRyaWJ1dGUoInJvbGUiKXx8IiIpLnRvTG93ZXJDYXNlKCksb3JpZ2luYWw9bnVsbDtpZihyb2xlPT09InRhYiIpe2xldCBncm91cD1lbC5jbG9zZXN0KCdbcm9sZT0idGFibGlzdCJdJyl8fGVsLnBhcmVudEVsZW1lbnQ7b3JpZ2luYWw9Z3JvdXAmJmdyb3VwLnF1ZXJ5U2VsZWN0b3IoJ1tyb2xlPSJ0YWIiXVthcmlhLXNlbGVjdGVkPSJ0cnVlIl0nKX10cnl7ZWwuY2xpY2soKTthd2FpdCB3YWl0KDEyMCk7bGV0IGFmdGVyPXNuYXAoZWwsdCksY2hhbmdlZD0hc2FtZShiZWZvcmUsYWZ0ZXIpO2lmKHJvbGU9PT0idGFiIiYmb3JpZ2luYWwmJm9yaWdpbmFsIT09ZWwpb3JpZ2luYWwuY2xpY2soKTtlbHNlIGlmKGNoYW5nZWQpZWwuY2xpY2soKTthd2FpdCB3YWl0KDEwMCk7bGV0IHJlc3RvcmVkPXNhbWUoYmVmb3JlLHNuYXAoZWwsdCkpO2l0ZW1zLnB1c2goe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCkscm9sZTpyb2xlLHRleHQ6KGVsLmlubmVyVGV4dHx8ZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWxhYmVsIil8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGNoYW5nZWQ6Y2hhbmdlZCxyZXN0b3JlZDpyZXN0b3JlZCxwYXNzZWQ6Y2hhbmdlZCYmcmVzdG9yZWR9KTt9Y2F0Y2goZSl7aXRlbXMucHVzaCh7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxyb2xlOnJvbGUsZXJyb3I6U3RyaW5nKGUmJmUubWVzc2FnZXx8ZSkscGFzc2VkOmZhbHNlLHJlc3RvcmVkOmZhbHNlfSl9fXJldHVybnttb2RlOiJzYWZlIix0ZXN0ZWQ6aXRlbXMubGVuZ3RoLHBhc3NlZDppdGVtcy5maWx0ZXIoeD0+eC5wYXNzZWQpLmxlbmd0aCxmYWlsZWQ6aXRlbXMuZmlsdGVyKHg9PiF4LnBhc3NlZCkubGVuZ3RoLHJlc3RvcmF0aW9uRmFpbHVyZXM6aXRlbXMuZmlsdGVyKHg9PnguY2hhbmdlZCYmIXgucmVzdG9yZWQpLmxlbmd0aCxpdGVtczppdGVtc319ZnVuY3Rpb24gc3RhdGljQ2hlY2tzKCl7bGV0IGQ9ZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50LGI9ZG9jdW1lbnQuYm9keSxhbGw9Wy4uLmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImJvZHkgKiIpXSx2dz1pbm5lcldpZHRoLG92ZXJmbG93PVtdLHRpbnk9W10saGlkZGVuTW90aW9uPVtdLGFuY2hvcnM9W107YWxsLmZvckVhY2goZWw9PntsZXQgcj1lbC5nZXRCb3VuZGluZ0NsaWVudFJlY3QoKTtpZihyLndpZHRoPjAmJnIuaGVpZ2h0PjAmJihyLnJpZ2h0PnZ3KzJ8fHIubGVmdDwtMikmJm92ZXJmbG93Lmxlbmd0aDwzMClvdmVyZmxvdy5wdXNoKHt0YWc6ZWwudGFnTmFtZS50b0xvd2VyQ2FzZSgpLGlkOihlbC5pZHx8IiIpLnNsaWNlKDAsODApLGNsYXNzTmFtZToodHlwZW9mIGVsLmNsYXNzTmFtZT09PSJzdHJpbmciP2VsLmNsYXNzTmFtZToiIikuc2xpY2UoMCwxMjApLGxlZnQ6TWF0aC5yb3VuZChyLmxlZnQpLHJpZ2h0Ok1hdGgucm91bmQoci5yaWdodCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKX0pO2xldCBpbnRlcj1lbC5tYXRjaGVzJiZlbC5tYXRjaGVzKCJhW2hyZWZdLGJ1dHRvbixpbnB1dCxzZWxlY3QsdGV4dGFyZWEsW3JvbGU9YnV0dG9uXSxbcm9sZT10YWJdLFt0YWJpbmRleF0iKTtpZihpbnRlciYmci53aWR0aD4wJiZyLmhlaWdodD4wJiYoci53aWR0aDw0MHx8ci5oZWlnaHQ8NDApJiZ0aW55Lmxlbmd0aDwzMCl0aW55LnB1c2goe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCksdGV4dDooZWwuaW5uZXJUZXh0fHxlbC5nZXRBdHRyaWJ1dGUoImFyaWEtbGFiZWwiKXx8IiIpLnRyaW0oKS5zbGljZSgwLDEwMCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKSxoZWlnaHQ6TWF0aC5yb3VuZChyLmhlaWdodCl9KTtsZXQgY2xzPXR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiI7aWYoKC9hbmltYXRlfGFuaW1hdGluZy8udGVzdChjbHMpfHxlbC5oYXNBdHRyaWJ1dGUoImRhdGEtYW5pbS10eXBlIikpJiZyLndpZHRoPjAmJnIuaGVpZ2h0PjApe2xldCBjcz1nZXRDb21wdXRlZFN0eWxlKGVsKTtpZigocGFyc2VGbG9hdChjcy5vcGFjaXR5KXx8MCk8LjA1fHxjcy52aXNpYmlsaXR5PT09ImhpZGRlbiIpaWYoaGlkZGVuTW90aW9uLmxlbmd0aDwzMCloaWRkZW5Nb3Rpb24ucHVzaCh7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxjbGFzc05hbWU6Y2xzLnNsaWNlKDAsMTIwKX0pfX0pO2RvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImFbaHJlZl0iKS5mb3JFYWNoKGE9PntpZihhbmNob3JzLmxlbmd0aD49NDApcmV0dXJuO2xldCBoPShhLmdldEF0dHJpYnV0ZSgiaHJlZiIpfHwiIikudHJpbSgpO2lmKCFofHxoPT09IiMifHwvXmphdmFzY3JpcHQ6L2kudGVzdChoKSl7YW5jaG9ycy5wdXNoKHtocmVmOmgsdGV4dDooYS5pbm5lclRleHR8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGlzc3VlOiJlbXB0eV9vcl9ub25fbmF2aWdhdGlvbiJ9KTtyZXR1cm59aWYoaFswXT09PSIjIiYmaC5sZW5ndGg+MSYmIWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKGguc2xpY2UoMSkpKWFuY2hvcnMucHVzaCh7aHJlZjpoLHRleHQ6KGEuaW5uZXJUZXh0fHwiIikudHJpbSgpLnNsaWNlKDAsMTAwKSxpc3N1ZToibWlzc2luZ19pbnRlcm5hbF90YXJnZXQifSl9KTtsZXQgYW5pbT1bXTt0cnl7YW5pbT1kb2N1bWVudC5nZXRBbmltYXRpb25zP2RvY3VtZW50LmdldEFuaW1hdGlvbnMoKTpbXX1jYXRjaChlKXt9bGV0IHJ1bm5pbmc9YW5pbS5maWx0ZXIoYT0+YS5wbGF5U3RhdGU9PT0icnVubmluZyIpLmxlbmd0aCxpbmZpbml0ZT1hbmltLmZpbHRlcihhPT57dHJ5e3JldHVybiBhLmVmZmVjdCYmYS5lZmZlY3QuZ2V0VGltaW5nKCkuaXRlcmF0aW9ucz09PUluZmluaXR5fWNhdGNoKGUpe3JldHVybiBmYWxzZX19KS5sZW5ndGg7cmV0dXJue3ZpZXdwb3J0Ont3aWR0aDp2dyxoZWlnaHQ6aW5uZXJIZWlnaHR9LGRvY3VtZW50OntzY3JvbGxXaWR0aDpNYXRoLm1heChkLnNjcm9sbFdpZHRoLGI/Yi5zY3JvbGxXaWR0aDowKSxjbGllbnRXaWR0aDpkLmNsaWVudFdpZHRoLGhvcml6b250YWxPdmVyZmxvdzpNYXRoLm1heChkLnNjcm9sbFdpZHRoLGI/Yi5zY3JvbGxXaWR0aDowKT5kLmNsaWVudFdpZHRoKzJ9LGNvdW50czp7ZWxlbWVudHM6YWxsLmxlbmd0aCxvdmVyZmxvdzpvdmVyZmxvdy5sZW5ndGgsdGlueUludGVyYWN0aXZlOnRpbnkubGVuZ3RoLGhpZGRlbk1vdGlvbjpoaWRkZW5Nb3Rpb24ubGVuZ3RoLGFuY2hvcklzc3VlczphbmNob3JzLmxlbmd0aH0sb3ZlcmZsb3c6b3ZlcmZsb3csdGlueUludGVyYWN0aXZlOnRpbnksaGlkZGVuTW90aW9uOmhpZGRlbk1vdGlvbixhbmNob3JJc3N1ZXM6YW5jaG9ycyxtb3Rpb246e21vZGU6Y2ZnLm1vdGlvbixydW5uaW5nQW5pbWF0aW9uczpydW5uaW5nLGluZmluaXRlQW5pbWF0aW9uczppbmZpbml0ZX19fWFzeW5jIGZ1bmN0aW9uIHJlcG9ydChyZXN1bHQpe3RyeXtsZXQgYm9keT1uZXcgVVJMU2VhcmNoUGFyYW1zKGNmZy5hdXRoKTtib2R5LnNldCgiZGlhZ25vc3RpY3MiLEpTT04uc3RyaW5naWZ5KHJlc3VsdCkpO2xldCByPWF3YWl0IGZldGNoKGNmZy5lbmRwb2ludCx7bWV0aG9kOiJQT1NUIixjcmVkZW50aWFsczoib21pdCIsaGVhZGVyczp7IkNvbnRlbnQtVHlwZSI6ImFwcGxpY2F0aW9uL3gtd3d3LWZvcm0tdXJsZW5jb2RlZDtjaGFyc2V0PVVURi04In0sYm9keTpib2R5LnRvU3RyaW5nKCl9KTtyZXR1cm4gci5va31jYXRjaChlKXtyZXR1cm4gZmFsc2V9fWFzeW5jIGZ1bmN0aW9uIHJ1bigpe3RyeXthd2FpdCB3YWl0KGNmZy5kZWxheSk7bGV0IGludGVyPWF3YWl0IGludGVyYWN0aW9ucygpLHJlc3VsdD1zdGF0aWNDaGVja3MoKTtyZXN1bHQudmVyc2lvbj0yO3Jlc3VsdC5pbnRlcmFjdGlvbnM9aW50ZXI7bGV0IHJlcG9ydGVkPWF3YWl0IHJlcG9ydChyZXN1bHQpO3Jlc3VsdC5yZXBvcnRlZD1yZXBvcnRlZDtsZXQgb2xkPWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCJlbGVtZW50aXplLWJyb3dzZXItcWEtcmVzdWx0Iik7aWYob2xkKW9sZC5yZW1vdmUoKTtsZXQgb3V0PWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoInNjcmlwdCIpO291dC50eXBlPSJhcHBsaWNhdGlvbi9qc29uIjtvdXQuaWQ9ImVsZW1lbnRpemUtYnJvd3Nlci1xYS1yZXN1bHQiO291dC50ZXh0Q29udGVudD1KU09OLnN0cmluZ2lmeShyZXN1bHQpLnJlcGxhY2UoLzwvZywiXFx1MDAzYyIpO2RvY3VtZW50LmJvZHkuYXBwZW5kQ2hpbGQob3V0KX1jYXRjaChlKXtsZXQgb3V0PWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoInNjcmlwdCIpO291dC50eXBlPSJhcHBsaWNhdGlvbi9qc29uIjtvdXQuaWQ9ImVsZW1lbnRpemUtYnJvd3Nlci1xYS1yZXN1bHQiO291dC50ZXh0Q29udGVudD1KU09OLnN0cmluZ2lmeSh7dmVyc2lvbjoyLGVycm9yOlN0cmluZyhlJiZlLm1lc3NhZ2V8fGUpfSk7ZG9jdW1lbnQuYm9keS5hcHBlbmRDaGlsZChvdXQpfX1pZihkb2N1bWVudC5yZWFkeVN0YXRlPT09ImNvbXBsZXRlIilydW4oKTtlbHNlIGFkZEV2ZW50TGlzdGVuZXIoImxvYWQiLHJ1bix7b25jZTp0cnVlfSk7fSk=', true );
         if ( ! is_string( $script ) ) return;
         echo '<script id="elementize-browser-probe">' . $script . '(' . wp_json_encode( $config ) . ');</script>';
     }
@@ -459,7 +529,6 @@ final class Elementize_Visual_QA {
             'profile' => $base . 'elementize-chrome-' . $job_id,
             'log' => $prefix . '.log',
             'done' => $prefix . '.done',
-            'dom' => $prefix . '.html',
             'runner' => $prefix . ( 'Windows' === PHP_OS_FAMILY ? '.cmd' : '.sh' ),
         ];
     }
@@ -499,7 +568,6 @@ final class Elementize_Visual_QA {
         foreach ( [ $browser, $url, $paths['screenshot'], $paths['profile'], $paths['log'], $paths['done'] ] as $value ) {
             if ( preg_match( '/[\r\n"]/', (string) $value ) ) return new WP_Error( 'elementize_visual_runner_value_invalid', 'A local capture runner value could not be safely encoded.' );
         }
-        $dom_path = (string) ( $paths['dom'] ?? ( (string) ( $paths['screenshot'] ?? '' ) . '.html' ) );
         $q = static function( string $value ): string { return '"' . str_replace( '%', '%%', $value ) . '"'; };
         return "@echo off\r\n"
             . "ping 127.0.0.1 -n 2 >nul\r\n"
@@ -509,7 +577,6 @@ final class Elementize_Visual_QA {
             . ' --window-size=' . self::viewport_spec( $viewport )['width'] . ',' . self::CAPTURE_HEIGHT
             . ' --virtual-time-budget=8000 --screenshot=' . $q( $paths['screenshot'] )
             . ' ' . $q( $url ) . ' >' . $q( $paths['log'] ) . " 2>&1\r\n"
-            . $q( $browser ) . ' --headless=new --disable-gpu --disable-dev-shm-usage --mute-audio --no-first-run --no-default-browser-check --disable-extensions --disable-background-networking --disable-sync --metrics-recording-only --disable-logging --log-level=3 --ignore-certificate-errors --allow-insecure-localhost --timeout=12000 --user-data-dir=' . $q( $paths['profile'] ) . ' --window-size=' . self::viewport_spec( $viewport )['width'] . ',1200 --virtual-time-budget=3500 --dump-dom ' . $q( $url ) . ' >' . $q( $dom_path ) . ' 2>>' . $q( $paths['log'] ) . "\r\n"
             . '> ' . $q( $paths['done'] ) . " echo done\r\n"
             . "del \"%~f0\" >nul 2>&1\r\n";
     }
@@ -517,7 +584,6 @@ final class Elementize_Visual_QA {
     private static function unix_runner( string $browser, string $url, array $paths, string $viewport = 'desktop' ): string {
         $url = self::normalize_capture_url( $url );
         if ( '' === $url ) return '';
-        $dom_path = (string) ( $paths['dom'] ?? ( (string) ( $paths['screenshot'] ?? '' ) . '.html' ) );
         $q = static fn( string $value ): string => escapeshellarg( $value );
         return "#!/bin/sh\n"
             . "sleep 1\n"
@@ -527,7 +593,6 @@ final class Elementize_Visual_QA {
             . ' --window-size=' . self::viewport_spec( $viewport )['width'] . ',' . self::CAPTURE_HEIGHT
             . ' --virtual-time-budget=8000 --screenshot=' . $q( $paths['screenshot'] )
             . ' ' . $q( $url ) . ' >' . $q( $paths['log'] ) . " 2>&1\n"
-            . $q( $browser ) . ' --headless=new --disable-gpu --disable-dev-shm-usage --mute-audio --no-first-run --no-default-browser-check --disable-extensions --disable-background-networking --disable-sync --metrics-recording-only --disable-logging --log-level=3 --ignore-certificate-errors --allow-insecure-localhost --timeout=12000 --user-data-dir=' . $q( $paths['profile'] ) . ' --window-size=' . self::viewport_spec( $viewport )['width'] . ',1200 --virtual-time-budget=3500 --dump-dom ' . $q( $url ) . ' >' . $q( $dom_path ) . ' 2>>' . $q( $paths['log'] ) . "\n"
             . 'printf done >' . $q( $paths['done'] ) . "\n"
             . 'rm -f ' . $q( $paths['runner'] ) . "\n";
     }
@@ -564,11 +629,11 @@ final class Elementize_Visual_QA {
         return true;
     }
 
-    public static function capture_job_complete( array $paths ): bool {
+    public static function capture_job_complete( array $paths, string $job_id = '' ): bool {
         $screenshot = (string) ( $paths['screenshot'] ?? '' );
         $done = (string) ( $paths['done'] ?? '' );
-        $dom = (string) ( $paths['dom'] ?? '' );
-        return self::png_file_complete( $screenshot ) && '' !== $done && is_file( $done ) && '' !== $dom && is_file( $dom );
+        if ( ! self::png_file_complete( $screenshot ) || '' === $done || ! is_file( $done ) ) return false;
+        return '' === $job_id || ! empty( self::browser_probe_for_job( $job_id )['verified'] );
     }
 
     public static function png_file_complete( string $path ): bool {
@@ -594,12 +659,10 @@ final class Elementize_Visual_QA {
             'screenshot_exists' => '' !== $screenshot && is_file( $screenshot ),
             'screenshot_bytes' => '' !== $screenshot && is_file( $screenshot ) ? max( 0, (int) @filesize( $screenshot ) ) : 0,
             'screenshot_complete' => self::png_file_complete( $screenshot ),
-            'browser_probe_exists' => isset( $paths['dom'] ) && is_string( $paths['dom'] ) && is_file( $paths['dom'] ),
-            'browser_probe_complete' => self::capture_job_complete( $paths ),
         ];
     }
 
-    private static function finalize_capture_job( array $job ) {
+    private static function finalize_capture_job( array $job, string $job_id ) {
         $paths = is_array( $job['paths'] ?? null ) ? $job['paths'] : [];
         $screenshot = (string) ( $paths['screenshot'] ?? '' );
         if ( ! self::png_file_complete( $screenshot ) ) {
@@ -619,22 +682,8 @@ final class Elementize_Visual_QA {
                 $height = absint( $size[1] ?? 0 ) ?: null;
             }
         }
-        $probe = self::browser_probe_result( (string) ( $paths['dom'] ?? '' ) );
+        $probe = self::browser_probe_for_job( $job_id );
         return [ 'bytes' => $bytes, 'byte_count' => strlen( $bytes ), 'sha256' => hash( 'sha256', $bytes ), 'width' => $width, 'height' => $height, 'browser_probe' => $probe ];
-    }
-
-    public static function browser_probe_result( string $path ): array {
-        $result = [ 'verified' => false, 'available' => false, 'diagnostics' => null ];
-        if ( '' === $path || ! is_file( $path ) ) return $result;
-        $html = @file_get_contents( $path );
-        if ( ! is_string( $html ) || '' === $html ) return $result;
-        if ( ! preg_match( '#<script[^>]+id=["\']elementize-browser-qa-result["\'][^>]*>(.*?)</script>#si', $html, $match ) ) return $result;
-        $decoded = json_decode( html_entity_decode( (string) $match[1], ENT_QUOTES | ENT_HTML5, 'UTF-8' ), true );
-        if ( ! is_array( $decoded ) ) return $result;
-        $result['available'] = true;
-        $result['verified'] = empty( $decoded['error'] );
-        $result['diagnostics'] = $decoded;
-        return $result;
     }
 
     private static function read_capture_log( string $path ): string {
@@ -646,12 +695,14 @@ final class Elementize_Visual_QA {
     }
 
     private static function cleanup_paths( array $paths ): void {
-        foreach ( [ 'screenshot', 'log', 'done', 'dom', 'runner' ] as $key ) if ( isset( $paths[ $key ] ) && is_string( $paths[ $key ] ) ) @unlink( $paths[ $key ] );
+        foreach ( [ 'screenshot', 'log', 'done', 'runner' ] as $key ) if ( isset( $paths[ $key ] ) && is_string( $paths[ $key ] ) ) @unlink( $paths[ $key ] );
         if ( isset( $paths['profile'] ) && is_string( $paths['profile'] ) ) self::remove_dir( $paths['profile'] );
     }
 
     private static function cleanup_job( array $job ): void {
         self::cleanup_paths( is_array( $job['paths'] ?? null ) ? $job['paths'] : [] );
+        $job_id = (string) ( $job['job_id'] ?? '' );
+        if ( preg_match( '/^[a-f0-9]{24}$/', $job_id ) ) delete_transient( self::probe_key( $job_id ) );
     }
 
     private static function cleanup_stale_temp_files(): void {
