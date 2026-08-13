@@ -17,6 +17,7 @@ jobs:
           handoff="includes/elementize-chatgpt-vision.inc"
           url_test="tests/visual-qa-url-contract.php"
           handoff_test="tests/chatgpt-vision-handoff-contract.php"
+          timing_test="tests/visual-qa-timing-contract.php"
           grep -q "private const VERSION = '10'" "$runtime" || { echo 'Rendered Visual QA v10 is not active.'; exit 1; }
           grep -q "local_chromium_async" "$runtime" || { echo 'Async Chromium backend is missing.'; exit 1; }
           grep -q "png_file_complete" "$runtime" || { echo 'Complete-PNG capture signal is missing.'; exit 1; }
@@ -36,6 +37,7 @@ jobs:
           test -f "$url_test" || { echo 'Visual QA URL regression test is missing.'; exit 1; }
           test -f "$handoff" || { echo 'Native ChatGPT vision handoff runtime is missing.'; exit 1; }
           test -f "$handoff_test" || { echo 'Native ChatGPT vision handoff contract test is missing.'; exit 1; }
+          test -f "$timing_test" || { echo 'Visual QA timing regression test is missing.'; exit 1; }
           grep -q "openaiFileResponse" "$handoff" || { echo 'GPT Action returned-file handoff is missing.'; exit 1; }
           grep -q "application/zip" "$handoff" || { echo 'Image-safe ZIP handoff is missing.'; exit 1; }
           grep -q "screenshot.png" "$handoff" || { echo 'Native vision screenshot entry is missing.'; exit 1; }
@@ -44,5 +46,7 @@ jobs:
           php -l "$handoff"
           php -l "$url_test"
           php -l "$handoff_test"
+          php -l "$timing_test"
           php "$url_test"
           php "$handoff_test"
+          php "$timing_test"

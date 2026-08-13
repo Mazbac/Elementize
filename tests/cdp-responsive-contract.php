@@ -34,7 +34,9 @@ foreach ( [ 'puppeteer', 'playwright', 'chrome-remote-interface', 'node_modules'
 
 $method = new ReflectionMethod( Elementize_Visual_QA::class, 'windows_cdp_runner' );
 $paths = [ 'screenshot' => 'C:\\Temp\\x.png', 'profile' => 'C:\\Temp\\profile', 'log' => 'C:\\Temp\\x.log', 'done' => 'C:\\Temp\\x.done', 'runner' => 'C:\\Temp\\x.cmd' ];
+$budget_method = new ReflectionMethod( Elementize_Visual_QA::class, 'capture_settle_ms' );
+$live_safe_budget = (int) $budget_method->invoke( null, 'live', 'safe' );
 $batch = $method->invoke( null, 'C:\\Program Files\\nodejs\\node.exe', 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'https://example.com/', $paths, 'mobile', 'live', 'safe' );
-if ( $batch instanceof WP_Error || false === strpos( $batch, ' 390 844 22000 14000' ) ) fail_cdp_contract( 'Windows CDP runner did not preserve exact mobile metrics and bounded live-safe settle budget.' );
+if ( $batch instanceof WP_Error || false === strpos( $batch, ' 390 844 22000 ' . $live_safe_budget ) ) fail_cdp_contract( 'Windows CDP runner did not preserve exact mobile metrics and current bounded live-safe completion budget.' );
 
 echo "CDP responsive capture contract OK\n";

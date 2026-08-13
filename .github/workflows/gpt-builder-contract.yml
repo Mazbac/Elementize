@@ -93,6 +93,7 @@ jobs:
           php tests/execution-trace-contract.php
           php tests/component-intelligence-contract.php
           php tests/browser-probe-contract.php
+          php tests/visual-qa-timing-contract.php
           php tests/cdp-responsive-contract.php
           node --check assets/runtime/elementize-cdp-capture.mjs
           probe_b64=$(python3 <<'PY'

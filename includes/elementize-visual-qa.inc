@@ -243,9 +243,16 @@ final class Elementize_Visual_QA {
         };
     }
 
+    private static function browser_probe_delay_ms( string $motion ): int {
+        return 'live' === self::normalize_motion( $motion ) ? 3500 : 500;
+    }
+
     private static function capture_settle_ms( string $motion, string $interaction ): int {
-        if ( 'safe' === self::normalize_interaction( $interaction ) ) return 'live' === self::normalize_motion( $motion ) ? 14000 : 9000;
-        return 'live' === self::normalize_motion( $motion ) ? 4500 : 1800;
+        $live = 'live' === self::normalize_motion( $motion );
+        $safe = 'safe' === self::normalize_interaction( $interaction );
+        $delay = self::browser_probe_delay_ms( $motion );
+        if ( $safe ) return $delay + ( $live ? 16500 : 13500 );
+        return $delay + ( $live ? 6500 : 2500 );
     }
 
     private static function normalize_motion( string $motion ): string {
@@ -507,7 +514,7 @@ final class Elementize_Visual_QA {
         $config = [
             'safe' => 'safe' === (string) ( $valid['interaction'] ?? 'passive' ),
             'motion' => (string) ( $valid['motion'] ?? 'settled' ),
-            'delay' => 'live' === (string) ( $valid['motion'] ?? 'settled' ) ? 3500 : 500,
+            'delay' => self::browser_probe_delay_ms( (string) ( $valid['motion'] ?? 'settled' ) ),
             'endpoint' => admin_url( 'admin-ajax.php' ),
             'auth' => [
                 'action' => 'elementize_visual_probe',
