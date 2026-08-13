@@ -79,6 +79,8 @@ jobs:
           grep -q "responsive_breakpoint" includes/elementize-design.inc || { echo 'Responsive design-control metadata is missing.'; exit 1; }
           php tests/designer-agent-contract.php
           php tests/browser-probe-contract.php
+          php tests/cdp-responsive-contract.php
+          node --check assets/runtime/elementize-cdp-capture.mjs
           probe_b64=$(php -r '$s=file_get_contents("includes/elementize-visual-qa.inc"); preg_match("/base64_decode\\( \'([A-Za-z0-9+\\/=]+)\', true \\)/",$s,$m); echo $m[1] ?? "";')
           test -n "$probe_b64"
           printf '%s' "$probe_b64" | base64 -d > /tmp/elementize-browser-probe.js
@@ -107,6 +109,8 @@ jobs:
           grep -q "capture_state.*pending" includes/elementize-visual-qa.inc || { echo 'Rendered capture pending state is missing.'; exit 1; }
           grep -q "wp_ajax_nopriv_elementize_visual_probe" includes/elementize-visual-qa.inc || { echo 'Signed browser telemetry receiver is missing.'; exit 1; }
           grep -q "elementize_visual_browser_probe_v2_" includes/elementize-visual-qa.inc || { echo 'Browser telemetry transient contract is missing.'; exit 1; }
+          grep -q "local_chromium_cdp_async" includes/elementize-visual-qa.inc || { echo 'Exact CDP capture backend is missing.'; exit 1; }
+          grep -q "rendered_visual_exact_viewports" includes/elementize-visual-qa.inc || { echo 'Exact viewport capability signal is missing.'; exit 1; }
           if grep -q -- '--dump-dom' includes/elementize-visual-qa.inc; then echo 'Legacy Chrome stdout DOM probe returned.'; exit 1; fi
 
           grep -q "_elementize_sha256" includes/elementize-media-import.inc || { echo 'Media import SHA-256 deduplication is missing.'; exit 1; }
@@ -195,6 +199,7 @@ jobs:
           grep -q 'browser diagnostics' "$instructions" || { echo 'GPT browser-diagnostics rule is missing.'; exit 1; }
           grep -q 'interaction_probe=safe' "$instructions" || { echo 'GPT bounded interaction QA rule is missing.'; exit 1; }
           grep -q 'motion=live' "$instructions" || { echo 'GPT live-motion QA rule is missing.'; exit 1; }
+          grep -q 'viewport_exact=true' "$instructions" || { echo 'GPT exact responsive QA guard is missing.'; exit 1; }
           grep -q 'enum: \[settled, live\]' "$schema" || { echo 'Visual QA motion mode schema is missing.'; exit 1; }
           grep -q 'enum: \[passive, safe\]' "$schema" || { echo 'Visual QA interaction mode schema is missing.'; exit 1; }
 

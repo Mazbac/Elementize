@@ -34,9 +34,14 @@ foreach ( [
     "'visual_analysis_verified' => false",
     "'preview_url_exposed' => false",
     'Elementize_Visual_QA::bound_screenshot',
+    'Elementize_Visual_QA::browser_probe_for_job',
+    "'viewport_exact'",
+    "'document_capture_complete'",
+    "'content_full_'",
 ] as $needle ) {
     if ( false === strpos( $source, $needle ) ) fail_chatgpt_vision_contract( 'Missing native ChatGPT vision marker: ' . $needle );
 }
+if ( false !== strpos( $source, 'browser_probe_result' ) ) fail_chatgpt_vision_contract( 'Superseded DOM browser probe parser returned.' );
 if ( false !== strpos( $source, 'rest_request_before_callbacks' ) || false !== strpos( $source, 'before_callbacks' ) ) {
     fail_chatgpt_vision_contract( 'Superseded REST interception hook returned.' );
 }

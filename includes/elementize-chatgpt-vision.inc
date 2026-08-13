@@ -55,12 +55,12 @@ final class Elementize_ChatGPT_Vision {
         $job_key = (string) $context['job_key'];
         $paths = (array) $context['paths'];
         $base = self::base_payload( $id, $loaded, $hash, $revision, $capture_version, $viewport, $motion, $interaction );
+        $job = get_transient( $job_key );
 
-        if ( Elementize_Visual_QA::capture_job_complete( $paths ) ) {
-            return self::complete_payload( $base, $job_id, $paths['screenshot'], $paths );
+        if ( is_array( $job ) && Elementize_Visual_QA::capture_job_complete( $paths, $job_id ) ) {
+            return self::complete_payload( $base, $job_id, $paths['screenshot'], $job );
         }
 
-        $job = get_transient( $job_key );
         if ( is_array( $job ) ) {
             return new WP_REST_Response( self::pending_payload( $base, $job_id, $paths, $job ), 200 );
         }
@@ -136,6 +136,8 @@ final class Elementize_ChatGPT_Vision {
     private static function pending_payload( array $base, string $job_id, array $paths, array $job ): array {
         $base['capture_state'] = 'pending';
         $base['capture_job_id'] = $job_id;
+        $base['capture_backend'] = (string) ( $job['capture_backend'] ?? $base['capture_backend'] ?? 'local_chromium_async' );
+        $base['viewport_exact'] = ! empty( $job['viewport_exact'] );
         $base['retry_after_ms'] = 1500;
         $base['capture_elapsed_ms'] = isset( $job['started_microtime'] )
             ? max( 0, (int) round( ( microtime( true ) - (float) $job['started_microtime'] ) * 1000 ) )
@@ -145,10 +147,13 @@ final class Elementize_ChatGPT_Vision {
         return $base;
     }
 
-    private static function complete_payload( array $base, string $job_id, string $screenshot, array $paths = [] ) {
-        $bounds = class_exists( 'Elementize_Visual_QA' )
-            ? Elementize_Visual_QA::bound_screenshot( $screenshot )
-            : [ 'available' => false, 'trimmed' => false, 'original_height' => null, 'bounded_height' => null ];
+    private static function complete_payload( array $base, string $job_id, string $screenshot, array $job = [] ) {
+        $exact = ! empty( $job['viewport_exact'] );
+        $bounds = $exact
+            ? [ 'available' => true, 'trimmed' => false, 'original_height' => null, 'bounded_height' => null ]
+            : ( class_exists( 'Elementize_Visual_QA' )
+                ? Elementize_Visual_QA::bound_screenshot( $screenshot )
+                : [ 'available' => false, 'trimmed' => false, 'original_height' => null, 'bounded_height' => null ] );
 
         $bytes = @file_get_contents( $screenshot );
         if ( false === $bytes || '' === $bytes ) {
@@ -184,20 +189,32 @@ final class Elementize_ChatGPT_Vision {
             return new WP_REST_Response( $base, 200 );
         }
 
+        $probe = Elementize_Visual_QA::browser_probe_for_job( $job_id );
+        $scroll_height = absint( $probe['diagnostics']['document']['scrollHeight'] ?? 0 ) ?: null;
+        $document_complete = $exact && null !== $height && null !== $scroll_height ? $height + 2 >= $scroll_height : null;
+        if ( $exact ) {
+            $bounds['original_height'] = $height;
+            $bounds['bounded_height'] = $height;
+        }
         $base['capture_state'] = 'complete';
         $base['capture_job_id'] = $job_id;
+        $base['capture_backend'] = (string) ( $job['capture_backend'] ?? $base['capture_backend'] ?? 'local_chromium_async' );
+        $base['viewport_exact'] = $exact;
+        $base['document_scroll_height'] = $scroll_height;
+        $base['document_capture_complete'] = $document_complete;
         $base['visual_render_verified'] = true;
         $base['chatgpt_vision_handoff_ready'] = true;
-        $base['chatgpt_vision_bounds_version'] = '2';
-        $base['capture_bounds_ready'] = ! empty( $bounds['available'] );
+        $base['chatgpt_vision_bounds_version'] = $exact ? '3' : '2';
+        $base['capture_bounds_ready'] = $exact ? true === $document_complete : ! empty( $bounds['available'] );
         $base['capture_bounds_trimmed'] = (bool) ( $bounds['trimmed'] ?? false );
         $base['capture_original_height'] = $bounds['original_height'] ?? null;
         $base['capture_bounded_height'] = $bounds['bounded_height'] ?? null;
-        $base['capture_mode'] = ! empty( $bounds['available'] ) ? 'content_bounded_tall_' . (string) ( $base['viewport'] ?? 'desktop' ) : 'tall_' . (string) ( $base['viewport'] ?? 'desktop' );
-        if ( empty( $bounds['available'] ) ) {
+        $base['capture_mode'] = $exact ? 'content_full_' . (string) ( $base['viewport'] ?? 'desktop' ) : ( ! empty( $bounds['available'] ) ? 'content_bounded_tall_' . (string) ( $base['viewport'] ?? 'desktop' ) : 'tall_' . (string) ( $base['viewport'] ?? 'desktop' ) );
+        if ( ! $exact && empty( $bounds['available'] ) ) {
             $base['capture_bounds_reason'] = 'Content-bounds normalization was unavailable; native visual analysis must not claim bounded capture verification.';
+        } elseif ( $exact && true !== $document_complete ) {
+            $base['capture_bounds_reason'] = 'Exact viewport capture did not prove the full document height was included.';
         }
-        $probe = Elementize_Visual_QA::browser_probe_result( (string) ( $paths['dom'] ?? '' ) );
         $base['browser_probe_verified'] = (bool) ( $probe['verified'] ?? false );
         $base['browser_diagnostics'] = $probe['diagnostics'] ?? null;
         $base['screenshot'] = [
@@ -207,6 +224,8 @@ final class Elementize_ChatGPT_Vision {
             'sha256' => hash( 'sha256', $bytes ),
             'width' => $width,
             'height' => $height,
+            'viewport_exact' => $exact,
+            'document_capture_complete' => $document_complete,
             'persisted' => false,
         ];
         $base['openaiFileResponse'] = [ [

@@ -128,7 +128,7 @@ If verification fails, Elementize attempts to restore the pre-change page.
 
 ### Native rendered Visual QA
 
-On the active Creative Control page, `getElementizePageVisualQA` captures a signed local Chromium render without exposing the preview URL. Capture is asynchronous, supports desktop (1440 px), tablet (768 px), and mobile (390 px), settles CSS animation/transition states, and trims tall screenshots to meaningful content bounds. Each viewport uses an isolated job identity. With `analyze=true`, Elementize returns a ZIP conversation file through `openaiFileResponse`; the Custom GPT extracts `screenshot.png` and inspects it with native ChatGPT vision. A second read-only Chromium pass emits passive browser diagnostics for horizontal overflow, undersized interactive targets, invalid/missing anchors, and motion-related hidden elements.
+On the active Creative Control page, `getElementizePageVisualQA` captures a signed local Chromium render without exposing the preview URL. With Node.js 22+, the bundled no-package CDP runner provides exact desktop (1440 px), tablet (768 px), and mobile (390 px) CSS viewports, touch emulation where appropriate, full-document capture, and signed browser diagnostics in the same browser session. Direct Chromium remains a degraded fallback and reports `viewport_exact=false`. With `analyze=true`, Elementize returns `screenshot.png` inside `openaiFileResponse` for native ChatGPT vision.
 
 The server intentionally keeps `visual_analysis_verified=false` for native handoff. A GPT may only claim native visual verification after it actually inspected the returned PNG. Visual findings must be localized to fresh writable page-scoped controls before mutation. Design-profile controls disclose effective scope; a repair must not be narrower than the selected control effect. Shared/global/header/footer content may appear in the screenshot but remains outside page-scoped Creative Control.
 
@@ -193,6 +193,8 @@ includes/
   elementize-activity.inc
   elementize-connections.inc
   elementize-onboarding.inc
+assets/runtime/
+  elementize-cdp-capture.mjs
 config/gpt/
   actions.openapi.yaml
   wp-builder-instructions.md

@@ -2,12 +2,13 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Visual_QA {
-    private const VERSION = '8';
+    private const VERSION = '9';
     private const TTL = 180;
     private const JOB_TTL = 180;
     private const JOB_TIMEOUT_SECONDS = 75;
-    private const JOB_PREFIX = 'elementize_visual_qa_job_v8_';
+    private const JOB_PREFIX = 'elementize_visual_qa_job_v9_';
     private const CHROME_PATH_CONST = 'ELEMENTIZE_CHROME_PATH';
+    private const NODE_PATH_CONST = 'ELEMENTIZE_NODE_PATH';
     private const VIEWPORT_WIDTH = 1440;
     private const CAPTURE_HEIGHT = 9000;
     private const MAX_SCREENSHOT_BYTES = 10485760;
@@ -79,9 +80,11 @@ final class Elementize_Visual_QA {
             'provider' => 'local_chromium_capture',
             'paid_services_required' => false,
             'external_account_required' => false,
-            'capture_backend' => 'local_chromium_async',
+            'capture_backend' => $cap['cdp_capture_ready'] ? 'local_chromium_cdp_async' : 'local_chromium_async',
             'viewport' => $viewport,
             'viewport_width' => $viewport_spec['width'],
+            'viewport_height' => $viewport_spec['height'],
+            'viewport_exact' => $cap['cdp_capture_ready'],
             'motion' => $motion,
             'interaction_probe' => $interaction,
             'analysis_backend' => 'chatgpt_native_vision',
@@ -123,7 +126,7 @@ final class Elementize_Visual_QA {
 
         if ( ! is_array( $job ) ) {
             self::cleanup_stale_temp_files();
-            $job = self::start_capture_job( $url, (string) $cap['browser_path'], $job_id, $id, $hash, $revision, $viewport );
+            $job = self::start_capture_job( $url, (string) $cap['browser_path'], (string) $cap['node_path'], $job_id, $id, $hash, $revision, $viewport, $motion, $interaction );
             if ( is_wp_error( $job ) ) {
                 $base['capture_state'] = 'failed';
                 $base['reason'] = self::safe_error( $job, 'Could not start the local rendered capture job.' );
@@ -172,8 +175,11 @@ final class Elementize_Visual_QA {
             'width' => $capture['width'],
             'height' => $capture['height'],
             'viewport_width' => $viewport_spec['width'],
-            'capture_height_limit' => self::CAPTURE_HEIGHT,
-            'capture_mode' => 'bounded_tall_' . $viewport,
+            'capture_height_limit' => ! empty( $job['viewport_exact'] ) ? $viewport_spec['max_capture_height'] : self::CAPTURE_HEIGHT,
+            'capture_mode' => ! empty( $job['viewport_exact'] ) ? 'content_full_' . $viewport : 'bounded_tall_' . $viewport,
+            'viewport_exact' => ! empty( $job['viewport_exact'] ),
+            'document_scroll_height' => $capture['document_scroll_height'] ?? null,
+            'document_capture_complete' => $capture['document_capture_complete'] ?? null,
             'persisted' => false,
         ];
 
@@ -193,8 +199,10 @@ final class Elementize_Visual_QA {
         $data['rendered_visual_qa'] = true;
         $data['rendered_visual_qa_version'] = self::VERSION;
         $data['rendered_visual_qa_scope'] = 'active_creative_control_page';
-        $data['rendered_visual_capture_backend'] = 'local_chromium_async';
+        $data['rendered_visual_capture_backend'] = $cap['cdp_capture_ready'] ? 'local_chromium_cdp_async' : 'local_chromium_async';
         $data['rendered_visual_capture_ready'] = $cap['capture_ready'];
+        $data['rendered_visual_exact_viewports'] = $cap['cdp_capture_ready'];
+        $data['rendered_visual_node_available'] = $cap['node_available'];
         $data['rendered_visual_browser'] = $cap['browser_name'];
         $data['rendered_visual_analysis_backend'] = 'chatgpt_native_vision';
         $data['rendered_visual_analysis_ready'] = $native_ready;
@@ -214,10 +222,15 @@ final class Elementize_Visual_QA {
 
     private static function viewport_spec( string $viewport ): array {
         return match ( self::normalize_viewport( $viewport ) ) {
-            'mobile' => [ 'width' => 390, 'label' => 'mobile' ],
-            'tablet' => [ 'width' => 768, 'label' => 'tablet' ],
-            default => [ 'width' => 1440, 'label' => 'desktop' ],
+            'mobile' => [ 'width' => 390, 'height' => 844, 'max_capture_height' => 22000, 'label' => 'mobile' ],
+            'tablet' => [ 'width' => 768, 'height' => 1024, 'max_capture_height' => 16000, 'label' => 'tablet' ],
+            default => [ 'width' => 1440, 'height' => 900, 'max_capture_height' => 12000, 'label' => 'desktop' ],
         };
+    }
+
+    private static function capture_settle_ms( string $motion, string $interaction ): int {
+        if ( 'safe' === self::normalize_interaction( $interaction ) ) return 'live' === self::normalize_motion( $motion ) ? 10500 : 7500;
+        return 'live' === self::normalize_motion( $motion ) ? 4500 : 1800;
     }
 
     private static function normalize_motion( string $motion ): string {
@@ -256,6 +269,22 @@ final class Elementize_Visual_QA {
         return '';
     }
 
+    private static function node_path(): string {
+        if ( defined( self::NODE_PATH_CONST ) ) {
+            $custom = trim( (string) constant( self::NODE_PATH_CONST ) );
+            if ( '' !== $custom && is_file( $custom ) ) return $custom;
+        }
+        $candidates = [
+            'C:\\Program Files\\nodejs\\node.exe',
+            'C:\\Program Files (x86)\\nodejs\\node.exe',
+            '/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node',
+        ];
+        $program_files = trim( (string) getenv( 'ProgramFiles' ) );
+        if ( '' !== $program_files ) array_unshift( $candidates, $program_files . '\\nodejs\\node.exe' );
+        foreach ( array_unique( $candidates ) as $candidate ) if ( is_file( $candidate ) ) return $candidate;
+        return '';
+    }
+
     private static function browser_name( string $path ): string {
         $base = strtolower( basename( $path ) );
         if ( false !== strpos( $base, 'edge' ) ) return 'Microsoft Edge';
@@ -264,11 +293,17 @@ final class Elementize_Visual_QA {
 
     private static function capability(): array {
         $browser = self::browser_path();
+        $node = self::node_path();
         $process = self::process_available();
+        $cdp_runner = ELEMENTIZE_DIR . '/assets/runtime/elementize-cdp-capture.mjs';
+        $cdp_ready = $process && '' !== $browser && '' !== $node && is_file( $cdp_runner );
         return [
             'browser_available' => '' !== $browser,
             'browser_name' => self::browser_name( $browser ),
             'browser_path' => $browser,
+            'node_available' => '' !== $node,
+            'node_path' => $node,
+            'cdp_capture_ready' => $cdp_ready,
             'capture_ready' => $process && '' !== $browser,
         ];
     }
@@ -457,7 +492,7 @@ final class Elementize_Visual_QA {
         $config = [
             'safe' => 'safe' === (string) ( $valid['interaction'] ?? 'passive' ),
             'motion' => (string) ( $valid['motion'] ?? 'settled' ),
-            'delay' => 'live' === (string) ( $valid['motion'] ?? 'settled' ) ? 1200 : 300,
+            'delay' => 'live' === (string) ( $valid['motion'] ?? 'settled' ) ? 3500 : 500,
             'endpoint' => admin_url( 'admin-ajax.php' ),
             'auth' => [
                 'action' => 'elementize_visual_probe',
@@ -471,7 +506,7 @@ final class Elementize_Visual_QA {
                 'elementize_visual_sig' => (string) $valid['sig'],
             ],
         ];
-        $script = base64_decode( 'KGZ1bmN0aW9uKGNmZyl7Y29uc3Qgd2FpdD1tcz0+bmV3IFByb21pc2Uocj0+c2V0VGltZW91dChyLG1zKSk7Y29uc3QgdmlzPWVsPT57aWYoIWVsKXJldHVybiBudWxsO2NvbnN0IHI9ZWwuZ2V0Qm91bmRpbmdDbGllbnRSZWN0KCksYz1nZXRDb21wdXRlZFN0eWxlKGVsKTtyZXR1cm4gci53aWR0aD4wJiZyLmhlaWdodD4wJiZjLmRpc3BsYXkhPT0ibm9uZSImJmMudmlzaWJpbGl0eSE9PSJoaWRkZW4iJiZwYXJzZUZsb2F0KGMub3BhY2l0eXx8IjEiKT4uMDJ9O2NvbnN0IHRhcmdldD1lbD0+e2xldCBpZD0oZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWNvbnRyb2xzIil8fCIiKS50cmltKCk7aWYoIWlkKXtsZXQgdj0oZWwuZ2V0QXR0cmlidXRlKCJkYXRhLWJzLXRhcmdldCIpfHwiIikudHJpbSgpO2lmKHYuY2hhckF0KDApPT09IiMiKWlkPXYuc2xpY2UoMSl9cmV0dXJuIGlkP2RvY3VtZW50LmdldEVsZW1lbnRCeUlkKGlkKTpudWxsfTtjb25zdCBzbmFwPShlbCx0KT0+KHtleHBhbmRlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtZXhwYW5kZWQiKSxzZWxlY3RlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtc2VsZWN0ZWQiKSxjbGFzc05hbWU6KHR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiIpLnNsaWNlKDAsMTgwKSx0YXJnZXRWaXNpYmxlOnZpcyh0KX0pO2NvbnN0IHNhbWU9KGEsYik9PmEuZXhwYW5kZWQ9PT1iLmV4cGFuZGVkJiZhLnNlbGVjdGVkPT09Yi5zZWxlY3RlZCYmYS50YXJnZXRWaXNpYmxlPT09Yi50YXJnZXRWaXNpYmxlO2FzeW5jIGZ1bmN0aW9uIGludGVyYWN0aW9ucygpe2lmKCFjZmcuc2FmZSlyZXR1cm57bW9kZToicGFzc2l2ZSIsdGVzdGVkOjAscGFzc2VkOjAsZmFpbGVkOjAscmVzdG9yYXRpb25GYWlsdXJlczowLGl0ZW1zOltdfTtsZXQgZWxzPVsuLi5kb2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCdidXR0b25bYXJpYS1leHBhbmRlZF0sW3JvbGU9ImJ1dHRvbiJdW2FyaWEtZXhwYW5kZWRdLFtyb2xlPSJ0YWIiXVthcmlhLWNvbnRyb2xzXScpXS5maWx0ZXIoZT0+IWUuZGlzYWJsZWQmJiFlLmNsb3Nlc3QoImZvcm0iKSkuc2xpY2UoMCwxMiksaXRlbXM9W107Zm9yKGNvbnN0IGVsIG9mIGVscyl7bGV0IHQ9dGFyZ2V0KGVsKSxiZWZvcmU9c25hcChlbCx0KSxyb2xlPShlbC5nZXRBdHRyaWJ1dGUoInJvbGUiKXx8IiIpLnRvTG93ZXJDYXNlKCksb3JpZ2luYWw9bnVsbDtpZihyb2xlPT09InRhYiIpe2xldCBncm91cD1lbC5jbG9zZXN0KCdbcm9sZT0idGFibGlzdCJdJyl8fGVsLnBhcmVudEVsZW1lbnQ7b3JpZ2luYWw9Z3JvdXAmJmdyb3VwLnF1ZXJ5U2VsZWN0b3IoJ1tyb2xlPSJ0YWIiXVthcmlhLXNlbGVjdGVkPSJ0cnVlIl0nKX10cnl7ZWwuY2xpY2soKTthd2FpdCB3YWl0KDEyMCk7bGV0IGFmdGVyPXNuYXAoZWwsdCksY2hhbmdlZD0hc2FtZShiZWZvcmUsYWZ0ZXIpO2lmKHJvbGU9PT0idGFiIiYmb3JpZ2luYWwmJm9yaWdpbmFsIT09ZWwpb3JpZ2luYWwuY2xpY2soKTtlbHNlIGlmKGNoYW5nZWQpZWwuY2xpY2soKTthd2FpdCB3YWl0KDEwMCk7bGV0IHJlc3RvcmVkPXNhbWUoYmVmb3JlLHNuYXAoZWwsdCkpO2l0ZW1zLnB1c2goe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCkscm9sZTpyb2xlLHRleHQ6KGVsLmlubmVyVGV4dHx8ZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWxhYmVsIil8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGNoYW5nZWQ6Y2hhbmdlZCxyZXN0b3JlZDpyZXN0b3JlZCxwYXNzZWQ6Y2hhbmdlZCYmcmVzdG9yZWR9KTt9Y2F0Y2goZSl7aXRlbXMucHVzaCh7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxyb2xlOnJvbGUsZXJyb3I6U3RyaW5nKGUmJmUubWVzc2FnZXx8ZSkscGFzc2VkOmZhbHNlLHJlc3RvcmVkOmZhbHNlfSl9fXJldHVybnttb2RlOiJzYWZlIix0ZXN0ZWQ6aXRlbXMubGVuZ3RoLHBhc3NlZDppdGVtcy5maWx0ZXIoeD0+eC5wYXNzZWQpLmxlbmd0aCxmYWlsZWQ6aXRlbXMuZmlsdGVyKHg9PiF4LnBhc3NlZCkubGVuZ3RoLHJlc3RvcmF0aW9uRmFpbHVyZXM6aXRlbXMuZmlsdGVyKHg9PnguY2hhbmdlZCYmIXgucmVzdG9yZWQpLmxlbmd0aCxpdGVtczppdGVtc319ZnVuY3Rpb24gc3RhdGljQ2hlY2tzKCl7bGV0IGQ9ZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50LGI9ZG9jdW1lbnQuYm9keSxhbGw9Wy4uLmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImJvZHkgKiIpXSx2dz1pbm5lcldpZHRoLG92ZXJmbG93PVtdLHRpbnk9W10saGlkZGVuTW90aW9uPVtdLGFuY2hvcnM9W107YWxsLmZvckVhY2goZWw9PntsZXQgcj1lbC5nZXRCb3VuZGluZ0NsaWVudFJlY3QoKTtpZihyLndpZHRoPjAmJnIuaGVpZ2h0PjAmJihyLnJpZ2h0PnZ3KzJ8fHIubGVmdDwtMikmJm92ZXJmbG93Lmxlbmd0aDwzMClvdmVyZmxvdy5wdXNoKHt0YWc6ZWwudGFnTmFtZS50b0xvd2VyQ2FzZSgpLGlkOihlbC5pZHx8IiIpLnNsaWNlKDAsODApLGNsYXNzTmFtZToodHlwZW9mIGVsLmNsYXNzTmFtZT09PSJzdHJpbmciP2VsLmNsYXNzTmFtZToiIikuc2xpY2UoMCwxMjApLGxlZnQ6TWF0aC5yb3VuZChyLmxlZnQpLHJpZ2h0Ok1hdGgucm91bmQoci5yaWdodCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKX0pO2xldCBpbnRlcj1lbC5tYXRjaGVzJiZlbC5tYXRjaGVzKCJhW2hyZWZdLGJ1dHRvbixpbnB1dCxzZWxlY3QsdGV4dGFyZWEsW3JvbGU9YnV0dG9uXSxbcm9sZT10YWJdLFt0YWJpbmRleF0iKTtpZihpbnRlciYmci53aWR0aD4wJiZyLmhlaWdodD4wJiYoci53aWR0aDw0MHx8ci5oZWlnaHQ8NDApJiZ0aW55Lmxlbmd0aDwzMCl0aW55LnB1c2goe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCksdGV4dDooZWwuaW5uZXJUZXh0fHxlbC5nZXRBdHRyaWJ1dGUoImFyaWEtbGFiZWwiKXx8IiIpLnRyaW0oKS5zbGljZSgwLDEwMCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKSxoZWlnaHQ6TWF0aC5yb3VuZChyLmhlaWdodCl9KTtsZXQgY2xzPXR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiI7aWYoKC9hbmltYXRlfGFuaW1hdGluZy8udGVzdChjbHMpfHxlbC5oYXNBdHRyaWJ1dGUoImRhdGEtYW5pbS10eXBlIikpJiZyLndpZHRoPjAmJnIuaGVpZ2h0PjApe2xldCBjcz1nZXRDb21wdXRlZFN0eWxlKGVsKTtpZigocGFyc2VGbG9hdChjcy5vcGFjaXR5KXx8MCk8LjA1fHxjcy52aXNpYmlsaXR5PT09ImhpZGRlbiIpaWYoaGlkZGVuTW90aW9uLmxlbmd0aDwzMCloaWRkZW5Nb3Rpb24ucHVzaCh7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxjbGFzc05hbWU6Y2xzLnNsaWNlKDAsMTIwKX0pfX0pO2RvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImFbaHJlZl0iKS5mb3JFYWNoKGE9PntpZihhbmNob3JzLmxlbmd0aD49NDApcmV0dXJuO2xldCBoPShhLmdldEF0dHJpYnV0ZSgiaHJlZiIpfHwiIikudHJpbSgpO2lmKCFofHxoPT09IiMifHwvXmphdmFzY3JpcHQ6L2kudGVzdChoKSl7YW5jaG9ycy5wdXNoKHtocmVmOmgsdGV4dDooYS5pbm5lclRleHR8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGlzc3VlOiJlbXB0eV9vcl9ub25fbmF2aWdhdGlvbiJ9KTtyZXR1cm59aWYoaFswXT09PSIjIiYmaC5sZW5ndGg+MSYmIWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKGguc2xpY2UoMSkpKWFuY2hvcnMucHVzaCh7aHJlZjpoLHRleHQ6KGEuaW5uZXJUZXh0fHwiIikudHJpbSgpLnNsaWNlKDAsMTAwKSxpc3N1ZToibWlzc2luZ19pbnRlcm5hbF90YXJnZXQifSl9KTtsZXQgYW5pbT1bXTt0cnl7YW5pbT1kb2N1bWVudC5nZXRBbmltYXRpb25zP2RvY3VtZW50LmdldEFuaW1hdGlvbnMoKTpbXX1jYXRjaChlKXt9bGV0IHJ1bm5pbmc9YW5pbS5maWx0ZXIoYT0+YS5wbGF5U3RhdGU9PT0icnVubmluZyIpLmxlbmd0aCxpbmZpbml0ZT1hbmltLmZpbHRlcihhPT57dHJ5e3JldHVybiBhLmVmZmVjdCYmYS5lZmZlY3QuZ2V0VGltaW5nKCkuaXRlcmF0aW9ucz09PUluZmluaXR5fWNhdGNoKGUpe3JldHVybiBmYWxzZX19KS5sZW5ndGg7cmV0dXJue3ZpZXdwb3J0Ont3aWR0aDp2dyxoZWlnaHQ6aW5uZXJIZWlnaHR9LGRvY3VtZW50OntzY3JvbGxXaWR0aDpNYXRoLm1heChkLnNjcm9sbFdpZHRoLGI/Yi5zY3JvbGxXaWR0aDowKSxjbGllbnRXaWR0aDpkLmNsaWVudFdpZHRoLGhvcml6b250YWxPdmVyZmxvdzpNYXRoLm1heChkLnNjcm9sbFdpZHRoLGI/Yi5zY3JvbGxXaWR0aDowKT5kLmNsaWVudFdpZHRoKzJ9LGNvdW50czp7ZWxlbWVudHM6YWxsLmxlbmd0aCxvdmVyZmxvdzpvdmVyZmxvdy5sZW5ndGgsdGlueUludGVyYWN0aXZlOnRpbnkubGVuZ3RoLGhpZGRlbk1vdGlvbjpoaWRkZW5Nb3Rpb24ubGVuZ3RoLGFuY2hvcklzc3VlczphbmNob3JzLmxlbmd0aH0sb3ZlcmZsb3c6b3ZlcmZsb3csdGlueUludGVyYWN0aXZlOnRpbnksaGlkZGVuTW90aW9uOmhpZGRlbk1vdGlvbixhbmNob3JJc3N1ZXM6YW5jaG9ycyxtb3Rpb246e21vZGU6Y2ZnLm1vdGlvbixydW5uaW5nQW5pbWF0aW9uczpydW5uaW5nLGluZmluaXRlQW5pbWF0aW9uczppbmZpbml0ZX19fWFzeW5jIGZ1bmN0aW9uIHJlcG9ydChyZXN1bHQpe3RyeXtsZXQgYm9keT1uZXcgVVJMU2VhcmNoUGFyYW1zKGNmZy5hdXRoKTtib2R5LnNldCgiZGlhZ25vc3RpY3MiLEpTT04uc3RyaW5naWZ5KHJlc3VsdCkpO2xldCByPWF3YWl0IGZldGNoKGNmZy5lbmRwb2ludCx7bWV0aG9kOiJQT1NUIixjcmVkZW50aWFsczoib21pdCIsaGVhZGVyczp7IkNvbnRlbnQtVHlwZSI6ImFwcGxpY2F0aW9uL3gtd3d3LWZvcm0tdXJsZW5jb2RlZDtjaGFyc2V0PVVURi04In0sYm9keTpib2R5LnRvU3RyaW5nKCl9KTtyZXR1cm4gci5va31jYXRjaChlKXtyZXR1cm4gZmFsc2V9fWFzeW5jIGZ1bmN0aW9uIHJ1bigpe3RyeXthd2FpdCB3YWl0KGNmZy5kZWxheSk7bGV0IGludGVyPWF3YWl0IGludGVyYWN0aW9ucygpLHJlc3VsdD1zdGF0aWNDaGVja3MoKTtyZXN1bHQudmVyc2lvbj0yO3Jlc3VsdC5pbnRlcmFjdGlvbnM9aW50ZXI7bGV0IHJlcG9ydGVkPWF3YWl0IHJlcG9ydChyZXN1bHQpO3Jlc3VsdC5yZXBvcnRlZD1yZXBvcnRlZDtsZXQgb2xkPWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCJlbGVtZW50aXplLWJyb3dzZXItcWEtcmVzdWx0Iik7aWYob2xkKW9sZC5yZW1vdmUoKTtsZXQgb3V0PWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoInNjcmlwdCIpO291dC50eXBlPSJhcHBsaWNhdGlvbi9qc29uIjtvdXQuaWQ9ImVsZW1lbnRpemUtYnJvd3Nlci1xYS1yZXN1bHQiO291dC50ZXh0Q29udGVudD1KU09OLnN0cmluZ2lmeShyZXN1bHQpLnJlcGxhY2UoLzwvZywiXFx1MDAzYyIpO2RvY3VtZW50LmJvZHkuYXBwZW5kQ2hpbGQob3V0KX1jYXRjaChlKXtsZXQgb3V0PWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoInNjcmlwdCIpO291dC50eXBlPSJhcHBsaWNhdGlvbi9qc29uIjtvdXQuaWQ9ImVsZW1lbnRpemUtYnJvd3Nlci1xYS1yZXN1bHQiO291dC50ZXh0Q29udGVudD1KU09OLnN0cmluZ2lmeSh7dmVyc2lvbjoyLGVycm9yOlN0cmluZyhlJiZlLm1lc3NhZ2V8fGUpfSk7ZG9jdW1lbnQuYm9keS5hcHBlbmRDaGlsZChvdXQpfX1pZihkb2N1bWVudC5yZWFkeVN0YXRlPT09ImNvbXBsZXRlIilydW4oKTtlbHNlIGFkZEV2ZW50TGlzdGVuZXIoImxvYWQiLHJ1bix7b25jZTp0cnVlfSk7fSk=', true );
+        $script = base64_decode( 'KGZ1bmN0aW9uKGNmZyl7Y29uc3Qgd2FpdD1tcz0+bmV3IFByb21pc2Uocj0+c2V0VGltZW91dChyLG1zKSk7Y29uc3QgdmlzPWVsPT57aWYoIWVsKXJldHVybiBudWxsO2NvbnN0IHI9ZWwuZ2V0Qm91bmRpbmdDbGllbnRSZWN0KCksYz1nZXRDb21wdXRlZFN0eWxlKGVsKTtyZXR1cm4gci53aWR0aD4wJiZyLmhlaWdodD4wJiZjLmRpc3BsYXkhPT0ibm9uZSImJmMudmlzaWJpbGl0eSE9PSJoaWRkZW4iJiZwYXJzZUZsb2F0KGMub3BhY2l0eXx8IjEiKT4uMDJ9O2NvbnN0IHRhcmdldD1lbD0+e2xldCBpZD0oZWwuZ2V0QXR0cmlidXRlKCJhcmlhLWNvbnRyb2xzIil8fCIiKS50cmltKCk7aWYoIWlkKXtsZXQgdj0oZWwuZ2V0QXR0cmlidXRlKCJkYXRhLWJzLXRhcmdldCIpfHwiIikudHJpbSgpO2lmKHYuY2hhckF0KDApPT09IiMiKWlkPXYuc2xpY2UoMSl9cmV0dXJuIGlkP2RvY3VtZW50LmdldEVsZW1lbnRCeUlkKGlkKTpudWxsfTtjb25zdCBzbmFwPShlbCx0KT0+KHtleHBhbmRlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtZXhwYW5kZWQiKSxzZWxlY3RlZDplbC5nZXRBdHRyaWJ1dGUoImFyaWEtc2VsZWN0ZWQiKSxjbGFzc05hbWU6KHR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiIpLnNsaWNlKDAsMTgwKSx0YXJnZXRWaXNpYmxlOnZpcyh0KX0pO2NvbnN0IHNhbWU9KGEsYik9PmEuZXhwYW5kZWQ9PT1iLmV4cGFuZGVkJiZhLnNlbGVjdGVkPT09Yi5zZWxlY3RlZCYmYS50YXJnZXRWaXNpYmxlPT09Yi50YXJnZXRWaXNpYmxlO2NvbnN0IGxvY2F0ZT1lbD0+e2xldCBvd25lcj1lbCYmZWwuY2xvc2VzdCYmZWwuY2xvc2VzdCgnW2RhdGEtZWxlbWVudG9yLWlkXSwuZWxlbWVudG9yJyksbm9kZT1lbCYmZWwuY2xvc2VzdCYmZWwuY2xvc2VzdCgnW2NsYXNzKj0iZWxlbWVudG9yLWVsZW1lbnQtIl0nKSxvYz1vd25lciYmdHlwZW9mIG93bmVyLmNsYXNzTmFtZT09PSJzdHJpbmciP293bmVyLmNsYXNzTmFtZToiIixuYz1ub2RlJiZ0eXBlb2Ygbm9kZS5jbGFzc05hbWU9PT0ic3RyaW5nIj9ub2RlLmNsYXNzTmFtZToiIixkbT1vYy5tYXRjaCgvKD86XnxccyllbGVtZW50b3ItKFxkKykoPzpcc3wkKS8pLGVtPW5jLm1hdGNoKC8oPzpefFxzKWVsZW1lbnRvci1lbGVtZW50LShbQS1aYS16MC05Xy1dKykoPzpcc3wkKS8pO3JldHVybntkb2N1bWVudElkOihvd25lciYmb3duZXIuZ2V0QXR0cmlidXRlJiZvd25lci5nZXRBdHRyaWJ1dGUoImRhdGEtZWxlbWVudG9yLWlkIikpfHwoZG0/ZG1bMV06IiIpLGVsZW1lbnRJZDplbT9lbVsxXToiIn19O2NvbnN0IGNsaXBwZWQ9ZWw9Pntmb3IobGV0IHA9ZWwmJmVsLnBhcmVudEVsZW1lbnQ7cCYmcCE9PWRvY3VtZW50LmJvZHk7cD1wLnBhcmVudEVsZW1lbnQpe2xldCBjPWdldENvbXB1dGVkU3R5bGUocCk7aWYoL2hpZGRlbnxjbGlwLy50ZXN0KGMub3ZlcmZsb3dYfHwiIikpcmV0dXJuIHRydWV9cmV0dXJuIGZhbHNlfTthc3luYyBmdW5jdGlvbiBpbnRlcmFjdGlvbnMoKXtpZighY2ZnLnNhZmUpcmV0dXJue21vZGU6InBhc3NpdmUiLHRlc3RlZDowLHBhc3NlZDowLGZhaWxlZDowLHJlc3RvcmF0aW9uRmFpbHVyZXM6MCxpdGVtczpbXX07bGV0IGVscz1bLi4uZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnYnV0dG9uW2FyaWEtZXhwYW5kZWRdLFtyb2xlPSJidXR0b24iXVthcmlhLWV4cGFuZGVkXSxbcm9sZT0idGFiIl1bYXJpYS1jb250cm9sc10nKV0uZmlsdGVyKGU9PiFlLmRpc2FibGVkJiYhZS5jbG9zZXN0KCJmb3JtIikmJnZpcyhlKSkuc2xpY2UoMCw1KSxpdGVtcz1bXTtmb3IoY29uc3QgZWwgb2YgZWxzKXtsZXQgdD10YXJnZXQoZWwpLGJlZm9yZT1zbmFwKGVsLHQpLHJvbGU9KGVsLmdldEF0dHJpYnV0ZSgicm9sZSIpfHwiIikudG9Mb3dlckNhc2UoKSxvcmlnaW5hbD1udWxsLGdyb3VwPW51bGw7aWYocm9sZT09PSJ0YWIiKXtncm91cD1lbC5jbG9zZXN0KCdbcm9sZT0idGFibGlzdCJdJyl8fGVsLnBhcmVudEVsZW1lbnQ7b3JpZ2luYWw9Z3JvdXAmJmdyb3VwLnF1ZXJ5U2VsZWN0b3IoJ1tyb2xlPSJ0YWIiXVthcmlhLXNlbGVjdGVkPSJ0cnVlIl0nKX1lbHNle2dyb3VwPWVsLmNsb3Nlc3QoJy5hY2NvcmRpb24sW2RhdGEtYWNjb3JkaW9uXSwuZWxlbWVudG9yLWFjY29yZGlvbicpfHxlbC5wYXJlbnRFbGVtZW50O29yaWdpbmFsPWdyb3VwJiZbLi4uZ3JvdXAucXVlcnlTZWxlY3RvckFsbCgnW2FyaWEtZXhwYW5kZWQ9InRydWUiXScpXS5maW5kKHg9PnghPT1lbCYmdmlzKHgpKX10cnl7ZWwuY2xpY2soKTthd2FpdCB3YWl0KDUwMCk7bGV0IGFmdGVyPXNuYXAoZWwsdCksY2hhbmdlZD0hc2FtZShiZWZvcmUsYWZ0ZXIpO2lmKHJvbGU9PT0idGFiIiYmb3JpZ2luYWwmJm9yaWdpbmFsIT09ZWwpb3JpZ2luYWwuY2xpY2soKTtlbHNlIGlmKGNoYW5nZWQmJm9yaWdpbmFsJiZvcmlnaW5hbCE9PWVsKXtvcmlnaW5hbC5jbGljaygpO2F3YWl0IHdhaXQoMjUwKTtpZighc2FtZShiZWZvcmUsc25hcChlbCx0KSkpZWwuY2xpY2soKX1lbHNlIGlmKGNoYW5nZWQpZWwuY2xpY2soKTthd2FpdCB3YWl0KDUwMCk7bGV0IHJlc3RvcmVkPXNhbWUoYmVmb3JlLHNuYXAoZWwsdCkpO2l0ZW1zLnB1c2goT2JqZWN0LmFzc2lnbih7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxyb2xlOnJvbGUsdGV4dDooZWwuaW5uZXJUZXh0fHxlbC5nZXRBdHRyaWJ1dGUoImFyaWEtbGFiZWwiKXx8IiIpLnRyaW0oKS5zbGljZSgwLDEwMCksY2hhbmdlZDpjaGFuZ2VkLHJlc3RvcmVkOnJlc3RvcmVkLHBhc3NlZDpjaGFuZ2VkJiZyZXN0b3JlZH0sbG9jYXRlKGVsKSkpfWNhdGNoKGUpe2l0ZW1zLnB1c2goT2JqZWN0LmFzc2lnbih7dGFnOmVsLnRhZ05hbWUudG9Mb3dlckNhc2UoKSxyb2xlOnJvbGUsZXJyb3I6U3RyaW5nKGUmJmUubWVzc2FnZXx8ZSkscGFzc2VkOmZhbHNlLHJlc3RvcmVkOmZhbHNlfSxsb2NhdGUoZWwpKSl9fXJldHVybnttb2RlOiJzYWZlIix0ZXN0ZWQ6aXRlbXMubGVuZ3RoLHBhc3NlZDppdGVtcy5maWx0ZXIoeD0+eC5wYXNzZWQpLmxlbmd0aCxmYWlsZWQ6aXRlbXMuZmlsdGVyKHg9PiF4LnBhc3NlZCkubGVuZ3RoLHJlc3RvcmF0aW9uRmFpbHVyZXM6aXRlbXMuZmlsdGVyKHg9PnguY2hhbmdlZCYmIXgucmVzdG9yZWQpLmxlbmd0aCxpdGVtczppdGVtc319ZnVuY3Rpb24gc3RhdGljQ2hlY2tzKCl7bGV0IGQ9ZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50LGI9ZG9jdW1lbnQuYm9keSxhbGw9Wy4uLmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoImJvZHkgKiIpXSx2dz1pbm5lcldpZHRoLG92ZXJmbG93PVtdLHRpbnk9W10saGlkZGVuTW90aW9uPVtdLGFuY2hvcnM9W107YWxsLmZvckVhY2goZWw9PntsZXQgcj1lbC5nZXRCb3VuZGluZ0NsaWVudFJlY3QoKSxvZmY9ci53aWR0aD4wJiZyLmhlaWdodD4wJiYoci5yaWdodD52dysyfHxyLmxlZnQ8LTIpO2lmKG9mZiYmIWNsaXBwZWQoZWwpJiZvdmVyZmxvdy5sZW5ndGg8MzApb3ZlcmZsb3cucHVzaChPYmplY3QuYXNzaWduKHt0YWc6ZWwudGFnTmFtZS50b0xvd2VyQ2FzZSgpLGlkOihlbC5pZHx8IiIpLnNsaWNlKDAsODApLGNsYXNzTmFtZToodHlwZW9mIGVsLmNsYXNzTmFtZT09PSJzdHJpbmciP2VsLmNsYXNzTmFtZToiIikuc2xpY2UoMCwxMjApLGxlZnQ6TWF0aC5yb3VuZChyLmxlZnQpLHJpZ2h0Ok1hdGgucm91bmQoci5yaWdodCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKX0sbG9jYXRlKGVsKSkpO2xldCBpbnRlcj1lbC5tYXRjaGVzJiZlbC5tYXRjaGVzKCJhW2hyZWZdLGJ1dHRvbixpbnB1dCxzZWxlY3QsdGV4dGFyZWEsW3JvbGU9YnV0dG9uXSxbcm9sZT10YWJdLFt0YWJpbmRleF0iKTtpZihpbnRlciYmdmlzKGVsKSYmKHIud2lkdGg8NDB8fHIuaGVpZ2h0PDQwKSYmdGlueS5sZW5ndGg8MzApdGlueS5wdXNoKE9iamVjdC5hc3NpZ24oe3RhZzplbC50YWdOYW1lLnRvTG93ZXJDYXNlKCksdGV4dDooZWwuaW5uZXJUZXh0fHxlbC5nZXRBdHRyaWJ1dGUoImFyaWEtbGFiZWwiKXx8IiIpLnRyaW0oKS5zbGljZSgwLDEwMCksd2lkdGg6TWF0aC5yb3VuZChyLndpZHRoKSxoZWlnaHQ6TWF0aC5yb3VuZChyLmhlaWdodCl9LGxvY2F0ZShlbCkpKTtsZXQgY2xzPXR5cGVvZiBlbC5jbGFzc05hbWU9PT0ic3RyaW5nIj9lbC5jbGFzc05hbWU6IiI7aWYoKC9hbmltYXRlfGFuaW1hdGluZy8udGVzdChjbHMpfHxlbC5oYXNBdHRyaWJ1dGUoImRhdGEtYW5pbS10eXBlIikpJiZyLndpZHRoPjAmJnIuaGVpZ2h0PjApe2xldCBjcz1nZXRDb21wdXRlZFN0eWxlKGVsKTtpZigocGFyc2VGbG9hdChjcy5vcGFjaXR5KXx8MCk8LjA1fHxjcy52aXNpYmlsaXR5PT09ImhpZGRlbiIpaWYoaGlkZGVuTW90aW9uLmxlbmd0aDwzMCloaWRkZW5Nb3Rpb24ucHVzaChPYmplY3QuYXNzaWduKHt0YWc6ZWwudGFnTmFtZS50b0xvd2VyQ2FzZSgpLGNsYXNzTmFtZTpjbHMuc2xpY2UoMCwxMjApfSxsb2NhdGUoZWwpKSl9fSk7ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgiYVtocmVmXSIpLmZvckVhY2goYT0+e2lmKGFuY2hvcnMubGVuZ3RoPj00MClyZXR1cm47bGV0IGg9KGEuZ2V0QXR0cmlidXRlKCJocmVmIil8fCIiKS50cmltKCk7aWYoIWh8fGg9PT0iIyJ8fC9eamF2YXNjcmlwdDovaS50ZXN0KGgpKXthbmNob3JzLnB1c2goT2JqZWN0LmFzc2lnbih7aHJlZjpoLHRleHQ6KGEuaW5uZXJUZXh0fHwiIikudHJpbSgpLnNsaWNlKDAsMTAwKSxpc3N1ZToiZW1wdHlfb3Jfbm9uX25hdmlnYXRpb24ifSxsb2NhdGUoYSkpKTtyZXR1cm59aWYoaFswXT09PSIjIiYmaC5sZW5ndGg+MSYmIWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKGguc2xpY2UoMSkpKWFuY2hvcnMucHVzaChPYmplY3QuYXNzaWduKHtocmVmOmgsdGV4dDooYS5pbm5lclRleHR8fCIiKS50cmltKCkuc2xpY2UoMCwxMDApLGlzc3VlOiJtaXNzaW5nX2ludGVybmFsX3RhcmdldCJ9LGxvY2F0ZShhKSkpfSk7bGV0IGFuaW09W107dHJ5e2FuaW09ZG9jdW1lbnQuZ2V0QW5pbWF0aW9ucz9kb2N1bWVudC5nZXRBbmltYXRpb25zKCk6W119Y2F0Y2goZSl7fWxldCBydW5uaW5nPWFuaW0uZmlsdGVyKGE9PmEucGxheVN0YXRlPT09InJ1bm5pbmciKS5sZW5ndGgsaW5maW5pdGU9YW5pbS5maWx0ZXIoYT0+e3RyeXtyZXR1cm4gYS5lZmZlY3QmJmEuZWZmZWN0LmdldFRpbWluZygpLml0ZXJhdGlvbnM9PT1JbmZpbml0eX1jYXRjaChlKXtyZXR1cm4gZmFsc2V9fSkubGVuZ3RoLHN3PU1hdGgubWF4KGQuc2Nyb2xsV2lkdGgsYj9iLnNjcm9sbFdpZHRoOjApLHNoPU1hdGgubWF4KGQuc2Nyb2xsSGVpZ2h0LGI/Yi5zY3JvbGxIZWlnaHQ6MCk7cmV0dXJue3ZpZXdwb3J0Ont3aWR0aDp2dyxoZWlnaHQ6aW5uZXJIZWlnaHR9LGRvY3VtZW50OntzY3JvbGxXaWR0aDpzdyxzY3JvbGxIZWlnaHQ6c2gsY2xpZW50V2lkdGg6ZC5jbGllbnRXaWR0aCxob3Jpem9udGFsT3ZlcmZsb3c6c3c+ZC5jbGllbnRXaWR0aCsyfSxjb3VudHM6e2VsZW1lbnRzOmFsbC5sZW5ndGgsb3ZlcmZsb3c6b3ZlcmZsb3cubGVuZ3RoLHRpbnlJbnRlcmFjdGl2ZTp0aW55Lmxlbmd0aCxoaWRkZW5Nb3Rpb246aGlkZGVuTW90aW9uLmxlbmd0aCxhbmNob3JJc3N1ZXM6YW5jaG9ycy5sZW5ndGh9LG92ZXJmbG93Om92ZXJmbG93LHRpbnlJbnRlcmFjdGl2ZTp0aW55LGhpZGRlbk1vdGlvbjpoaWRkZW5Nb3Rpb24sYW5jaG9ySXNzdWVzOmFuY2hvcnMsbW90aW9uOnttb2RlOmNmZy5tb3Rpb24scnVubmluZ0FuaW1hdGlvbnM6cnVubmluZyxpbmZpbml0ZUFuaW1hdGlvbnM6aW5maW5pdGV9fX1hc3luYyBmdW5jdGlvbiByZXBvcnQocmVzdWx0KXt0cnl7bGV0IGJvZHk9bmV3IFVSTFNlYXJjaFBhcmFtcyhjZmcuYXV0aCk7Ym9keS5zZXQoImRpYWdub3N0aWNzIixKU09OLnN0cmluZ2lmeShyZXN1bHQpKTtsZXQgcj1hd2FpdCBmZXRjaChjZmcuZW5kcG9pbnQse21ldGhvZDoiUE9TVCIsY3JlZGVudGlhbHM6Im9taXQiLGhlYWRlcnM6eyJDb250ZW50LVR5cGUiOiJhcHBsaWNhdGlvbi94LXd3dy1mb3JtLXVybGVuY29kZWQ7Y2hhcnNldD1VVEYtOCJ9LGJvZHk6Ym9keS50b1N0cmluZygpfSk7cmV0dXJuIHIub2t9Y2F0Y2goZSl7cmV0dXJuIGZhbHNlfX1hc3luYyBmdW5jdGlvbiBydW4oKXt0cnl7YXdhaXQgd2FpdChjZmcuZGVsYXkpO2xldCBpbnRlcj1hd2FpdCBpbnRlcmFjdGlvbnMoKSxyZXN1bHQ9c3RhdGljQ2hlY2tzKCk7cmVzdWx0LnZlcnNpb249MjtyZXN1bHQuaW50ZXJhY3Rpb25zPWludGVyO2xldCByZXBvcnRlZD1hd2FpdCByZXBvcnQocmVzdWx0KTtyZXN1bHQucmVwb3J0ZWQ9cmVwb3J0ZWQ7bGV0IG9sZD1kb2N1bWVudC5nZXRFbGVtZW50QnlJZCgiZWxlbWVudGl6ZS1icm93c2VyLXFhLXJlc3VsdCIpO2lmKG9sZClvbGQucmVtb3ZlKCk7bGV0IG91dD1kb2N1bWVudC5jcmVhdGVFbGVtZW50KCJzY3JpcHQiKTtvdXQudHlwZT0iYXBwbGljYXRpb24vanNvbiI7b3V0LmlkPSJlbGVtZW50aXplLWJyb3dzZXItcWEtcmVzdWx0IjtvdXQudGV4dENvbnRlbnQ9SlNPTi5zdHJpbmdpZnkocmVzdWx0KS5yZXBsYWNlKC88L2csIlxcdTAwM2MiKTtkb2N1bWVudC5ib2R5LmFwcGVuZENoaWxkKG91dCl9Y2F0Y2goZSl7bGV0IG91dD1kb2N1bWVudC5jcmVhdGVFbGVtZW50KCJzY3JpcHQiKTtvdXQudHlwZT0iYXBwbGljYXRpb24vanNvbiI7b3V0LmlkPSJlbGVtZW50aXplLWJyb3dzZXItcWEtcmVzdWx0IjtvdXQudGV4dENvbnRlbnQ9SlNPTi5zdHJpbmdpZnkoe3ZlcnNpb246MixlcnJvcjpTdHJpbmcoZSYmZS5tZXNzYWdlfHxlKX0pO2RvY3VtZW50LmJvZHkuYXBwZW5kQ2hpbGQob3V0KX19aWYoZG9jdW1lbnQucmVhZHlTdGF0ZT09PSJjb21wbGV0ZSIpcnVuKCk7ZWxzZSBhZGRFdmVudExpc3RlbmVyKCJsb2FkIixydW4se29uY2U6dHJ1ZX0pO30p', true );
         if ( ! is_string( $script ) ) return;
         echo '<script id="elementize-browser-probe">' . $script . '(' . wp_json_encode( $config ) . ');</script>';
     }
@@ -514,7 +549,7 @@ final class Elementize_Visual_QA {
         $paths = is_array( $job['paths'] ?? null ) ? $job['paths'] : [];
         $base['capture_state'] = 'pending';
         $base['capture_job_id'] = $job_id;
-        $base['retry_after_ms'] = 1500;
+        $base['retry_after_ms'] = 'safe' === (string) ( $base['interaction_probe'] ?? 'passive' ) ? 2000 : 1500;
         $base['capture_elapsed_ms'] = max( 0, (int) round( ( microtime( true ) - (float) ( $job['started_microtime'] ?? microtime( true ) ) ) * 1000 ) );
         $base['capture_artifact_state'] = self::capture_artifact_state( $paths );
         $base['note'] = 'The local browser capture is running outside the current WordPress request so the page can render without blocking on the REST worker. Call this same read-only Visual QA action again to collect the result.';
@@ -533,33 +568,66 @@ final class Elementize_Visual_QA {
         ];
     }
 
-    private static function start_capture_job( string $url, string $browser, string $job_id, int $id, string $hash, int $revision, string $viewport = 'desktop' ) {
+    private static function start_capture_job( string $url, string $browser, string $node, string $job_id, int $id, string $hash, int $revision, string $viewport = 'desktop', string $motion = 'settled', string $interaction = 'passive' ) {
         $url = self::normalize_capture_url( $url );
         if ( '' === $url ) return new WP_Error( 'elementize_visual_capture_url_invalid', 'The local rendered capture target must be a valid HTTP(S) URL.' );
         if ( '' === $browser || ! is_file( $browser ) ) return new WP_Error( 'elementize_visual_browser_missing', 'A supported local browser executable was not found.' );
         $paths = self::temp_paths( $job_id );
         self::cleanup_paths( $paths );
         if ( ! wp_mkdir_p( $paths['profile'] ) ) return new WP_Error( 'elementize_visual_profile_failed', 'Could not create an isolated local browser profile.' );
-
-        $runner = 'Windows' === PHP_OS_FAMILY
-            ? self::windows_runner( $browser, $url, $paths, $viewport )
-            : self::unix_runner( $browser, $url, $paths, $viewport );
+        $cdp_script = ELEMENTIZE_DIR . '/assets/runtime/elementize-cdp-capture.mjs';
+        $exact = '' !== $node && is_file( $node ) && is_file( $cdp_script );
+        if ( $exact ) {
+            $runner = 'Windows' === PHP_OS_FAMILY
+                ? self::windows_cdp_runner( $node, $browser, $url, $paths, $viewport, $motion, $interaction )
+                : self::unix_cdp_runner( $node, $browser, $url, $paths, $viewport, $motion, $interaction );
+        } else {
+            $runner = 'Windows' === PHP_OS_FAMILY
+                ? self::windows_runner( $browser, $url, $paths, $viewport )
+                : self::unix_runner( $browser, $url, $paths, $viewport );
+        }
         if ( is_wp_error( $runner ) ) { self::cleanup_paths( $paths ); return $runner; }
         if ( false === @file_put_contents( $paths['runner'], $runner ) ) { self::cleanup_paths( $paths ); return new WP_Error( 'elementize_visual_runner_write_failed', 'Could not create the temporary local capture runner.' ); }
         if ( 'Windows' !== PHP_OS_FAMILY ) @chmod( $paths['runner'], 0700 );
-
         $launched = self::launch_runner( $paths['runner'] );
         if ( is_wp_error( $launched ) ) { self::cleanup_paths( $paths ); return $launched; }
         return [
-            'job_id' => $job_id,
-            'page_id' => $id,
-            'content_hash' => $hash,
-            'revision' => $revision,
-            'viewport' => self::normalize_viewport( $viewport ),
-            'started_at' => time(),
-            'started_microtime' => microtime( true ),
-            'paths' => $paths,
+            'job_id' => $job_id, 'page_id' => $id, 'content_hash' => $hash, 'revision' => $revision,
+            'viewport' => self::normalize_viewport( $viewport ), 'viewport_exact' => $exact,
+            'capture_backend' => $exact ? 'local_chromium_cdp_async' : 'local_chromium_async',
+            'started_at' => time(), 'started_microtime' => microtime( true ), 'paths' => $paths,
         ];
+    }
+
+    private static function windows_cdp_runner( string $node, string $browser, string $url, array $paths, string $viewport, string $motion, string $interaction ) {
+        $url = self::normalize_capture_url( $url );
+        $script = ELEMENTIZE_DIR . '/assets/runtime/elementize-cdp-capture.mjs';
+        foreach ( [ $node, $browser, $url, $script, $paths['screenshot'], $paths['profile'], $paths['log'], $paths['done'] ] as $value ) {
+            if ( preg_match( '/[\r\n"]/', (string) $value ) ) return new WP_Error( 'elementize_visual_runner_value_invalid', 'A CDP capture runner value could not be safely encoded.' );
+        }
+        $spec = self::viewport_spec( $viewport );
+        $q = static function( string $value ): string { return '"' . str_replace( '%', '%%', $value ) . '"'; };
+        return "@echo off\r\n"
+            . "ping 127.0.0.1 -n 2 >nul\r\n"
+            . $q( $node ) . ' ' . $q( $script ) . ' ' . $q( $browser ) . ' ' . $q( $url ) . ' ' . $q( $paths['screenshot'] ) . ' ' . $q( $paths['profile'] )
+            . ' ' . (int) $spec['width'] . ' ' . (int) $spec['height'] . ' ' . (int) $spec['max_capture_height'] . ' ' . self::capture_settle_ms( $motion, $interaction )
+            . ' >' . $q( $paths['log'] ) . " 2>&1\r\n"
+            . '> ' . $q( $paths['done'] ) . " echo done\r\n"
+            . "del \"%~f0\" >nul 2>&1\r\n";
+    }
+
+    private static function unix_cdp_runner( string $node, string $browser, string $url, array $paths, string $viewport, string $motion, string $interaction ): string {
+        $url = self::normalize_capture_url( $url );
+        $script = ELEMENTIZE_DIR . '/assets/runtime/elementize-cdp-capture.mjs';
+        if ( '' === $url || ! is_file( $script ) ) return '';
+        $spec = self::viewport_spec( $viewport );
+        $q = static fn( string $value ): string => escapeshellarg( $value );
+        return "#!/bin/sh\n" . "sleep 1\n"
+            . $q( $node ) . ' ' . $q( $script ) . ' ' . $q( $browser ) . ' ' . $q( $url ) . ' ' . $q( $paths['screenshot'] ) . ' ' . $q( $paths['profile'] )
+            . ' ' . (int) $spec['width'] . ' ' . (int) $spec['height'] . ' ' . (int) $spec['max_capture_height'] . ' ' . self::capture_settle_ms( $motion, $interaction )
+            . ' >' . $q( $paths['log'] ) . " 2>&1\n"
+            . 'printf done >' . $q( $paths['done'] ) . "\n"
+            . 'rm -f ' . $q( $paths['runner'] ) . "\n";
     }
 
     private static function windows_runner( string $browser, string $url, array $paths, string $viewport = 'desktop' ) {
@@ -669,7 +737,7 @@ final class Elementize_Visual_QA {
             $diagnostic = self::read_capture_log( (string) ( $paths['log'] ?? '' ) );
             return new WP_Error( 'elementize_visual_no_screenshot', self::clip( 'The asynchronous local browser did not produce a complete PNG.' . ( '' !== $diagnostic ? ' Browser detail: ' . $diagnostic : '' ), 500 ) );
         }
-        self::bound_screenshot( $screenshot );
+        if ( empty( $job['viewport_exact'] ) ) self::bound_screenshot( $screenshot );
         $bytes = @file_get_contents( $screenshot );
         if ( false === $bytes || '' === $bytes ) return new WP_Error( 'elementize_visual_screenshot_read_failed', 'The captured screenshot could not be read.' );
         if ( strlen( $bytes ) > self::MAX_SCREENSHOT_BYTES ) return new WP_Error( 'elementize_visual_screenshot_too_large', 'The local screenshot exceeded the 10 MB safety limit.' );
@@ -683,7 +751,14 @@ final class Elementize_Visual_QA {
             }
         }
         $probe = self::browser_probe_for_job( $job_id );
-        return [ 'bytes' => $bytes, 'byte_count' => strlen( $bytes ), 'sha256' => hash( 'sha256', $bytes ), 'width' => $width, 'height' => $height, 'browser_probe' => $probe ];
+        $scroll_height = absint( $probe['diagnostics']['document']['scrollHeight'] ?? 0 ) ?: null;
+        $complete_document = null;
+        if ( ! empty( $job['viewport_exact'] ) && null !== $scroll_height && null !== $height ) $complete_document = $height + 2 >= $scroll_height;
+        return [
+            'bytes' => $bytes, 'byte_count' => strlen( $bytes ), 'sha256' => hash( 'sha256', $bytes ),
+            'width' => $width, 'height' => $height, 'browser_probe' => $probe,
+            'document_scroll_height' => $scroll_height, 'document_capture_complete' => $complete_document,
+        ];
     }
 
     private static function read_capture_log( string $path ): string {

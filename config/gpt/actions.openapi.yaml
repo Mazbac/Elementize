@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.41.0
+  version: 0.42.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
@@ -162,7 +162,7 @@ paths:
     get:
       operationId: getElementizePageVisualQA
       summary: Render the active Creative page for native ChatGPT visual QA
-      description: Read-only rendered QA for the active Creative Control page. Captures settled local Chromium output. With analyze=true, a bounded screenshot is returned to ChatGPT inside a ZIP conversation file for native vision inspection; preview URLs stay private.
+      description: Read-only Creative-page QA with viewport, motion and bounded interaction modes. Exact CDP captures expose viewport_exact=true; analyze=true returns screenshot.png in a private ZIP for native vision.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: analyze, in: query, required: false, schema: { type: boolean, default: true } }
