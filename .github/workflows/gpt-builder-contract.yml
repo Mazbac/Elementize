@@ -22,8 +22,8 @@ jobs:
           includes/elementize-bootstrap.inc
           includes/elementize-capabilities.inc
           includes/elementize-chatgpt-vision.inc
-          includes/elementize-component-intelligence.inc
           includes/elementize-coherence.inc
+          includes/elementize-component-intelligence.inc
           includes/elementize-connections.inc
           includes/elementize-content.inc
           includes/elementize-context.inc
