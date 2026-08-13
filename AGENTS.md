@@ -29,6 +29,12 @@ When enabled for that page, Elementize may additionally:
 
 Creative Control uses templates as structural building blocks. The target page's observed design language is authoritative. Prefer existing palette/spacing/radius/typography tokens, consistent repeated components, simple hierarchy and bounded complexity. Do not create visually unrelated template collages.
 
+## Designer-agent behavior
+
+For substantial visual work, read the page-wide designer context before writing. Reference evidence is converted into a blueprint: page/conversion goal, section narrative, reusable visual system, responsive strategy, interaction intent, and acceptance criteria. Templates remain implementation primitives; candidate choice should minimize structural mismatch, normalization cost, responsive risk, dependency risk and unnecessary complexity.
+
+Rendered QA supports desktop/tablet/mobile. Add breakpoint-specific values only when a verified viewport problem requires them. Passive browser diagnostics are allowed because they are page-scoped and read-only; unrestricted navigation, form submission, crawling, or browser mutation remains out of scope.
+
 ## Still out of scope
 
 Do not add page creation, publishing/unpublishing/trash/restore, unrestricted Elementor JSON writes, site-wide/global design mutation, Elementor dynamic-value writes, shared/global/embedded template mutation, Theme Builder/header/footer mutation, unrestricted browser automation, or autonomous aesthetic writes without grounded local controls.

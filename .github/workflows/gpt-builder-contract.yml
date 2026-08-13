@@ -28,6 +28,7 @@ jobs:
           includes/elementize-creative-save-diagnostics.inc
           includes/elementize-creative.inc
           includes/elementize-design.inc
+          includes/elementize-designer.inc
           includes/elementize-media-import.inc
           includes/elementize-media-library.inc
           includes/elementize-onboarding.inc
@@ -51,10 +52,10 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 21
-          test "$init_count" -eq 18
+          test "$require_count" -eq 22
+          test "$init_count" -eq 19
 
-          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens pixfort-repeater-colors content context capabilities design tree templates template-response creative creative-save-diagnostics visual-qa chatgpt-vision media-library media-import activity connections onboarding; do
+          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens pixfort-repeater-colors content context capabilities design designer tree templates template-response creative creative-save-diagnostics visual-qa chatgpt-vision media-library media-import activity connections onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
           test ! -d includes/runtime || { echo 'Superseded includes/runtime directory returned.'; exit 1; }
@@ -73,6 +74,15 @@ jobs:
           grep -q "elementize_capabilities_changed" includes/elementize-capabilities.inc || { echo 'Capability revision stale-state guard is missing.'; exit 1; }
           grep -q "class Elementize_Tree" includes/elementize-tree.inc || { echo 'Guarded tree primitives are missing.'; exit 1; }
           grep -q "class Elementize_Design" includes/elementize-design.inc || { echo 'Design profile runtime is missing.'; exit 1; }
+          grep -q "class Elementize_Designer" includes/elementize-designer.inc || { echo 'Designer-agent context runtime is missing.'; exit 1; }
+          grep -q "blueprint_contract" includes/elementize-designer.inc || { echo 'Designer blueprint contract is missing.'; exit 1; }
+          grep -q "responsive_breakpoint" includes/elementize-design.inc || { echo 'Responsive design-control metadata is missing.'; exit 1; }
+          php tests/designer-agent-contract.php
+          php tests/browser-probe-contract.php
+          probe_b64=$(php -r '$s=file_get_contents("includes/elementize-visual-qa.inc"); preg_match("/base64_decode\\( \'([A-Za-z0-9+\\/=]+)\', true \\)/",$s,$m); echo $m[1] ?? "";')
+          test -n "$probe_b64"
+          printf '%s' "$probe_b64" | base64 -d > /tmp/elementize-browser-probe.js
+          node --check /tmp/elementize-browser-probe.js
           grep -q "class Elementize_Templates" includes/elementize-templates.inc || { echo 'Template provider runtime is missing.'; exit 1; }
           grep -q "class Elementize_Pixfort_Transport" includes/elementize-pixfort-transport.inc || { echo 'Pixfort authenticated transport adapter is missing.'; exit 1; }
           grep -q "pix_domain" includes/elementize-pixfort-transport.inc || { echo 'Pixfort transport domain header is missing.'; exit 1; }
@@ -124,8 +134,8 @@ jobs:
           grep -q 'persisted_verification=true' "$instructions" || { echo 'Successful-write completion signal is missing.'; exit 1; }
 
           operation_count=$(grep -c 'operationId:' "$schema" || true)
-          echo "GPT Action operations: ${operation_count}/18"
-          test "$operation_count" -eq 18
+          echo "GPT Action operations: ${operation_count}/19"
+          test "$operation_count" -eq 19
 
           required_operations=(
             getElementizeStatus
@@ -135,6 +145,7 @@ jobs:
             getElementizePageContent
             updateElementizePageContent
             getElementizePageDesignProfile
+            getElementizeDesignerContext
             getElementizePageVisualQA
             searchElementizeTemplates
             getElementizeTemplate
@@ -176,6 +187,13 @@ jobs:
           grep -q 'confirm_creative_write:' "$schema" || { echo 'Creative confirmation schema is missing.'; exit 1; }
           grep -q 'alias:originalTemplateElementId' "$schema" || { echo 'Inserted-template alias reference contract is missing.'; exit 1; }
           grep -q 'provider=pixfort' "$instructions" || { echo 'GPT must prefer Pixfort-native templates when suitable.'; exit 1; }
+          grep -q 'Designer workflow' "$instructions" || { echo 'GPT senior-designer workflow is missing.'; exit 1; }
+          grep -q 'desktop, tablet and mobile' "$instructions" || { echo 'GPT multi-viewport QA rule is missing.'; exit 1; }
+          grep -q 'browser diagnostics' "$instructions" || { echo 'GPT browser-diagnostics rule is missing.'; exit 1; }
+          grep -q 'interaction_probe=safe' "$instructions" || { echo 'GPT bounded interaction QA rule is missing.'; exit 1; }
+          grep -q 'motion=live' "$instructions" || { echo 'GPT live-motion QA rule is missing.'; exit 1; }
+          grep -q 'enum: \[settled, live\]' "$schema" || { echo 'Visual QA motion mode schema is missing.'; exit 1; }
+          grep -q 'enum: \[passive, safe\]' "$schema" || { echo 'Visual QA interaction mode schema is missing.'; exit 1; }
 
           header_version=$(sed -n 's/^ \* Version: //p' elementize.php | head -1)
           constant_version=$(sed -n "s/^define( 'ELEMENTIZE_VERSION', '\([^']*\)' );/\1/p" elementize.php | head -1)

@@ -38,6 +38,14 @@ On that selected page, Elementize can additionally:
 
 Templates are treated as structural building blocks. The target page's existing design language remains the authority; Creative Control is not intended to assemble unrelated template styles into a collage.
 
+### Designer-agent foundation
+
+Creative Control now exposes a read-only `designer-context` for page-wide planning before a substantial build. It combines the fresh page outline with observed palette, spacing, radius and typography evidence, responsive-control evidence, and explicit blueprint/reference/quality contracts. The Custom GPT remains the design brain; the server supplies evidence and guarded execution rather than making opaque aesthetic decisions.
+
+Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elementize intentionally does not turn arbitrary external URLs into a server-side fetch surface. The GPT extracts transferable layout/design rules, creates a page blueprint, maps those requirements onto Pixfort/Elementor primitives, and then validates the target page through Elementize.
+
+Writable design controls now report a `responsive_breakpoint` so the GPT can distinguish inherited desktop behavior from explicit tablet/mobile overrides. Responsive changes should be made only for a verified breakpoint problem.
+
 ## Media sources
 
 Every page image replacement uses a WordPress attachment ID. Elementize supports four ways to obtain one:
@@ -120,7 +128,7 @@ If verification fails, Elementize attempts to restore the pre-change page.
 
 ### Native rendered Visual QA
 
-On the active Creative Control page, `getElementizePageVisualQA` captures a signed local Chromium render without exposing the preview URL. Capture is asynchronous, settles CSS animation/transition states, and trims tall screenshots to meaningful content bounds. With `analyze=true`, Elementize returns a ZIP conversation file through `openaiFileResponse`; the Custom GPT extracts `screenshot.png` and inspects it with native ChatGPT vision.
+On the active Creative Control page, `getElementizePageVisualQA` captures a signed local Chromium render without exposing the preview URL. Capture is asynchronous, supports desktop (1440 px), tablet (768 px), and mobile (390 px), settles CSS animation/transition states, and trims tall screenshots to meaningful content bounds. Each viewport uses an isolated job identity. With `analyze=true`, Elementize returns a ZIP conversation file through `openaiFileResponse`; the Custom GPT extracts `screenshot.png` and inspects it with native ChatGPT vision. A second read-only Chromium pass emits passive browser diagnostics for horizontal overflow, undersized interactive targets, invalid/missing anchors, and motion-related hidden elements.
 
 The server intentionally keeps `visual_analysis_verified=false` for native handoff. A GPT may only claim native visual verification after it actually inspected the returned PNG. Visual findings must be localized to fresh writable page-scoped controls before mutation. Design-profile controls disclose effective scope; a repair must not be narrower than the selected control effect. Shared/global/header/footer content may appear in the screenshot but remains outside page-scoped Creative Control.
 
@@ -168,6 +176,7 @@ includes/
   elementize-content.inc
   elementize-context.inc
   elementize-design.inc
+  elementize-designer.inc
   elementize-tree.inc
   elementize-templates.inc
   elementize-template-response.inc
@@ -193,4 +202,4 @@ tests/
   *.php
 ```
 
-CI covers the frontend build, canonical GPT/Action contract, Creative save/control guards, Pixfort selector contracts, native Visual QA handoff/bounds, and PHP syntax. The plugin header remains on the current product version while the Creative Control branch is being finalized.
+CI covers the frontend build, canonical GPT/Action contract, designer-agent contract, Creative save/control guards, Pixfort selector contracts, native Visual QA handoff/bounds, and PHP syntax.

@@ -15,7 +15,7 @@ foreach ( [ 'provider=chatgpt_native_vision', 'capture_bounds_ready=true', 'open
 foreach ( [ 'Elementize_ChatGPT_Vision::handle( $request )', 'settle_preview_motion', 'elementize-visual-settle-motion', 'bound_screenshot', 'animation-duration:0s', 'transition-duration:0s' ] as $needle ) {
     if ( false === strpos( $visual, $needle ) ) fail_native_visual_loop( "Native capture contract missing: {$needle}" );
 }
-foreach ( [ 'openaiFileResponse', "'mime_type' => 'application/zip'", "'provider' => 'chatgpt_native_vision'", 'capture_bounds_ready', 'content_bounded_tall_desktop' ] as $needle ) {
+foreach ( [ 'openaiFileResponse', "'mime_type' => 'application/zip'", "'provider' => 'chatgpt_native_vision'", 'capture_bounds_ready', 'content_bounded_tall_' ] as $needle ) {
     if ( false === strpos( $handoff, $needle ) ) fail_native_visual_loop( "Native handoff contract missing: {$needle}" );
 }
 foreach ( [ 'OLLAMA', 'ollama', 'gemma3', 'local_vision_model', 'ELEMENTIZE_LOCAL_VISION_MODEL', 'ELEMENTIZE_OLLAMA_URL', '/api/chat', '/api/tags' ] as $legacy ) {

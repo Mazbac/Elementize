@@ -30,10 +30,10 @@ final class Elementize_ChatGPT_Vision {
         if ( is_wp_error( $allowed ) ) return $allowed;
         if ( true !== $allowed ) return new WP_Error( 'elementize_forbidden', 'You cannot edit this page.', [ 'status' => 403 ] );
 
-        return self::handoff( absint( $request['id'] ) );
+        return self::handoff( absint( $request['id'] ), (string) $request->get_param( 'viewport' ), (string) $request->get_param( 'motion' ), (string) $request->get_param( 'interaction_probe' ) );
     }
 
-    private static function handoff( int $id ) {
+    private static function handoff( int $id, string $viewport = 'desktop', string $motion = 'settled', string $interaction = 'passive' ) {
         $state = Elementize_Capabilities::state();
         if ( empty( $state['creative_enabled'] ) || absint( $state['scope_page_id'] ) !== $id ) {
             return new WP_Error( 'elementize_visual_qa_scope_mismatch', 'Rendered Visual QA is currently limited to the active Creative Control page.', [ 'status' => 403, 'capability_state' => $state ] );
@@ -46,15 +46,18 @@ final class Elementize_ChatGPT_Vision {
 
         $hash = Elementize_Core::hash_elements( $loaded['elements'] );
         $revision = absint( $state['revision'] );
-        $context = Elementize_Visual_QA::capture_context( $id, $hash, $revision );
+        $viewport = in_array( strtolower( trim( $viewport ) ), [ 'desktop', 'tablet', 'mobile' ], true ) ? strtolower( trim( $viewport ) ) : 'desktop';
+        $motion = 'live' === strtolower( trim( $motion ) ) ? 'live' : 'settled';
+        $interaction = 'safe' === strtolower( trim( $interaction ) ) ? 'safe' : 'passive';
+        $context = Elementize_Visual_QA::capture_context( $id, $hash, $revision, $viewport, $motion, $interaction );
         $capture_version = (string) $context['version'];
         $job_id = (string) $context['job_id'];
         $job_key = (string) $context['job_key'];
         $paths = (array) $context['paths'];
-        $base = self::base_payload( $id, $loaded, $hash, $revision, $capture_version );
+        $base = self::base_payload( $id, $loaded, $hash, $revision, $capture_version, $viewport, $motion, $interaction );
 
-        if ( Elementize_Visual_QA::png_file_complete( $paths['screenshot'] ) ) {
-            return self::complete_payload( $base, $job_id, $paths['screenshot'] );
+        if ( Elementize_Visual_QA::capture_job_complete( $paths ) ) {
+            return self::complete_payload( $base, $job_id, $paths['screenshot'], $paths );
         }
 
         $job = get_transient( $job_key );
@@ -68,6 +71,9 @@ final class Elementize_ChatGPT_Vision {
         $capture_request = new WP_REST_Request( 'GET', '/' . Elementize_Core::NS . '/pages/' . $id . '/visual-qa' );
         $capture_request->set_param( 'id', $id );
         $capture_request->set_param( 'analyze', false );
+        $capture_request->set_param( 'viewport', $viewport );
+        $capture_request->set_param( 'motion', $motion );
+        $capture_request->set_param( 'interaction_probe', $interaction );
         $started = Elementize_Visual_QA::read( $capture_request );
         if ( is_wp_error( $started ) ) return $started;
 
@@ -96,7 +102,7 @@ final class Elementize_ChatGPT_Vision {
         return new WP_REST_Response( $base, 200 );
     }
 
-    private static function base_payload( int $id, array $loaded, string $hash, int $revision, string $capture_version ): array {
+    private static function base_payload( int $id, array $loaded, string $hash, int $revision, string $capture_version, string $viewport, string $motion, string $interaction ): array {
         return [
             'visual_qa_version' => $capture_version,
             'chatgpt_vision_handoff_version' => self::VERSION,
@@ -110,6 +116,9 @@ final class Elementize_ChatGPT_Vision {
             'paid_services_required' => false,
             'external_account_required' => false,
             'capture_backend' => 'local_chromium_async',
+            'viewport' => $viewport,
+            'motion' => $motion,
+            'interaction_probe' => $interaction,
             'analysis_backend' => 'chatgpt_native_vision',
             'analysis_requested' => true,
             'analysis_ready' => false,
@@ -136,7 +145,7 @@ final class Elementize_ChatGPT_Vision {
         return $base;
     }
 
-    private static function complete_payload( array $base, string $job_id, string $screenshot ) {
+    private static function complete_payload( array $base, string $job_id, string $screenshot, array $paths = [] ) {
         $bounds = class_exists( 'Elementize_Visual_QA' )
             ? Elementize_Visual_QA::bound_screenshot( $screenshot )
             : [ 'available' => false, 'trimmed' => false, 'original_height' => null, 'bounded_height' => null ];
@@ -184,10 +193,13 @@ final class Elementize_ChatGPT_Vision {
         $base['capture_bounds_trimmed'] = (bool) ( $bounds['trimmed'] ?? false );
         $base['capture_original_height'] = $bounds['original_height'] ?? null;
         $base['capture_bounded_height'] = $bounds['bounded_height'] ?? null;
-        $base['capture_mode'] = ! empty( $bounds['available'] ) ? 'content_bounded_tall_desktop' : 'tall_desktop';
+        $base['capture_mode'] = ! empty( $bounds['available'] ) ? 'content_bounded_tall_' . (string) ( $base['viewport'] ?? 'desktop' ) : 'tall_' . (string) ( $base['viewport'] ?? 'desktop' );
         if ( empty( $bounds['available'] ) ) {
             $base['capture_bounds_reason'] = 'Content-bounds normalization was unavailable; native visual analysis must not claim bounded capture verification.';
         }
+        $probe = Elementize_Visual_QA::browser_probe_result( (string) ( $paths['dom'] ?? '' ) );
+        $base['browser_probe_verified'] = (bool) ( $probe['verified'] ?? false );
+        $base['browser_diagnostics'] = $probe['diagnostics'] ?? null;
         $base['screenshot'] = [
             'captured' => true,
             'mime_type' => 'image/png',

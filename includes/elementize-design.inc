@@ -236,6 +236,7 @@ final class Elementize_Design {
             'value_semantics' => $semantic ? 'pixfort_theme_token' : ( 'color' === $category ? 'literal_css_color' : 'bounded_elementor_value' ),
             'writable_in_creative_mode' => true,
             'control_scope' => self::control_scope( $path ),
+            'responsive_breakpoint' => self::responsive_breakpoint( $path ),
         ];
         if ( 'pix-highlighted-text' === sanitize_key( $widget ) && 'title_size' === $setting_key && 'element' === $out['control_scope'] ) {
             $targets = self::highlighted_text_targets( $root_settings );
@@ -262,6 +263,13 @@ final class Elementize_Design {
     private static function control_scope( array $path ): string {
         foreach ( $path as $part ) if ( is_int( $part ) ) return 'repeater_item';
         return 'element';
+    }
+
+    private static function responsive_breakpoint( array $path ): string {
+        $key = strtolower( implode( '_', array_map( static fn( $part ) => is_scalar( $part ) ? (string) $part : '', $path ) ) );
+        if ( preg_match( '/(^|_)(mobile|mobile_extra)(_|$)/', $key ) ) return 'mobile';
+        if ( preg_match( '/(^|_)(tablet|tablet_extra)(_|$)/', $key ) ) return 'tablet';
+        return 'desktop';
     }
 
     private static function highlighted_text_targets( array $settings ): array {

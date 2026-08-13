@@ -88,7 +88,7 @@ foreach ( [
     '$candidate_url =',
     '$url = self::normalize_capture_url( $candidate_url );',
     'self::start_capture_job( $url,',
-    "private const JOB_PREFIX = 'elementize_visual_qa_job_v7_'",
+    "private const JOB_PREFIX = 'elementize_visual_qa_job_v8_'",
     'Start-Process -FilePath',
     "getenv( 'ComSpec' )",
 ] as $needle ) {

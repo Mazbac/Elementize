@@ -16,7 +16,7 @@ if ( ! $method->isPublic() || ! $method->isStatic() ) fail_chatgpt_vision_bounds
 foreach ( [ 'bound_screenshot', "'available' => false", "'trimmed' => false", 'imagecrop', 'imagepng' ] as $needle ) {
     if ( false === strpos( $visual, $needle ) ) fail_chatgpt_vision_bounds_contract( 'Missing unified bounds marker: ' . $needle );
 }
-foreach ( [ 'Elementize_Visual_QA::bound_screenshot', "'capture_bounds_ready'", "'capture_original_height'", "'capture_bounded_height'", "'content_bounded_tall_desktop'" ] as $needle ) {
+foreach ( [ 'Elementize_Visual_QA::bound_screenshot', "'capture_bounds_ready'", "'capture_original_height'", "'capture_bounded_height'", "'content_bounded_tall_'" ] as $needle ) {
     if ( false === strpos( $handoff, $needle ) ) fail_chatgpt_vision_bounds_contract( 'Missing native handoff bounds marker: ' . $needle );
 }
 if ( file_exists( __DIR__ . '/../includes/runtime/elementize-chatgpt-vision-bounds.inc' ) ) {

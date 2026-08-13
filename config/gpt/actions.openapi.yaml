@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.40.0
+  version: 0.41.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
@@ -148,6 +148,16 @@ paths:
       responses:
         '200': { description: Fresh design profile, capability state, and exact safe design controls }
 
+  /wp-json/elementize/v1/pages/{id}/designer-context:
+    get:
+      operationId: getElementizeDesignerContext
+      summary: Read page-wide senior-designer context
+      description: Returns fresh page outline, design language, responsive evidence, and blueprint/reference/quality contracts for page-wide planning before Creative writes.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: Fresh read-only designer context and page-wide quality contracts }
+
   /wp-json/elementize/v1/pages/{id}/visual-qa:
     get:
       operationId: getElementizePageVisualQA
@@ -156,6 +166,9 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
         - { name: analyze, in: query, required: false, schema: { type: boolean, default: true } }
+        - { name: viewport, in: query, required: false, schema: { type: string, enum: [desktop, tablet, mobile], default: desktop } }
+        - { name: motion, in: query, required: false, schema: { type: string, enum: [settled, live], default: settled } }
+        - { name: interaction_probe, in: query, required: false, schema: { type: string, enum: [passive, safe], default: passive } }
       responses:
         '200':
           description: Render verification, bounded capture metadata, and optional native ChatGPT vision ZIP handoff
