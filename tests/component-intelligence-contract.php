@@ -19,10 +19,11 @@ if ( $feature <= $cta ) fail_component_intelligence( 'Feature-grid structure sho
 $source = file_get_contents( __DIR__ . '/../includes/elementize-component-intelligence.inc' );
 $schema = file_get_contents( __DIR__ . '/../config/gpt/actions.openapi.yaml' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );
-foreach ( [ 'metadata_shortlist_count', 'structural_fit', 'design_compatibility', 'responsive_confidence', 'dependency_safety', 'edit_efficiency', 'estimated_normalization_cost', 'blueprint_grounding', 'expected_blueprint_fingerprint', 'selected_section_id', 'acceptance_plan' ] as $needle ) {
+foreach ( [ "private const VERSION = '4'", 'metadata_shortlist_count', 'structural_fit', 'design_compatibility', 'responsive_confidence', 'dependency_safety', 'edit_efficiency', 'estimated_normalization_cost', 'blueprint_grounding', 'expected_blueprint_fingerprint', 'selected_section_id', 'acceptance_plan', 'build_checkpoints', 'checkpoint_after_selected_section' ] as $needle ) {
     if ( false === strpos( $source, $needle ) ) fail_component_intelligence( 'Missing component scoring marker: ' . $needle );
 }
 if ( false === strpos( $schema, 'operationId: rankElementizeComponentCandidates' ) ) fail_component_intelligence( 'Component ranking Action is missing.' );
 if ( false === strpos( $instructions, '`rankElementizeComponentCandidates`' ) ) fail_component_intelligence( 'GPT component-ranking workflow is missing.' );
+if ( false === strpos( $instructions, '`build_checkpoints`' ) ) fail_component_intelligence( 'GPT progressive component-build checkpoint workflow is missing.' );
 if ( false === strpos( $source, "'read_only' => true" ) ) fail_component_intelligence( 'Component ranking must remain read-only.' );
 echo "Component intelligence contract OK\n";

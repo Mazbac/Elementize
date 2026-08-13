@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * blueprint/QA contracts so ChatGPT can reason page-wide before mutating.
  */
 final class Elementize_Designer {
-    private const VERSION = '6';
+    private const VERSION = '7';
     private const MAX_SECTIONS = 80;
 
     public static function init(): void {
@@ -59,6 +59,7 @@ final class Elementize_Designer {
             'blueprint_contract' => self::blueprint_contract(),
             'execution_trace_contract' => Elementize_Execution_Trace::contract(),
             'reference_analysis_contract' => self::reference_contract(),
+            'visual_critic_contract' => self::visual_critic_contract(),
             'quality_contract' => self::quality_contract(),
         ], 200 );
     }
@@ -151,6 +152,32 @@ final class Elementize_Designer {
             'observation_contract' => $blueprint['reference_evidence'] ?? [],
             'separate' => [ 'must_match_structure', 'adaptable_visual_language', 'site_specific_content', 'unsupported_or_unverifiable_behavior' ],
             'rule' => 'Record observed and inferred evidence separately. One observed viewport never proves another viewport; unresolved behavior remains a hypothesis until target QA verifies it.',
+        ];
+    }
+
+    private static function visual_critic_contract(): array {
+        return [
+            'version' => '1',
+            'authority' => 'native_chatgpt_vision',
+            'required_evidence' => [ 'actual_screenshot_png', 'fresh_designer_context', 'current_blueprint_checkpoint' ],
+            'metadata_is_not_visual_acceptance' => true,
+            'checkpoint_rubrics' => [
+                'design_language_lock' => [ 'hero_prominence', 'first_viewport_conversion_clarity', 'cta_hierarchy', 'media_scale', 'target_design_language', 'above_fold_balance' ],
+                'early_narrative' => [ 'section_scale_consistency', 'heading_body_width_balance', 'vertical_spacing_rhythm', 'split_balance', 'background_transition', 'content_density' ],
+                'mid_page_rhythm' => [ 'layout_repetition', 'card_grid_monotony', 'section_height_variance', 'imagery_prominence', 'accent_consistency', 'narrative_pacing' ],
+                'whole_page_close' => [ 'whole_page_hierarchy', 'cta_dominance', 'whitespace_outliers', 'footer_transition', 'background_rhythm', 'typography_progression', 'conversion_path' ],
+            ],
+            'whole_page_questions' => [
+                'Does the hero visually dominate enough to establish the page promise and primary action?',
+                'Does each section use its available height intentionally, or is content floating inside excessive whitespace?',
+                'Are product images/media large enough for their narrative importance and balanced against adjacent copy?',
+                'Do consecutive sections vary composition enough to avoid template/card-grid monotony without breaking the system?',
+                'Are heading, copy and media widths aligned into a consistent page-wide composition system?',
+                'Are accent colors, highlights, cards, radii and CTA treatments consistent with the target design language?',
+                'Does the final CTA occupy its section confidently and transition cleanly into the footer without stray whitespace?',
+            ],
+            'priority_rule' => 'Choose the single highest-impact visual/conversion problem that is visible, localizable and safely repairable; do not optimize minor telemetry while a page-wide composition problem is obvious.',
+            'repair_rule' => 'Visual criticism never authorizes a write by itself. Fresh-read exact local controls and compare a new screenshot after one bounded repair; Undo if worse.',
         ];
     }
 

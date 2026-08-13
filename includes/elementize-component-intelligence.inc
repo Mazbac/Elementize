@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * The server scores grounded implementation fit; ChatGPT remains the design authority.
  */
 final class Elementize_Component_Intelligence {
-    private const VERSION = '3';
+    private const VERSION = '4';
     private const MAX_INDEX_ITEMS = 500;
     private const MAX_METADATA_SHORTLIST = 16;
     private const MAX_RETURN = 8;
@@ -109,12 +109,19 @@ final class Elementize_Component_Intelligence {
             $contract = (string) ( $section['contract'] ?? 'generic' );
             $keywords = (array) ( $section['keywords'] ?? [] );
             $semantic_context = trim( implode( ' ', array_merge( [ $purpose, (string) ( $section['narrative_role'] ?? '' ), (string) ( $section['layout_pattern'] ?? '' ) ], (array) ( $section['component_constraints'] ?? [] ) ) ) );
+            $checkpoints = (array) ( $validated['normalized']['build_checkpoints'] ?? [] );
+            $checkpoint_trigger = null;
+            foreach ( $checkpoints as $checkpoint ) {
+                if ( (string) ( $checkpoint['after_section_id'] ?? '' ) === $selected_id ) { $checkpoint_trigger = $checkpoint; break; }
+            }
             $blueprint_context = [
                 'blueprint_version' => (string) ( $validated['blueprint_version'] ?? '' ),
                 'blueprint_fingerprint' => (string) ( $validated['fingerprint'] ?? '' ),
                 'selected_section_id' => $selected_id,
                 'selected_section' => $section,
                 'acceptance_plan' => (array) ( $validated['normalized']['acceptance_plan'] ?? [] ),
+                'build_checkpoints' => $checkpoints,
+                'checkpoint_after_selected_section' => $checkpoint_trigger,
             ];
         } else {
             $purpose = trim( sanitize_textarea_field( (string) $request->get_param( 'purpose' ) ) );

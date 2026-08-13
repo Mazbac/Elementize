@@ -86,6 +86,9 @@ jobs:
           grep -q "reference_evidence" includes/elementize-blueprint.inc || { echo 'Structured reference evidence is missing.'; exit 1; }
           grep -q "acceptance_plan" includes/elementize-blueprint.inc || { echo 'Blueprint acceptance plan is missing.'; exit 1; }
           grep -q "qa_matrix" includes/elementize-blueprint.inc || { echo 'Deterministic QA matrix derivation is missing.'; exit 1; }
+          grep -q "build_checkpoints" includes/elementize-blueprint.inc || { echo 'Progressive build checkpoint derivation is missing.'; exit 1; }
+          grep -q "visual_critic_contract" includes/elementize-designer.inc || { echo 'Whole-page visual critic contract is missing.'; exit 1; }
+          grep -q "checkpoint_after_selected_section" includes/elementize-component-intelligence.inc || { echo 'Component checkpoint trigger evidence is missing.'; exit 1; }
           grep -q "responsive_breakpoint" includes/elementize-design.inc || { echo 'Responsive design-control metadata is missing.'; exit 1; }
           php tests/designer-agent-contract.php
           php tests/coherence-engine-contract.php
@@ -223,6 +226,8 @@ jobs:
           grep -q 'ElementizeRepairSignal' "$schema" || { echo 'Visual QA repair-signal schema is missing.'; exit 1; }
           grep -q 'provider=pixfort' "$instructions" || { echo 'GPT must prefer Pixfort-native templates when suitable.'; exit 1; }
           grep -q 'Designer workflow' "$instructions" || { echo 'GPT senior-designer workflow is missing.'; exit 1; }
+          grep -q 'build_checkpoints' "$instructions" || { echo 'GPT progressive visual checkpoint rule is missing.'; exit 1; }
+          grep -q 'visual_critic_contract' "$instructions" || { echo 'GPT whole-page critic rule is missing.'; exit 1; }
           grep -q 'desktop, tablet and mobile' "$instructions" || { echo 'GPT multi-viewport QA rule is missing.'; exit 1; }
           grep -q 'browser diagnostics' "$instructions" || { echo 'GPT browser-diagnostics rule is missing.'; exit 1; }
           grep -q 'quality_gate_evaluation' "$instructions" || { echo 'GPT deterministic quality-gate rule is missing.'; exit 1; }

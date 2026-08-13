@@ -26,7 +26,7 @@ $design = file_get_contents( __DIR__ . '/../includes/elementize-design.inc' );
 $visual = file_get_contents( __DIR__ . '/../includes/elementize-visual-qa.inc' );
 $schema = file_get_contents( __DIR__ . '/../config/gpt/actions.openapi.yaml' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );
-foreach ( [ 'blueprint_contract', 'execution_trace_contract', 'reference_analysis_contract', 'quality_contract', 'responsive_control_summary', 'page_coherence', 'observation_contract' ] as $needle ) {
+foreach ( [ "private const VERSION = '7'", 'blueprint_contract', 'execution_trace_contract', 'reference_analysis_contract', 'visual_critic_contract', 'checkpoint_rubrics', 'whole_page_questions', 'quality_contract', 'responsive_control_summary', 'page_coherence', 'observation_contract' ] as $needle ) {
     if ( false === strpos( $designer, $needle ) ) fail_designer_agent( 'Designer context missing: ' . $needle );
 }
 foreach ( [ "'responsive_breakpoint'", 'responsive_breakpoint( array $path )' ] as $needle ) {
@@ -40,7 +40,7 @@ if ( false === strpos( $schema, 'enum: [desktop, tablet, mobile]' ) ) fail_desig
 foreach ( [ 'ElementizeReferenceEvidence', 'ElementizeReferenceObservation', 'ElementizeAcceptancePlan', 'safe_interaction_viewports', 'quality_gates' ] as $needle ) {
     if ( false === strpos( $schema, $needle ) ) fail_designer_agent( 'Reference/acceptance schema missing: ' . $needle );
 }
-foreach ( [ 'Designer workflow', 'Reference pages', 'desktop, tablet and mobile', 'browser diagnostics', 'acceptance_plan.qa_matrix', 'evidence_kind=observed|inferred' ] as $needle ) {
+foreach ( [ 'Designer workflow', 'Reference pages', 'build_checkpoints', 'visual_critic_contract', 'desktop, tablet and mobile', 'browser diagnostics', 'acceptance_plan.qa_matrix', 'evidence_kind=observed|inferred' ] as $needle ) {
     if ( false === strpos( $instructions, $needle ) ) fail_designer_agent( 'GPT designer instruction missing: ' . $needle );
 }
 

@@ -58,13 +58,30 @@ if ( ! is_array( $result ) ) fail_blueprint( 'Valid blueprint did not normalize.
 if ( ( $result['selected_section']['contract'] ?? '' ) !== 'feature_grid' ) fail_blueprint( 'Selected blueprint section was not grounded.' );
 $fingerprint = (string) ( $result['fingerprint'] ?? '' );
 if ( 64 !== strlen( $fingerprint ) ) fail_blueprint( 'Blueprint fingerprint is not SHA-256.' );
-if ( ( $result['blueprint_version'] ?? '' ) !== '2' ) fail_blueprint( 'Reference-aware blueprint version did not advance.' );
+if ( ( $result['blueprint_version'] ?? '' ) !== '3' ) fail_blueprint( 'Progressive-checkpoint blueprint version did not advance.' );
 if ( ( $result['normalized']['reference_evidence']['observation_count'] ?? 0 ) !== 3 ) fail_blueprint( 'Reference evidence count was not normalized.' );
 if ( ( $result['normalized']['reference_evidence']['observed_categories'] ?? [] ) !== [ 'layout', 'responsive' ] ) fail_blueprint( 'Observed reference categories are not deterministic.' );
 $matrix = (array) ( $result['normalized']['acceptance_plan']['qa_matrix'] ?? [] );
 if ( count( $matrix ) !== 6 ) fail_blueprint( 'Acceptance QA matrix should contain 3 settled, 1 live and 2 safe rows.' );
 if ( ( $matrix[0]['id'] ?? '' ) !== 'desktop-settled' || ( $matrix[0]['analyze'] ?? null ) !== true ) fail_blueprint( 'Desktop settled native-vision row is missing.' );
 if ( ( $matrix[3]['id'] ?? '' ) !== 'desktop-live' || ( $matrix[3]['analyze'] ?? null ) !== false ) fail_blueprint( 'Live-motion QA row is not deterministic.' );
+$short_checkpoints = (array) ( $result['normalized']['build_checkpoints'] ?? [] );
+if ( array_column( $short_checkpoints, 'stage' ) !== [ 'design_language_lock', 'whole_page_close' ] ) fail_blueprint( 'Two-section blueprint did not derive the expected progressive checkpoints.' );
+if ( ( $short_checkpoints[0]['after_section_id'] ?? '' ) !== 'problem-grid' || ( $short_checkpoints[1]['after_section_id'] ?? '' ) !== 'demo-cta' ) fail_blueprint( 'Checkpoint section anchors are not deterministic.' );
+foreach ( $short_checkpoints as $checkpoint ) if ( empty( $checkpoint['analyze'] ) || 'desktop' !== ( $checkpoint['viewport'] ?? '' ) || 1 !== ( $checkpoint['max_repair_cycles'] ?? null ) ) fail_blueprint( 'Progressive checkpoint native-vision contract changed.' );
+
+$long = $blueprint;
+$long['sections'] = [];
+for ( $i = 0; $i < 8; $i++ ) {
+    $section = $blueprint['sections'][0];
+    $section['id'] = 'section-' . ( $i + 1 );
+    $section['purpose'] = 'Purpose ' . ( $i + 1 );
+    $long['sections'][] = $section;
+}
+$long_result = Elementize_Blueprint::normalize( $long );
+$long_checkpoints = (array) ( $long_result['normalized']['build_checkpoints'] ?? [] );
+if ( array_column( $long_checkpoints, 'stage' ) !== [ 'design_language_lock', 'early_narrative', 'mid_page_rhythm', 'whole_page_close' ] ) fail_blueprint( 'Eight-section blueprint did not derive all four design checkpoints.' );
+if ( array_column( $long_checkpoints, 'after_section_index' ) !== [ 0, 2, 4, 7 ] ) fail_blueprint( 'Eight-section checkpoint placement changed unexpectedly.' );
 
 $reordered = $blueprint;
 $reordered['design_tokens'] = [ 'accent' => 'primary', 'radius' => '10px' ];

@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * ChatGPT authors the blueprint; Elementize validates continuity and section identity.
  */
 final class Elementize_Blueprint {
-    private const VERSION = '2';
+    private const VERSION = '3';
     private const MAX_SECTIONS = 24;
     private const MAX_LIST_ITEMS = 16;
     private const MAX_REFERENCE_OBSERVATIONS = 48;
@@ -39,6 +39,7 @@ final class Elementize_Blueprint {
             'reference_basis' => self::reference_basis( $raw['reference_basis'] ?? [] ),
             'reference_evidence' => [],
             'acceptance_plan' => [],
+            'build_checkpoints' => [],
             'sections' => [],
         ];
 
@@ -62,6 +63,7 @@ final class Elementize_Blueprint {
             $ids[ $item['id'] ] = true;
             $normalized['sections'][] = $item;
         }
+        $normalized['build_checkpoints'] = self::build_checkpoints( $normalized['sections'] );
 
         $fingerprint = hash( 'sha256', self::json( $normalized ) );
         $expected_fingerprint = strtolower( trim( $expected_fingerprint ) );
@@ -105,6 +107,12 @@ final class Elementize_Blueprint {
                 'max_repair_cycles' => 3,
                 'core_quality_gates' => self::CORE_QA_GATES,
                 'rule' => 'Every required viewport also requires native vision. The normalized plan keeps core gates and derives settled/native rows plus requested live-motion and safe-interaction rows.',
+            ],
+            'build_checkpoints' => [
+                'derived' => true,
+                'max_checkpoints' => 4,
+                'stages' => [ 'design_language_lock', 'early_narrative', 'mid_page_rhythm', 'whole_page_close' ],
+                'rule' => 'After reaching each checkpoint section, stop further building, render the current page with native vision, judge the checkpoint rubric, repair only a defensible local blocker, then continue.',
             ],
             'continuity' => 'Reuse the exact blueprint across section ranking calls and pass its returned fingerprint as expected_blueprint_fingerprint.',
             'authority' => 'Validation proves blueprint/reference/acceptance continuity and bounded shape only. ChatGPT remains responsible for design judgment.',
@@ -222,6 +230,41 @@ final class Elementize_Blueprint {
             'bounded_exceptions' => self::text_list( $raw['bounded_exceptions'] ?? [], 8, 240 ),
             'qa_matrix' => $matrix,
         ];
+    }
+
+    private static function build_checkpoints( array $sections ): array {
+        $count = count( $sections );
+        if ( 0 === $count ) return [];
+        $out = [];
+        $add = static function( int $index, string $stage, string $purpose, array $focus ) use ( &$out, $sections, $count ): void {
+            $index = max( 0, min( $count - 1, $index ) );
+            $section = $sections[ $index ] ?? null;
+            if ( ! is_array( $section ) || empty( $section['id'] ) ) return;
+            foreach ( $out as $existing ) if ( (int) ( $existing['after_section_index'] ?? -1 ) === $index ) return;
+            $out[] = [
+                'id' => 'checkpoint-' . $stage,
+                'stage' => $stage,
+                'after_section_id' => (string) $section['id'],
+                'after_section_index' => $index,
+                'viewport' => 'desktop',
+                'motion' => 'settled',
+                'interaction_probe' => 'passive',
+                'analyze' => true,
+                'required' => true,
+                'max_repair_cycles' => 1,
+                'purpose' => $purpose,
+                'critic_focus' => $focus,
+            ];
+        };
+
+        $add( 0, 'design_language_lock', 'Validate the hero and initial design language before that choice propagates through the page.', [ 'hero_prominence', 'first_viewport_conversion_clarity', 'cta_hierarchy', 'media_scale', 'target_design_language' ] );
+        if ( $count >= 4 ) $add( 2, 'early_narrative', 'Validate the first narrative group before repeating its spacing/composition patterns.', [ 'section_scale_consistency', 'heading_body_balance', 'vertical_spacing_rhythm', 'split_balance', 'background_transition' ] );
+        if ( $count >= 7 ) {
+            $mid = max( 3, min( $count - 2, (int) floor( ( $count - 1 ) * 0.65 ) ) );
+            $add( $mid, 'mid_page_rhythm', 'Detect page-wide monotony or scale drift while enough of the middle page is still cheap to correct.', [ 'layout_repetition', 'card_grid_monotony', 'section_height_variance', 'imagery_prominence', 'accent_consistency', 'narrative_pacing' ] );
+        }
+        if ( $count >= 2 ) $add( $count - 1, 'whole_page_close', 'Judge the complete desktop composition before final multi-viewport acceptance.', [ 'whole_page_hierarchy', 'cta_dominance', 'whitespace_outliers', 'footer_transition', 'background_rhythm', 'typography_progression', 'conversion_path' ] );
+        return $out;
     }
 
     private static function viewport_list( $raw ): array {
