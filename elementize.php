@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elementize
  * Description: Guarded Elementor editing with optional page-scoped Creative Control.
- * Version: 0.46.0
+ * Version: 0.47.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: elementor
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'ELEMENTIZE_VERSION', '0.46.0' );
+define( 'ELEMENTIZE_VERSION', '0.47.0' );
 define( 'ELEMENTIZE_FILE', __FILE__ );
 define( 'ELEMENTIZE_DIR', __DIR__ );
 

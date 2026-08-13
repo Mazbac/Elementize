@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * blueprint/QA contracts so ChatGPT can reason page-wide before mutating.
  */
 final class Elementize_Designer {
-    private const VERSION = '4';
+    private const VERSION = '5';
     private const MAX_SECTIONS = 80;
 
     public static function init(): void {
@@ -144,11 +144,13 @@ final class Elementize_Designer {
     }
 
     private static function reference_contract(): array {
+        $blueprint = Elementize_Blueprint::contract();
         return [
             'goal' => 'Convert reference evidence into transferable design rules and structure, not a pixel-for-pixel clone.',
             'analyze' => [ 'information_hierarchy', 'section_sequence', 'layout_patterns', 'content_density', 'type_scale', 'spacing_rhythm', 'palette_roles', 'radius_and_border_language', 'image_treatment', 'cta_hierarchy', 'background_rhythm', 'interaction_patterns', 'responsive_transformations' ],
+            'observation_contract' => $blueprint['reference_evidence'] ?? [],
             'separate' => [ 'must_match_structure', 'adaptable_visual_language', 'site_specific_content', 'unsupported_or_unverifiable_behavior' ],
-            'rule' => 'When only one viewport is observable, mark responsive conclusions as hypotheses until Elementize QA verifies them.',
+            'rule' => 'Record observed and inferred evidence separately. One observed viewport never proves another viewport; unresolved behavior remains a hypothesis until target QA verifies it.',
         ];
     }
 

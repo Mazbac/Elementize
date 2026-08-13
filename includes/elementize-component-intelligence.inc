@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * The server scores grounded implementation fit; ChatGPT remains the design authority.
  */
 final class Elementize_Component_Intelligence {
-    private const VERSION = '2';
+    private const VERSION = '3';
     private const MAX_INDEX_ITEMS = 500;
     private const MAX_METADATA_SHORTLIST = 16;
     private const MAX_RETURN = 8;
@@ -114,6 +114,7 @@ final class Elementize_Component_Intelligence {
                 'blueprint_fingerprint' => (string) ( $validated['fingerprint'] ?? '' ),
                 'selected_section_id' => $selected_id,
                 'selected_section' => $section,
+                'acceptance_plan' => (array) ( $validated['normalized']['acceptance_plan'] ?? [] ),
             ];
         } else {
             $purpose = trim( sanitize_textarea_field( (string) $request->get_param( 'purpose' ) ) );

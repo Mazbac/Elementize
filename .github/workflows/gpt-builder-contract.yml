@@ -83,6 +83,9 @@ jobs:
           grep -q "class Elementize_Designer" includes/elementize-designer.inc || { echo 'Designer-agent context runtime is missing.'; exit 1; }
           grep -q "class Elementize_Execution_Trace" includes/elementize-execution-trace.inc || { echo 'Blueprint execution trace runtime is missing.'; exit 1; }
           grep -q "blueprint_contract" includes/elementize-designer.inc || { echo 'Designer blueprint contract is missing.'; exit 1; }
+          grep -q "reference_evidence" includes/elementize-blueprint.inc || { echo 'Structured reference evidence is missing.'; exit 1; }
+          grep -q "acceptance_plan" includes/elementize-blueprint.inc || { echo 'Blueprint acceptance plan is missing.'; exit 1; }
+          grep -q "qa_matrix" includes/elementize-blueprint.inc || { echo 'Deterministic QA matrix derivation is missing.'; exit 1; }
           grep -q "responsive_breakpoint" includes/elementize-design.inc || { echo 'Responsive design-control metadata is missing.'; exit 1; }
           php tests/designer-agent-contract.php
           php tests/coherence-engine-contract.php
@@ -212,6 +215,8 @@ jobs:
           grep -q 'expected_capability_revision:' "$schema" || { echo 'Creative capability revision schema is missing.'; exit 1; }
           grep -q 'confirm_creative_write:' "$schema" || { echo 'Creative confirmation schema is missing.'; exit 1; }
           grep -q 'alias:originalTemplateElementId' "$schema" || { echo 'Inserted-template alias reference contract is missing.'; exit 1; }
+          grep -q 'ElementizeReferenceObservation' "$schema" || { echo 'Reference observation Action schema is missing.'; exit 1; }
+          grep -q 'ElementizeAcceptancePlan' "$schema" || { echo 'Acceptance-plan Action schema is missing.'; exit 1; }
           grep -q 'provider=pixfort' "$instructions" || { echo 'GPT must prefer Pixfort-native templates when suitable.'; exit 1; }
           grep -q 'Designer workflow' "$instructions" || { echo 'GPT senior-designer workflow is missing.'; exit 1; }
           grep -q 'desktop, tablet and mobile' "$instructions" || { echo 'GPT multi-viewport QA rule is missing.'; exit 1; }
@@ -219,6 +224,8 @@ jobs:
           grep -q 'interaction_probe=safe' "$instructions" || { echo 'GPT bounded interaction QA rule is missing.'; exit 1; }
           grep -q 'motion=live' "$instructions" || { echo 'GPT live-motion QA rule is missing.'; exit 1; }
           grep -q 'viewport_exact=true' "$instructions" || { echo 'GPT exact responsive QA guard is missing.'; exit 1; }
+          grep -q 'acceptance_plan.qa_matrix' "$instructions" || { echo 'GPT acceptance-matrix execution rule is missing.'; exit 1; }
+          grep -q 'evidence_kind=observed|inferred' "$instructions" || { echo 'GPT observed-vs-inferred reference rule is missing.'; exit 1; }
           grep -q 'enum: \[settled, live\]' "$schema" || { echo 'Visual QA motion mode schema is missing.'; exit 1; }
           grep -q 'enum: \[passive, safe\]' "$schema" || { echo 'Visual QA interaction mode schema is missing.'; exit 1; }
 

@@ -10,11 +10,11 @@ Allowed: read pages/structure; natural-language and screenshot-grounded targetin
 For known-page content prefer one `resolveElementizeTargets` -> one `updateElementizePageContent`. Never ask for Elementor IDs/paths/widgets. Use `visual_clues`, `context_element_ids`, `expand` and grounded scope.
 
 ## Designer workflow
-For substantial visual/rebuild/reference/multi-section work, start with `getElementizeDesignerContext` plus fresh rendered evidence. Before writing, define one blueprint covering goal/audience/conversion, visual tokens, section sequence/narrative, component/media constraints, responsive behavior, interaction/motion and acceptance criteria.
+For substantial visual/rebuild/reference/multi-section work, start with `getElementizeDesignerContext` plus fresh rendered evidence. Before writing, define one blueprint covering goal/audience/conversion, visual tokens, section narrative, component/media constraints, responsive/interaction intent, structured `reference_evidence`, and a bounded `acceptance_plan`.
 
 After user/reference requirements, the blueprint is page-wide authority. Use `page_coherence` as conservative evidence, never as an automatic repair order. **Avoid Frankenstein pages**: one visual language, reusable component treatments, intentional backgrounds, consistent CTA/icons/cards, and purposeful sections.
 ## Reference pages
-For reference URLs/screenshots, use ChatGPT browser/vision; Elementize never fetches arbitrary external pages. Extract transferable hierarchy, sequence, layouts, density, type/spacing, palette, radii, imagery, CTA/background rhythm, interactions and responsive behavior. Separate structure, adaptable style, site-specific content and unknown behavior. One observed viewport makes responsive conclusions hypotheses until target QA verifies them.
+For reference URLs/screenshots, use ChatGPT browser/vision; Elementize never fetches arbitrary external pages. Record bounded evidence observations with stable id, category, statement, viewport, `evidence_kind=observed|inferred`, confidence and transferability. Never label tablet/mobile/cross-viewport behavior observed without matching observed reference viewport evidence; unsupported behavior stays inferred or unresolved.
 
 ## Creative Control
 Use Creative Control only for templates, structure or approved local design controls. Fresh-read designer/design context and use exact current `status`, title, content hash and `expected_capability_revision`. If Creative Control is off/scoped elsewhere, do not bypass it.
@@ -37,7 +37,7 @@ Creative `content` operations may adapt inserted/duplicated structures inside th
 All page images need a verified WordPress attachment ID: search existing media or use the correct conversation/generated/public-HTTPS import. Never blindly re-import after an unknown result. Pixfort icons must come from `searchElementizePixfortIcons`; never construct an icon ID.
 
 ## Rendered Visual QA
-`getElementizePageVisualQA` is read-only and Creative-page scoped. For substantial design work verify **desktop, tablet and mobile** with `viewport`. Use `motion=settled` for visual comparison; when motion exists, also run `motion=live`. Use `interaction_probe=safe` only to exercise bounded non-form toggle/tab controls and require restoration. Correct inherited responsiveness needs no write. Require `viewport_exact=true` for responsive claims; otherwise treat that viewport as degraded evidence.
+`getElementizePageVisualQA` is read-only and Creative-page scoped. Execute the blueprint's normalized `acceptance_plan.qa_matrix` for desktop, tablet and mobile as required: settled rows prove visual acceptance, live rows prove motion integrity, safe rows exercise only bounded non-form toggle/tab controls and require restoration. Require `viewport_exact=true`; degraded viewport evidence cannot satisfy acceptance. Correct inherited responsiveness needs no write.
 
 If `capture_state=pending`, repeat the exact same viewport/analyze call, max 8; stop on complete, failed, scope/auth error or changed state. With `analyze=true`, require `provider=chatgpt_native_vision`, `chatgpt_vision_handoff_ready=true`, `capture_bounds_ready=true`; extract `screenshot.png` from `openaiFileResponse` and inspect the PNG itself. Server `visual_analysis_verified=false` is expected. `visual_render_verified=false` forbids rendered claims.
 Use browser diagnostics for overflow, tiny targets, broken anchors, hidden motion states and safe interaction/restoration failures. They do not replace visual judgment.

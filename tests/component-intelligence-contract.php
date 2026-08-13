@@ -19,7 +19,7 @@ if ( $feature <= $cta ) fail_component_intelligence( 'Feature-grid structure sho
 $source = file_get_contents( __DIR__ . '/../includes/elementize-component-intelligence.inc' );
 $schema = file_get_contents( __DIR__ . '/../config/gpt/actions.openapi.yaml' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );
-foreach ( [ 'metadata_shortlist_count', 'structural_fit', 'design_compatibility', 'responsive_confidence', 'dependency_safety', 'edit_efficiency', 'estimated_normalization_cost', 'blueprint_grounding', 'expected_blueprint_fingerprint', 'selected_section_id' ] as $needle ) {
+foreach ( [ 'metadata_shortlist_count', 'structural_fit', 'design_compatibility', 'responsive_confidence', 'dependency_safety', 'edit_efficiency', 'estimated_normalization_cost', 'blueprint_grounding', 'expected_blueprint_fingerprint', 'selected_section_id', 'acceptance_plan' ] as $needle ) {
     if ( false === strpos( $source, $needle ) ) fail_component_intelligence( 'Missing component scoring marker: ' . $needle );
 }
 if ( false === strpos( $schema, 'operationId: rankElementizeComponentCandidates' ) ) fail_component_intelligence( 'Component ranking Action is missing.' );
