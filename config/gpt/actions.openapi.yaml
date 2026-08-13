@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.44.0
+  version: 0.45.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
@@ -172,7 +172,6 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [purpose]
               properties:
                 purpose: { type: string, minLength: 1, maxLength: 800 }
                 contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic], default: generic }
@@ -181,6 +180,9 @@ paths:
                   type: array
                   maxItems: 12
                   items: { type: string, maxLength: 80 }
+                blueprint: { $ref: '#/components/schemas/ElementizeBlueprint' }
+                selected_section_id: { type: string, minLength: 1, maxLength: 80 }
+                expected_blueprint_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
                 limit: { type: integer, minimum: 1, maximum: 8, default: 5 }
       responses:
         '200': { description: Explainable read-only component candidates grounded in the current page and installed templates }
@@ -452,3 +454,70 @@ paths:
       responses:
         '200': { description: Matching installed Pixfort icon values }
         '503': { description: Installed Pixfort icon library could not be indexed }
+
+components:
+  schemas:
+    ElementizeBlueprint:
+      type: object
+      additionalProperties: false
+      required: [page_goal, audience, conversion_goal, visual_direction, sections]
+      properties:
+        page_goal: { type: string, minLength: 1, maxLength: 600 }
+        audience: { type: string, minLength: 1, maxLength: 500 }
+        conversion_goal: { type: string, minLength: 1, maxLength: 500 }
+        visual_direction: { type: string, minLength: 1, maxLength: 800 }
+        design_tokens:
+          type: object
+          maxProperties: 16
+          additionalProperties: { type: string, maxLength: 180 }
+        responsive_strategy: { type: string, maxLength: 700 }
+        interaction_strategy: { type: string, maxLength: 700 }
+        acceptance_criteria:
+          type: array
+          maxItems: 16
+          items: { type: string, maxLength: 240 }
+        reference_basis:
+          type: object
+          additionalProperties: false
+          properties:
+            source_count: { type: integer, minimum: 0, maximum: 20 }
+            observed_viewports:
+              type: array
+              uniqueItems: true
+              maxItems: 3
+              items: { type: string, enum: [desktop, tablet, mobile] }
+            unresolved_hypotheses:
+              type: array
+              maxItems: 12
+              items: { type: string, maxLength: 240 }
+        sections:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items:
+            $ref: '#/components/schemas/ElementizeBlueprintSection'
+    ElementizeBlueprintSection:
+      type: object
+      additionalProperties: false
+      required: [id, purpose, narrative_role, contract]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        purpose: { type: string, minLength: 1, maxLength: 700 }
+        narrative_role: { type: string, minLength: 1, maxLength: 500 }
+        contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic] }
+        layout_pattern: { type: string, maxLength: 400 }
+        content_requirements:
+          type: array
+          maxItems: 12
+          items: { type: string, maxLength: 220 }
+        component_constraints:
+          type: array
+          maxItems: 12
+          items: { type: string, maxLength: 220 }
+        visual_treatment: { type: string, maxLength: 500 }
+        responsive_behavior: { type: string, maxLength: 500 }
+        interaction_behavior: { type: string, maxLength: 500 }
+        keywords:
+          type: array
+          maxItems: 12
+          items: { type: string, maxLength: 80 }

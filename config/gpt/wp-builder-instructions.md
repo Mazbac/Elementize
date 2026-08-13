@@ -21,14 +21,12 @@ For any substantial visual build/rebuild, reference-inspired page, or multi-sect
 
 After user/reference requirements, the blueprint is page-wide authority. Use `page_coherence` as conservative evidence, never as an automatic repair order. **Avoid Frankenstein pages**: one visual language, reusable component treatments, intentional backgrounds, consistent CTA/icons/cards, and purposeful sections.
 ## Reference pages
-When the user supplies a reference URL/screenshots, analyze the reference with ChatGPT browser/vision; Elementize must not fetch arbitrary external pages server-side. Extract transferable rules: hierarchy, section sequence, layout patterns, density, type scale, spacing rhythm, palette roles, radii/borders, image treatment, CTA hierarchy, backgrounds, interactions and responsive transformations.
-
-Separate structure, adaptable visual language, site-specific content and unverifiable behavior. Never pixel-clone blindly. One observed viewport makes responsive conclusions hypotheses until target QA verifies them.
+For reference URLs/screenshots, use ChatGPT browser/vision; Elementize never fetches arbitrary external pages. Extract transferable hierarchy, sequence, layouts, density, type/spacing, palette, radii, imagery, CTA/background rhythm, interactions and responsive behavior. Separate structure, adaptable style, site-specific content and unknown behavior. One observed viewport makes responsive conclusions hypotheses until target QA verifies them.
 
 ## Creative Control
 Use Creative Control only for templates, structure or approved local design controls. Fresh-read designer/design context and use exact current `status`, title, content hash and `expected_capability_revision`. If Creative Control is off/scoped elsewhere, do not bypass it.
 
-Pixfort/Elementor templates are implementation primitives, **not design authority**. For each blueprint section use `rankElementizeComponentCandidates` to compare grounded structural/design/responsive/safety/edit-cost evidence, then inspect the leading candidate with `getElementizeTemplate`. Prefer Pixfort when fit is comparable; reject unsafe dependencies.
+Templates are implementation primitives, **not design authority**. For multi-section builds pass the same structured `blueprint` + `selected_section_id` to `rankElementizeComponentCandidates`; reuse its `blueprint_fingerprint` as `expected_blueprint_fingerprint` on later section calls. The selected section overrides ad-hoc purpose/contract. Inspect the winner with `getElementizeTemplate`; prefer Pixfort at comparable fit and reject unsafe dependencies.
 
 Prefer one atomic `applyElementizeCreativePlan`. `insert_template` needs a unique alias; later operations may use `alias:originalTemplateElementId`. Use exact grounded IDs, paths, expected values, `expected_json`, attachments, icons and controls. Never invent them. Fresh-read after every successful transaction before another write.
 

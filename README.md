@@ -42,7 +42,7 @@ Templates are treated as structural building blocks. The target page's existing 
 
 Creative Control now exposes a read-only `designer-context` for page-wide planning before a substantial build. It combines the fresh page outline with observed palette, spacing, radius and typography evidence, responsive-control evidence, conservative page-coherence signals, and explicit blueprint/reference/quality contracts. The Custom GPT remains the design brain; the server supplies evidence and guarded execution rather than making opaque aesthetic decisions.
 
-Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elementize intentionally does not turn arbitrary external URLs into a server-side fetch surface. The GPT extracts transferable layout/design rules, creates a page blueprint, maps those requirements onto Pixfort/Elementor primitives, and then validates the target page through Elementize.
+Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elementize intentionally does not turn arbitrary external URLs into a server-side fetch surface. The GPT extracts transferable layout/design rules and creates a bounded structured blueprint with stable section IDs, observed reference viewports, unresolved responsive hypotheses, page-wide tokens/strategies, and acceptance criteria. Elementize validates that blueprint read-only and returns a deterministic SHA-256 fingerprint; later section-ranking calls can require the same fingerprint so section-by-section planning cannot silently drift.
 
 The coherence layer compares like-for-like component roles (for example buttons to buttons), reports evidence coverage/truncation, and treats low-confidence signals as review candidates rather than automatic defects.
 
@@ -50,7 +50,7 @@ Writable design controls now report a `responsive_breakpoint` so the GPT can dis
 
 ## Component intelligence
 
-For substantial Creative builds, `rankElementizeComponentCandidates` compares installed Pixfort/Elementor sections against the current page and one blueprint-section purpose. Ranking is read-only and explainable: semantic fit, actual widget structure, page-design compatibility, responsive evidence, dependency safety, and estimated normalization cost. A high score is planning evidence only; ChatGPT must still inspect the chosen template and all Creative mutation guards remain unchanged.
+For substantial Creative builds, `rankElementizeComponentCandidates` can consume the full structured blueprint plus one `selected_section_id`. The selected section—not a new ad-hoc brief—drives semantic/structural ranking, and `expected_blueprint_fingerprint` can fail closed if the page plan changed between section calls. Manual purpose/contract ranking remains available for bounded one-off work. Ranking is read-only and explainable: semantic fit, actual widget structure, page-design compatibility, responsive evidence, dependency safety, and estimated normalization cost. A high score is planning evidence only; ChatGPT must still inspect the chosen template and all Creative mutation guards remain unchanged.
 
 ## Media sources
 
@@ -183,6 +183,7 @@ includes/
   elementize-context.inc
   elementize-design.inc
   elementize-coherence.inc
+  elementize-blueprint.inc
   elementize-designer.inc
   elementize-component-intelligence.inc
   elementize-tree.inc

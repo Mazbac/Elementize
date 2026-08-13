@@ -10,6 +10,7 @@ require_once __DIR__ . '/elementize-context.inc';
 require_once __DIR__ . '/elementize-capabilities.inc';
 require_once __DIR__ . '/elementize-design.inc';
 require_once __DIR__ . '/elementize-coherence.inc';
+require_once __DIR__ . '/elementize-blueprint.inc';
 require_once __DIR__ . '/elementize-designer.inc';
 require_once __DIR__ . '/elementize-component-intelligence.inc';
 require_once __DIR__ . '/elementize-tree.inc';

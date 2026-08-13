@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * The server scores grounded implementation fit; ChatGPT remains the design authority.
  */
 final class Elementize_Component_Intelligence {
-    private const VERSION = '1';
+    private const VERSION = '2';
     private const MAX_INDEX_ITEMS = 500;
     private const MAX_METADATA_SHORTLIST = 16;
     private const MAX_RETURN = 8;
@@ -77,7 +77,15 @@ final class Elementize_Component_Intelligence {
             'content_hash' => Elementize_Core::hash_elements( $loaded['elements'] ),
             'capability_revision' => (int) ( $state['revision'] ?? 0 ),
             'read_only' => true,
-            'request' => $input,
+            'request' => [
+                'purpose' => $input['purpose'],
+                'contract' => $input['contract'],
+                'provider' => $input['provider'],
+                'keywords' => $input['keywords'],
+                'limit' => $input['limit'],
+                'blueprint_grounded' => $input['blueprint_grounded'],
+            ],
+            'blueprint_grounding' => $input['blueprint_context'],
             'scoring_contract' => self::scoring_contract(),
             'index_items_considered' => count( $indexed ),
             'metadata_shortlist_count' => count( $metadata ),
@@ -88,22 +96,41 @@ final class Elementize_Component_Intelligence {
     }
 
     private static function request_input( WP_REST_Request $request ) {
-        $purpose = trim( sanitize_textarea_field( (string) $request->get_param( 'purpose' ) ) );
-        if ( '' === $purpose || self::length( $purpose ) > 800 ) {
-            return new WP_Error( 'elementize_component_purpose_required', 'purpose is required and must be at most 800 characters.', [ 'status' => 400 ] );
+        $blueprint_context = null;
+        $blueprint_raw = $request->get_param( 'blueprint' );
+        if ( is_array( $blueprint_raw ) ) {
+            $selected_id = sanitize_key( (string) $request->get_param( 'selected_section_id' ) );
+            if ( '' === $selected_id ) return new WP_Error( 'elementize_blueprint_section_required', 'selected_section_id is required when blueprint is supplied.', [ 'status' => 400 ] );
+            $expected = strtolower( trim( sanitize_text_field( (string) $request->get_param( 'expected_blueprint_fingerprint' ) ) ) );
+            $validated = Elementize_Blueprint::normalize( $blueprint_raw, $selected_id, $expected );
+            if ( is_wp_error( $validated ) ) return $validated;
+            $section = (array) ( $validated['selected_section'] ?? [] );
+            $purpose = (string) ( $section['purpose'] ?? '' );
+            $contract = (string) ( $section['contract'] ?? 'generic' );
+            $keywords = (array) ( $section['keywords'] ?? [] );
+            $semantic_context = trim( implode( ' ', array_merge( [ $purpose, (string) ( $section['narrative_role'] ?? '' ), (string) ( $section['layout_pattern'] ?? '' ) ], (array) ( $section['component_constraints'] ?? [] ) ) ) );
+            $blueprint_context = [
+                'blueprint_version' => (string) ( $validated['blueprint_version'] ?? '' ),
+                'blueprint_fingerprint' => (string) ( $validated['fingerprint'] ?? '' ),
+                'selected_section_id' => $selected_id,
+                'selected_section' => $section,
+            ];
+        } else {
+            $purpose = trim( sanitize_textarea_field( (string) $request->get_param( 'purpose' ) ) );
+            if ( '' === $purpose || self::length( $purpose ) > 800 ) return new WP_Error( 'elementize_component_purpose_required', 'purpose is required when blueprint is not supplied and must be at most 800 characters.', [ 'status' => 400 ] );
+            $contract = sanitize_key( (string) $request->get_param( 'contract' ) );
+            if ( '' === $contract ) $contract = 'generic';
+            $keywords = $request->get_param( 'keywords' );
+            $semantic_context = $purpose;
         }
-        $contract = sanitize_key( (string) $request->get_param( 'contract' ) );
-        if ( '' === $contract ) $contract = 'generic';
         $contracts = [ 'feature_grid', 'content_split', 'testimonial_grid', 'cta', 'generic' ];
         if ( ! in_array( $contract, $contracts, true ) ) return new WP_Error( 'elementize_component_contract_invalid', 'Unsupported component contract.', [ 'status' => 400 ] );
         $provider = sanitize_key( (string) $request->get_param( 'provider' ) );
         if ( '' === $provider ) $provider = 'all';
         if ( ! in_array( $provider, [ 'all', 'pixfort', 'local' ], true ) ) return new WP_Error( 'elementize_component_provider_invalid', 'provider must be all, pixfort, or local.', [ 'status' => 400 ] );
 
-        $keywords = $request->get_param( 'keywords' );
-        $keywords = is_array( $keywords ) ? array_slice( $keywords, 0, 12 ) : [];
         $clean = [];
-        foreach ( $keywords as $value ) {
+        foreach ( array_slice( (array) $keywords, 0, 12 ) as $value ) {
             if ( ! is_scalar( $value ) ) continue;
             $value = trim( sanitize_text_field( (string) $value ) );
             if ( '' !== $value && self::length( $value ) <= 80 ) $clean[] = $value;
@@ -116,6 +143,9 @@ final class Elementize_Component_Intelligence {
             'contract' => $contract,
             'provider' => $provider,
             'keywords' => array_values( array_unique( $clean ) ),
+            'semantic_context' => $semantic_context,
+            'blueprint_grounded' => null !== $blueprint_context,
+            'blueprint_context' => $blueprint_context,
             'limit' => $limit,
         ];
     }
@@ -141,7 +171,7 @@ final class Elementize_Component_Intelligence {
     }
 
     private static function metadata_score( array $item, array $input ): int {
-        $tokens = self::tokens( implode( ' ', array_merge( [ $input['purpose'], $input['contract'] ], $input['keywords'] ) ) );
+        $tokens = self::tokens( implode( ' ', array_merge( [ $input['semantic_context'] ?? $input['purpose'], $input['contract'] ], $input['keywords'] ) ) );
         $haystack = self::lower( implode( ' ', [
             (string) ( $item['title'] ?? '' ),
             (string) ( $item['subtype'] ?? '' ),

@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * blueprint/QA contracts so ChatGPT can reason page-wide before mutating.
  */
 final class Elementize_Designer {
-    private const VERSION = '2';
+    private const VERSION = '3';
     private const MAX_SECTIONS = 80;
 
     public static function init(): void {
@@ -130,18 +130,16 @@ final class Elementize_Designer {
     }
 
     private static function blueprint_contract(): array {
-        return [
-            'authority' => 'ChatGPT creates and maintains the blueprint in conversation; Elementize supplies fresh evidence and guarded execution only.',
-            'required_fields' => [ 'page_goal', 'audience', 'conversion_goal', 'visual_direction', 'design_tokens', 'sections', 'responsive_strategy', 'interaction_strategy', 'acceptance_criteria' ],
-            'section_fields' => [ 'purpose', 'narrative_role', 'layout_pattern', 'content_requirements', 'component_constraints', 'visual_treatment', 'responsive_behavior', 'interaction_behavior' ],
-            'rules' => [
+        $contract = Elementize_Blueprint::contract();
+        $contract['section_fields'] = [ 'id', 'purpose', 'narrative_role', 'contract', 'layout_pattern', 'content_requirements', 'component_constraints', 'visual_treatment', 'responsive_behavior', 'interaction_behavior', 'keywords' ];
+        $contract['rules'] = [
                 'Treat the blueprint as page-wide design authority after the user/reference requirements.',
                 'Use Pixfort/Elementor templates as implementation primitives, never as independent design authority.',
                 'Every inserted section must serve a narrative purpose and inherit one coherent visual system.',
                 'Prefer fewer reusable component treatments over section-by-section novelty.',
                 'Do not add responsive overrides when inherited behavior already renders correctly.',
-            ],
         ];
+        return $contract;
     }
 
     private static function reference_contract(): array {
