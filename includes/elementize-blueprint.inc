@@ -6,8 +6,12 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * ChatGPT authors the blueprint; Elementize validates continuity and section identity.
  */
 final class Elementize_Blueprint {
-    private const VERSION = '3';
+    private const VERSION = '4';
     private const MAX_SECTIONS = 24;
+    private const COMPOSITION_ROLES = [ 'hero_focus', 'split_media', 'card_grid', 'process_steps', 'proof_reassurance', 'faq', 'cta_band', 'editorial', 'mixed' ];
+    private const VISUAL_SCALES = [ 'dominant', 'standard', 'compact' ];
+    private const MEDIA_EMPHASIS = [ 'none', 'supporting', 'balanced', 'dominant' ];
+    private const DENSITIES = [ 'airy', 'balanced', 'dense' ];
     private const MAX_LIST_ITEMS = 16;
     private const MAX_REFERENCE_OBSERVATIONS = 48;
     private const CONTRACTS = [ 'feature_grid', 'content_split', 'testimonial_grid', 'cta', 'generic' ];
@@ -40,6 +44,7 @@ final class Elementize_Blueprint {
             'reference_evidence' => [],
             'acceptance_plan' => [],
             'build_checkpoints' => [],
+            'composition_rhythm' => [],
             'sections' => [],
         ];
 
@@ -63,6 +68,7 @@ final class Elementize_Blueprint {
             $ids[ $item['id'] ] = true;
             $normalized['sections'][] = $item;
         }
+        $normalized['composition_rhythm'] = self::composition_rhythm( $normalized['sections'] );
         $normalized['build_checkpoints'] = self::build_checkpoints( $normalized['sections'] );
 
         $fingerprint = hash( 'sha256', self::json( $normalized ) );
@@ -94,6 +100,13 @@ final class Elementize_Blueprint {
             'required_fields' => [ 'page_goal', 'audience', 'conversion_goal', 'visual_direction', 'sections' ],
             'section_required_fields' => [ 'id', 'purpose', 'narrative_role', 'contract' ],
             'section_contracts' => self::CONTRACTS,
+            'composition_intent' => [
+                'roles' => self::COMPOSITION_ROLES,
+                'visual_scales' => self::VISUAL_SCALES,
+                'media_emphasis' => self::MEDIA_EMPHASIS,
+                'densities' => self::DENSITIES,
+                'rule' => 'Section composition intent is fingerprinted. Missing values are inferred conservatively from section purpose/contract; three or more identical consecutive roles are review evidence, not an automatic defect.',
+            ],
             'reference_viewports' => self::VIEWPORTS,
             'reference_evidence' => [
                 'max_observations' => self::MAX_REFERENCE_OBSERVATIONS,
@@ -127,13 +140,24 @@ final class Elementize_Blueprint {
         $contract = self::slug( $raw['contract'], 40 );
         if ( '' === $id ) return self::error( 'elementize_blueprint_section_id_invalid', 'Blueprint section id must be a stable non-empty slug.' );
         if ( ! in_array( $contract, self::CONTRACTS, true ) ) return self::error( 'elementize_blueprint_section_contract_invalid', 'Unsupported blueprint section contract.' );
-        $item = [
+        $purpose = self::text( $raw['purpose'], 700 );
+        $narrative = self::text( $raw['narrative_role'], 500 );
+        $layout = self::text( $raw['layout_pattern'] ?? '', 400 );
+        if ( '' === $purpose || '' === $narrative ) return self::error( 'elementize_blueprint_section_text_required', 'Blueprint section purpose and narrative_role cannot be empty.' );
+        $composition = self::composition_intent( $raw, $contract, $purpose, $narrative, $layout );
+        if ( self::is_error( $composition ) ) return $composition;
+        return [
             'index' => $index,
             'id' => $id,
-            'purpose' => self::text( $raw['purpose'], 700 ),
-            'narrative_role' => self::text( $raw['narrative_role'], 500 ),
+            'purpose' => $purpose,
+            'narrative_role' => $narrative,
             'contract' => $contract,
-            'layout_pattern' => self::text( $raw['layout_pattern'] ?? '', 400 ),
+            'composition_role' => $composition['composition_role'],
+            'composition_role_source' => $composition['composition_role_source'],
+            'visual_scale' => $composition['visual_scale'],
+            'media_emphasis' => $composition['media_emphasis'],
+            'density' => $composition['density'],
+            'layout_pattern' => $layout,
             'content_requirements' => self::text_list( $raw['content_requirements'] ?? [], 12, 220 ),
             'component_constraints' => self::text_list( $raw['component_constraints'] ?? [], 12, 220 ),
             'visual_treatment' => self::text( $raw['visual_treatment'] ?? '', 500 ),
@@ -141,8 +165,83 @@ final class Elementize_Blueprint {
             'interaction_behavior' => self::text( $raw['interaction_behavior'] ?? '', 500 ),
             'keywords' => self::text_list( $raw['keywords'] ?? [], 12, 80 ),
         ];
-        if ( '' === $item['purpose'] || '' === $item['narrative_role'] ) return self::error( 'elementize_blueprint_section_text_required', 'Blueprint section purpose and narrative_role cannot be empty.' );
-        return $item;
+    }
+
+    private static function composition_intent( array $raw, string $contract, string $purpose, string $narrative, string $layout ) {
+        $role_raw = self::slug( $raw['composition_role'] ?? '', 40 );
+        if ( '' !== $role_raw && ! in_array( $role_raw, self::COMPOSITION_ROLES, true ) ) return self::error( 'elementize_blueprint_composition_role_invalid', 'Unsupported blueprint section composition_role.' );
+        $role = '' !== $role_raw ? $role_raw : self::infer_composition_role( $contract, $purpose, $narrative, $layout );
+        $scale_default = in_array( $role, [ 'hero_focus', 'cta_band' ], true ) ? 'dominant' : ( 'faq' === $role ? 'compact' : 'standard' );
+        $media_default = match ( $role ) {
+            'hero_focus', 'split_media' => 'balanced',
+            'card_grid', 'proof_reassurance' => 'supporting',
+            default => 'none',
+        };
+        $density_default = in_array( $role, [ 'hero_focus', 'cta_band' ], true ) ? 'airy' : ( 'card_grid' === $role ? 'dense' : 'balanced' );
+        $scale = self::optional_enum( $raw, 'visual_scale', self::VISUAL_SCALES, $scale_default, 'elementize_blueprint_visual_scale_invalid' );
+        if ( self::is_error( $scale ) ) return $scale;
+        $media = self::optional_enum( $raw, 'media_emphasis', self::MEDIA_EMPHASIS, $media_default, 'elementize_blueprint_media_emphasis_invalid' );
+        if ( self::is_error( $media ) ) return $media;
+        $density = self::optional_enum( $raw, 'density', self::DENSITIES, $density_default, 'elementize_blueprint_density_invalid' );
+        if ( self::is_error( $density ) ) return $density;
+        return [
+            'composition_role' => $role,
+            'composition_role_source' => '' !== $role_raw ? 'explicit' : 'inferred',
+            'visual_scale' => $scale,
+            'media_emphasis' => $media,
+            'density' => $density,
+        ];
+    }
+
+    private static function infer_composition_role( string $contract, string $purpose, string $narrative, string $layout ): string {
+        $primary = strtolower( trim( $purpose . ' ' . $layout ) );
+        $narrative_text = strtolower( $narrative );
+        $has_primary = static function( array $terms ) use ( $primary ): bool { foreach ( $terms as $term ) if ( false !== strpos( $primary, $term ) ) return true; return false; };
+        $has_narrative = static function( array $terms ) use ( $narrative_text ): bool { foreach ( $terms as $term ) if ( false !== strpos( $narrative_text, $term ) ) return true; return false; };
+        if ( $has_primary( [ 'hero', 'opening', 'above fold', 'above-fold', 'first viewport', 'promise' ] ) || $has_narrative( [ 'opening frame', 'opening conversion', 'hero' ] ) ) return 'hero_focus';
+        if ( $has_primary( [ 'faq', 'question', 'objection' ] ) || $has_narrative( [ 'objection handling', 'faq' ] ) ) return 'faq';
+        if ( $has_primary( [ 'workflow', 'process', 'steps', 'step-by-step', 'mechanism', 'how it works' ] ) ) return 'process_steps';
+        if ( $has_primary( [ 'final cta', 'final conversion', 'contact action', 'conversion close', 'close the page' ] ) || $has_narrative( [ 'final conversion close', 'final cta' ] ) ) return 'cta_band';
+        if ( $has_primary( [ 'testimonial', 'review', 'social proof', 'reassurance', 'trust', 'confidence', 'proof' ] ) || $has_narrative( [ 'reassurance', 'trust', 'social proof', 'confidence' ] ) ) return 'proof_reassurance';
+        if ( $has_primary( [ 'split', 'image', 'media', 'screenshot', 'showcase', 'story' ] ) ) return 'split_media';
+        if ( $has_primary( [ 'feature', 'capabilit', 'service', 'card grid', 'card-grid', 'cards' ] ) ) return 'card_grid';
+        return match ( $contract ) {
+            'content_split' => 'split_media',
+            'feature_grid' => 'card_grid',
+            'testimonial_grid' => 'proof_reassurance',
+            'cta' => 'cta_band',
+            default => 'editorial',
+        };
+    }
+
+    private static function optional_enum( array $raw, string $key, array $allowed, string $default, string $error_code ) {
+        if ( ! array_key_exists( $key, $raw ) || '' === trim( (string) $raw[ $key ] ) ) return $default;
+        $value = self::slug( $raw[ $key ], 40 );
+        if ( ! in_array( $value, $allowed, true ) ) return self::error( $error_code, 'Unsupported blueprint section ' . $key . '.' );
+        return $value;
+    }
+
+    private static function composition_rhythm( array $sections ): array {
+        $roles = array_values( array_map( static fn( array $section ): string => (string) ( $section['composition_role'] ?? 'mixed' ), $sections ) );
+        $runs = [];
+        $start = 0;
+        while ( $start < count( $roles ) ) {
+            $role = $roles[ $start ];
+            $end = $start + 1;
+            while ( $end < count( $roles ) && $roles[ $end ] === $role ) $end++;
+            $length = $end - $start;
+            if ( $length >= 2 ) $runs[] = [ 'role' => $role, 'start_index' => $start, 'end_index' => $end - 1, 'length' => $length, 'review_required' => $length >= 3 ];
+            $start = $end;
+        }
+        $review = array_values( array_filter( $runs, static fn( array $run ): bool => ! empty( $run['review_required'] ) ) );
+        return [
+            'role_sequence' => $roles,
+            'role_variety_count' => count( array_unique( $roles ) ),
+            'repeated_runs' => $runs,
+            'review_runs' => $review,
+            'review_required' => ! empty( $review ),
+            'rule' => 'Three or more consecutive identical composition roles require native-vision review for monotony; repetition is evidence, not an automatic defect.',
+        ];
     }
 
     private static function reference_basis( $raw ): array {

@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * The server scores grounded implementation fit; ChatGPT remains the design authority.
  */
 final class Elementize_Component_Intelligence {
-    private const VERSION = '4';
+    private const VERSION = '5';
     private const MAX_INDEX_ITEMS = 500;
     private const MAX_METADATA_SHORTLIST = 16;
     private const MAX_RETURN = 8;
@@ -82,6 +82,7 @@ final class Elementize_Component_Intelligence {
                 'contract' => $input['contract'],
                 'provider' => $input['provider'],
                 'keywords' => $input['keywords'],
+                'composition_intent' => $input['composition_intent'],
                 'limit' => $input['limit'],
                 'blueprint_grounded' => $input['blueprint_grounded'],
             ],
@@ -97,6 +98,7 @@ final class Elementize_Component_Intelligence {
 
     private static function request_input( WP_REST_Request $request ) {
         $blueprint_context = null;
+        $composition_intent = [ 'composition_role' => 'mixed', 'visual_scale' => 'standard', 'media_emphasis' => 'none', 'density' => 'balanced' ];
         $blueprint_raw = $request->get_param( 'blueprint' );
         if ( is_array( $blueprint_raw ) ) {
             $selected_id = sanitize_key( (string) $request->get_param( 'selected_section_id' ) );
@@ -108,7 +110,13 @@ final class Elementize_Component_Intelligence {
             $purpose = (string) ( $section['purpose'] ?? '' );
             $contract = (string) ( $section['contract'] ?? 'generic' );
             $keywords = (array) ( $section['keywords'] ?? [] );
-            $semantic_context = trim( implode( ' ', array_merge( [ $purpose, (string) ( $section['narrative_role'] ?? '' ), (string) ( $section['layout_pattern'] ?? '' ) ], (array) ( $section['component_constraints'] ?? [] ) ) ) );
+            $composition_intent = [
+                'composition_role' => (string) ( $section['composition_role'] ?? 'mixed' ),
+                'visual_scale' => (string) ( $section['visual_scale'] ?? 'standard' ),
+                'media_emphasis' => (string) ( $section['media_emphasis'] ?? 'none' ),
+                'density' => (string) ( $section['density'] ?? 'balanced' ),
+            ];
+            $semantic_context = trim( implode( ' ', array_merge( [ $purpose, (string) ( $section['narrative_role'] ?? '' ), (string) ( $section['layout_pattern'] ?? '' ), $composition_intent['composition_role'] ], (array) ( $section['component_constraints'] ?? [] ) ) ) );
             $checkpoints = (array) ( $validated['normalized']['build_checkpoints'] ?? [] );
             $checkpoint_trigger = null;
             foreach ( $checkpoints as $checkpoint ) {
@@ -120,6 +128,8 @@ final class Elementize_Component_Intelligence {
                 'selected_section_id' => $selected_id,
                 'selected_section' => $section,
                 'acceptance_plan' => (array) ( $validated['normalized']['acceptance_plan'] ?? [] ),
+                'composition_intent' => $composition_intent,
+                'composition_rhythm' => (array) ( $validated['normalized']['composition_rhythm'] ?? [] ),
                 'build_checkpoints' => $checkpoints,
                 'checkpoint_after_selected_section' => $checkpoint_trigger,
             ];
@@ -133,6 +143,7 @@ final class Elementize_Component_Intelligence {
         }
         $contracts = [ 'feature_grid', 'content_split', 'testimonial_grid', 'cta', 'generic' ];
         if ( ! in_array( $contract, $contracts, true ) ) return new WP_Error( 'elementize_component_contract_invalid', 'Unsupported component contract.', [ 'status' => 400 ] );
+        if ( null === $blueprint_context ) $composition_intent = self::default_composition_intent( $contract );
         $provider = sanitize_key( (string) $request->get_param( 'provider' ) );
         if ( '' === $provider ) $provider = 'all';
         if ( ! in_array( $provider, [ 'all', 'pixfort', 'local' ], true ) ) return new WP_Error( 'elementize_component_provider_invalid', 'provider must be all, pixfort, or local.', [ 'status' => 400 ] );
@@ -154,6 +165,7 @@ final class Elementize_Component_Intelligence {
             'semantic_context' => $semantic_context,
             'blueprint_grounded' => null !== $blueprint_context,
             'blueprint_context' => $blueprint_context,
+            'composition_intent' => $composition_intent,
             'limit' => $limit,
         ];
     }
@@ -192,8 +204,21 @@ final class Elementize_Component_Intelligence {
         foreach ( self::contract_terms( $input['contract'] ) as $term ) {
             if ( false !== strpos( $haystack, $term ) ) { $score += 5; break; }
         }
+        foreach ( self::composition_terms( (string) ( $input['composition_intent']['composition_role'] ?? 'mixed' ) ) as $term ) {
+            if ( false !== strpos( $haystack, $term ) ) { $score += 7; break; }
+        }
         if ( 'pixfort' === (string) ( $item['provider'] ?? '' ) ) $score += 2;
         return min( 20, $score );
+    }
+
+    private static function default_composition_intent( string $contract ): array {
+        return match ( $contract ) {
+            'content_split' => [ 'composition_role' => 'split_media', 'visual_scale' => 'standard', 'media_emphasis' => 'balanced', 'density' => 'balanced' ],
+            'feature_grid' => [ 'composition_role' => 'card_grid', 'visual_scale' => 'standard', 'media_emphasis' => 'supporting', 'density' => 'dense' ],
+            'testimonial_grid' => [ 'composition_role' => 'proof_reassurance', 'visual_scale' => 'standard', 'media_emphasis' => 'supporting', 'density' => 'balanced' ],
+            'cta' => [ 'composition_role' => 'cta_band', 'visual_scale' => 'dominant', 'media_emphasis' => 'none', 'density' => 'airy' ],
+            default => [ 'composition_role' => 'mixed', 'visual_scale' => 'standard', 'media_emphasis' => 'none', 'density' => 'balanced' ],
+        };
     }
 
     private static function contract_terms( string $contract ): array {
@@ -202,6 +227,20 @@ final class Elementize_Component_Intelligence {
             'feature_grid' => [ 'feature', 'features', 'service', 'services', 'card', 'cards', 'solution', 'solutions' ],
             'cta' => [ 'cta', 'call-to-action', 'action', 'contact' ],
             'content_split' => [ 'content', 'about', 'intro', 'image', 'showcase', 'story' ],
+            default => [],
+        };
+    }
+
+    private static function composition_terms( string $role ): array {
+        return match ( $role ) {
+            'hero_focus' => [ 'hero', 'intro' ],
+            'split_media' => [ 'image', 'showcase', 'media', 'content', 'about' ],
+            'card_grid' => [ 'cards', 'card', 'grid', 'features', 'services' ],
+            'process_steps' => [ 'steps', 'step', 'workflow', 'process', 'timeline', 'how-it-works', 'how it works' ],
+            'proof_reassurance' => [ 'testimonial', 'review', 'proof', 'trust', 'clients', 'logos' ],
+            'faq' => [ 'faq', 'accordion', 'questions' ],
+            'cta_band' => [ 'cta', 'contact', 'call-to-action' ],
+            'editorial' => [ 'content', 'text', 'about', 'story' ],
             default => [],
         };
     }
@@ -218,7 +257,10 @@ final class Elementize_Component_Intelligence {
         $responsive = self::responsive_score( $controls, $summary );
         $safety = self::safety_score( $summary );
         $efficiency = self::edit_efficiency_score( count( $fields ), count( $controls ), (int) ( $summary['element_count'] ?? 0 ) );
-        $total = min( 100, $metadata_score + $structure + $design + $responsive + $safety + $efficiency['score'] );
+        $signature = self::composition_signature( $item, $families, $summary );
+        $composition = self::composition_fit( (array) ( $input['composition_intent'] ?? [] ), $signature );
+        $base_total = min( 100, $metadata_score + $structure + $design + $responsive + $safety + $efficiency['score'] );
+        $total = max( 0, min( 100, $base_total + (int) $composition['adjustment'] ) );
 
         return [
             'score' => $total,
@@ -234,8 +276,15 @@ final class Elementize_Component_Intelligence {
                 'responsive_confidence' => $responsive,
                 'dependency_safety' => $safety,
                 'edit_efficiency' => $efficiency['score'],
+                'composition_adjustment' => (int) $composition['adjustment'],
             ],
+            'base_score_before_composition' => $base_total,
             'estimated_normalization_cost' => $efficiency['cost'],
+            'composition' => [
+                'intent' => (array) ( $input['composition_intent'] ?? [] ),
+                'signature' => $signature,
+                'fit' => $composition,
+            ],
             'evidence' => [
                 'root_count' => (int) ( $summary['root_count'] ?? 0 ),
                 'element_count' => (int) ( $summary['element_count'] ?? 0 ),
@@ -284,6 +333,89 @@ final class Elementize_Component_Intelligence {
             foreach ( $needles as $needle ) if ( false !== strpos( $w, $needle ) ) return $family;
         }
         return 'other';
+    }
+
+    public static function composition_signature( array $item, array $families, array $summary ): array {
+        $count = static fn( string $family ): int => (int) ( $families[ $family ] ?? 0 );
+        $title = self::lower( (string) ( $item['title'] ?? '' ) . ' ' . (string) ( $item['subtype'] ?? '' ) );
+        $has_title = static function( array $terms ) use ( $title ): bool { foreach ( $terms as $term ) if ( false !== strpos( $title, $term ) ) return true; return false; };
+        $features = $count( 'feature' );
+        $images = $count( 'image' );
+        $media = $images + $count( 'video' );
+        $widgets = max( 0, (int) ( $summary['widget_count'] ?? array_sum( $families ) ) );
+        $elements = max( 0, (int) ( $summary['element_count'] ?? 0 ) );
+
+        if ( $count( 'accordion' ) > 0 ) $role = 'faq';
+        elseif ( $count( 'testimonial' ) > 0 || $count( 'logo' ) >= 3 ) $role = 'proof_reassurance';
+        elseif ( $widgets >= 2 && $has_title( [ 'workflow', 'process', 'steps', 'step ', 'timeline', 'how it works' ] ) ) $role = 'process_steps';
+        elseif ( $has_title( [ 'hero', 'intro hero', 'header hero' ] ) && $count( 'heading' ) > 0 ) $role = 'hero_focus';
+        elseif ( $has_title( [ 'cta', 'call to action', 'contact' ] ) && $count( 'heading' ) > 0 ) $role = 'cta_band';
+        elseif ( $features >= 3 ) $role = 'card_grid';
+        elseif ( $media > 0 && $count( 'heading' ) > 0 && $count( 'text' ) > 0 ) $role = 'split_media';
+        elseif ( $count( 'button' ) > 0 && $count( 'heading' ) > 0 && $features < 3 && 0 === $media && $elements <= 35 ) $role = 'cta_band';
+        elseif ( $count( 'heading' ) > 0 && $count( 'text' ) > 0 && 0 === $media && 0 === $features ) $role = 'editorial';
+        else $role = 'mixed';
+
+        $media_ratio = $widgets > 0 ? $media / $widgets : 0.0;
+        $media_emphasis = 0 === $media ? 'none' : ( $media_ratio >= 0.45 || $media >= 4 ? 'dominant' : ( $media_ratio >= 0.20 || $media >= 2 ? 'balanced' : 'supporting' ) );
+        $density = ( $widgets <= 6 && $elements <= 20 ) ? 'airy' : ( $widgets >= 14 || $elements >= 40 ? 'dense' : 'balanced' );
+        $structural_scale = ( $widgets <= 6 && $elements <= 18 ) ? 'compact' : ( $widgets >= 16 || $elements >= 48 ? 'dominant' : 'standard' );
+        return [
+            'composition_role' => $role,
+            'structural_scale' => $structural_scale,
+            'media_emphasis' => $media_emphasis,
+            'density' => $density,
+            'media_widget_count' => $media,
+            'media_widget_ratio' => round( $media_ratio, 3 ),
+        ];
+    }
+
+    public static function composition_fit( array $intent, array $signature ): array {
+        $desired_role = (string) ( $intent['composition_role'] ?? 'mixed' );
+        $actual_role = (string) ( $signature['composition_role'] ?? 'mixed' );
+        $adjustment = 0;
+        $reasons = [];
+        if ( $desired_role === $actual_role ) { $adjustment += 8; $reasons[] = 'composition_role_exact'; }
+        elseif ( self::composition_roles_compatible( $desired_role, $actual_role ) ) { $reasons[] = 'composition_role_compatible'; }
+        elseif ( 'mixed' === $desired_role || 'mixed' === $actual_role ) { $reasons[] = 'composition_role_unresolved'; }
+        else { $adjustment -= 7; $reasons[] = 'composition_role_mismatch'; }
+
+        $desired_media = (string) ( $intent['media_emphasis'] ?? 'none' );
+        $actual_media = (string) ( $signature['media_emphasis'] ?? 'none' );
+        if ( $desired_media === $actual_media ) { $adjustment += 1; $reasons[] = 'media_emphasis_exact'; }
+        elseif ( in_array( [ $desired_media, $actual_media ], [ [ 'supporting', 'balanced' ], [ 'balanced', 'supporting' ], [ 'balanced', 'dominant' ], [ 'dominant', 'balanced' ] ], true ) ) { $reasons[] = 'media_emphasis_adjacent'; }
+        elseif ( 'none' !== $desired_media || 'none' !== $actual_media ) { $adjustment -= 2; $reasons[] = 'media_emphasis_mismatch'; }
+
+        $desired_density = (string) ( $intent['density'] ?? 'balanced' );
+        $actual_density = (string) ( $signature['density'] ?? 'balanced' );
+        if ( $desired_density === $actual_density ) { $adjustment += 1; $reasons[] = 'density_exact'; }
+        elseif ( in_array( [ $desired_density, $actual_density ], [ [ 'airy', 'dense' ], [ 'dense', 'airy' ] ], true ) ) { $adjustment -= 2; $reasons[] = 'density_opposite'; }
+
+        $desired_scale = (string) ( $intent['visual_scale'] ?? 'standard' );
+        $actual_scale = (string) ( $signature['structural_scale'] ?? 'standard' );
+        if ( $desired_scale === $actual_scale ) { $adjustment += 1; $reasons[] = 'scale_proxy_exact'; }
+        elseif ( ( 'dominant' === $desired_scale && 'compact' === $actual_scale ) || ( 'compact' === $desired_scale && 'dominant' === $actual_scale ) ) { $adjustment -= 2; $reasons[] = 'scale_proxy_opposite'; }
+        $adjustment = max( -12, min( 8, $adjustment ) );
+        return [
+            'adjustment' => $adjustment,
+            'reasons' => $reasons,
+            'role_match' => $desired_role === $actual_role ? 'exact' : ( self::composition_roles_compatible( $desired_role, $actual_role ) ? 'compatible' : ( 'mixed' === $desired_role || 'mixed' === $actual_role ? 'unresolved' : 'mismatch' ) ),
+            'rule' => 'Composition fit is deterministic structural evidence only; native vision remains the authority on visual quality.',
+        ];
+    }
+
+    private static function composition_roles_compatible( string $desired, string $actual ): bool {
+        $pairs = [
+            'hero_focus' => [ 'split_media', 'cta_band' ],
+            'split_media' => [ 'hero_focus', 'editorial' ],
+            'process_steps' => [ 'card_grid' ],
+            'card_grid' => [ 'process_steps', 'proof_reassurance' ],
+            'proof_reassurance' => [ 'card_grid', 'editorial' ],
+            'cta_band' => [ 'hero_focus', 'editorial' ],
+            'editorial' => [ 'split_media', 'cta_band', 'proof_reassurance' ],
+            'faq' => [],
+        ];
+        return in_array( $actual, $pairs[ $desired ] ?? [], true );
     }
 
     public static function structure_score( string $contract, array $families, array $summary ): int {
@@ -412,8 +544,10 @@ final class Elementize_Component_Intelligence {
                 'dependency_safety' => 10,
                 'edit_efficiency' => 10,
             ],
+            'composition_adjustment' => [ 'minimum' => -12, 'maximum' => 8, 'applied_after_base_score' => true ],
             'interpretation' => [
                 'Higher score means lower expected normalization effort for this page and purpose.',
+                'Composition adjustment compares blueprint intent with deterministic template structure; it is not a visual-quality score.',
                 'Scores are deterministic planning evidence, not aesthetic truth.',
                 'ChatGPT must still inspect the chosen template before insertion and verify the rendered result.',
                 'A high score never bypasses Creative Control or any mutation guard.',

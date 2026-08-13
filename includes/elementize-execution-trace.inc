@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * The full blueprint is never persisted; only the compact verified trace is returned.
  */
 final class Elementize_Execution_Trace {
-    private const VERSION = '1';
+    private const VERSION = '2';
     private const MAX_SECTIONS = 24;
     private const MAX_CANDIDATES = 24;
     private const PHASES = [ 'build', 'repair', 'polish' ];
@@ -48,6 +48,7 @@ final class Elementize_Execution_Trace {
             $sections[] = [
                 'id' => $id,
                 'contract' => (string) ( $section['contract'] ?? 'generic' ),
+                'composition_role' => (string) ( $section['composition_role'] ?? 'mixed' ),
             ];
         }
 
@@ -102,6 +103,7 @@ final class Elementize_Execution_Trace {
             $out[] = [
                 'section_id' => $section_id,
                 'section_contract' => (string) ( $section_map[ $section_id ]['contract'] ?? 'generic' ),
+                'section_composition_role' => (string) ( $section_map[ $section_id ]['composition_role'] ?? 'mixed' ),
                 'source_id' => $source_id,
                 'template_id' => $template_id,
                 'score' => $score,

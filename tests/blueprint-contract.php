@@ -58,7 +58,9 @@ if ( ! is_array( $result ) ) fail_blueprint( 'Valid blueprint did not normalize.
 if ( ( $result['selected_section']['contract'] ?? '' ) !== 'feature_grid' ) fail_blueprint( 'Selected blueprint section was not grounded.' );
 $fingerprint = (string) ( $result['fingerprint'] ?? '' );
 if ( 64 !== strlen( $fingerprint ) ) fail_blueprint( 'Blueprint fingerprint is not SHA-256.' );
-if ( ( $result['blueprint_version'] ?? '' ) !== '3' ) fail_blueprint( 'Progressive-checkpoint blueprint version did not advance.' );
+if ( ( $result['blueprint_version'] ?? '' ) !== '4' ) fail_blueprint( 'Composition-aware blueprint version did not advance.' );
+if ( ( $result['normalized']['sections'][0]['composition_role'] ?? '' ) !== 'card_grid' || ( $result['normalized']['sections'][0]['composition_role_source'] ?? '' ) !== 'inferred' ) fail_blueprint( 'Feature-grid composition intent was not inferred deterministically.' );
+if ( ( $result['normalized']['sections'][1]['composition_role'] ?? '' ) !== 'cta_band' || ( $result['normalized']['sections'][1]['visual_scale'] ?? '' ) !== 'dominant' ) fail_blueprint( 'CTA composition defaults were not normalized.' );
 if ( ( $result['normalized']['reference_evidence']['observation_count'] ?? 0 ) !== 3 ) fail_blueprint( 'Reference evidence count was not normalized.' );
 if ( ( $result['normalized']['reference_evidence']['observed_categories'] ?? [] ) !== [ 'layout', 'responsive' ] ) fail_blueprint( 'Observed reference categories are not deterministic.' );
 $matrix = (array) ( $result['normalized']['acceptance_plan']['qa_matrix'] ?? [] );
@@ -82,6 +84,24 @@ $long_result = Elementize_Blueprint::normalize( $long );
 $long_checkpoints = (array) ( $long_result['normalized']['build_checkpoints'] ?? [] );
 if ( array_column( $long_checkpoints, 'stage' ) !== [ 'design_language_lock', 'early_narrative', 'mid_page_rhythm', 'whole_page_close' ] ) fail_blueprint( 'Eight-section blueprint did not derive all four design checkpoints.' );
 if ( array_column( $long_checkpoints, 'after_section_index' ) !== [ 0, 2, 4, 7 ] ) fail_blueprint( 'Eight-section checkpoint placement changed unexpectedly.' );
+$long_rhythm = (array) ( $long_result['normalized']['composition_rhythm'] ?? [] );
+if ( empty( $long_rhythm['review_required'] ) || 8 !== ( $long_rhythm['review_runs'][0]['length'] ?? null ) || 'card_grid' !== ( $long_rhythm['review_runs'][0]['role'] ?? null ) ) fail_blueprint( 'Repeated composition-role run was not surfaced as review evidence.' );
+
+$explicit = $blueprint;
+$explicit['sections'][0]['composition_role'] = 'process_steps';
+$explicit['sections'][0]['visual_scale'] = 'dominant';
+$explicit['sections'][0]['media_emphasis'] = 'none';
+$explicit['sections'][0]['density'] = 'airy';
+$explicit_result = Elementize_Blueprint::normalize( $explicit );
+$explicit_section = $explicit_result['normalized']['sections'][0] ?? [];
+if ( ( $explicit_section['composition_role'] ?? '' ) !== 'process_steps' || ( $explicit_section['composition_role_source'] ?? '' ) !== 'explicit' || ( $explicit_section['visual_scale'] ?? '' ) !== 'dominant' ) fail_blueprint( 'Explicit composition intent was not preserved.' );
+if ( ( $explicit_result['fingerprint'] ?? '' ) === $fingerprint ) fail_blueprint( 'Composition intent did not participate in the blueprint fingerprint.' );
+
+$bad_composition = $blueprint;
+$bad_composition['sections'][0]['composition_role'] = 'random-layout';
+$composition_rejected = false;
+try { Elementize_Blueprint::normalize( $bad_composition ); } catch ( InvalidArgumentException $error ) { $composition_rejected = false !== strpos( $error->getMessage(), 'elementize_blueprint_composition_role_invalid' ); }
+if ( ! $composition_rejected ) fail_blueprint( 'Unsupported composition role was not rejected.' );
 
 $reordered = $blueprint;
 $reordered['design_tokens'] = [ 'accent' => 'primary', 'radius' => '10px' ];

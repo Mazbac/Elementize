@@ -87,7 +87,11 @@ jobs:
           grep -q "acceptance_plan" includes/elementize-blueprint.inc || { echo 'Blueprint acceptance plan is missing.'; exit 1; }
           grep -q "qa_matrix" includes/elementize-blueprint.inc || { echo 'Deterministic QA matrix derivation is missing.'; exit 1; }
           grep -q "build_checkpoints" includes/elementize-blueprint.inc || { echo 'Progressive build checkpoint derivation is missing.'; exit 1; }
+          grep -q "composition_rhythm" includes/elementize-blueprint.inc || { echo 'Blueprint composition-rhythm evidence is missing.'; exit 1; }
           grep -q "visual_critic_contract" includes/elementize-designer.inc || { echo 'Whole-page visual critic contract is missing.'; exit 1; }
+          grep -q "composition_signature" includes/elementize-component-intelligence.inc || { echo 'Component composition signature is missing.'; exit 1; }
+          grep -q "composition_adjustment" includes/elementize-component-intelligence.inc || { echo 'Component composition adjustment is missing.'; exit 1; }
+          grep -q "section_composition_role" includes/elementize-execution-trace.inc || { echo 'Execution trace composition lineage is missing.'; exit 1; }
           grep -q "checkpoint_after_selected_section" includes/elementize-component-intelligence.inc || { echo 'Component checkpoint trigger evidence is missing.'; exit 1; }
           grep -q "responsive_breakpoint" includes/elementize-design.inc || { echo 'Responsive design-control metadata is missing.'; exit 1; }
           php tests/designer-agent-contract.php
@@ -227,9 +231,13 @@ jobs:
           grep -q 'ElementizeAcceptancePlan' "$schema" || { echo 'Acceptance-plan Action schema is missing.'; exit 1; }
           grep -q 'ElementizeQualityGateEvaluation' "$schema" || { echo 'Visual QA quality-gate schema is missing.'; exit 1; }
           grep -q 'ElementizeRepairSignal' "$schema" || { echo 'Visual QA repair-signal schema is missing.'; exit 1; }
+          grep -q 'composition_role:' "$schema" || { echo 'Blueprint composition-role Action schema is missing.'; exit 1; }
+          grep -q 'media_emphasis:' "$schema" || { echo 'Blueprint media-emphasis Action schema is missing.'; exit 1; }
           grep -q 'provider=pixfort' "$instructions" || { echo 'GPT must prefer Pixfort-native templates when suitable.'; exit 1; }
           grep -q 'Designer workflow' "$instructions" || { echo 'GPT senior-designer workflow is missing.'; exit 1; }
           grep -q 'build_checkpoints' "$instructions" || { echo 'GPT progressive visual checkpoint rule is missing.'; exit 1; }
+          grep -q 'composition_role' "$instructions" || { echo 'GPT composition-intent planning rule is missing.'; exit 1; }
+          grep -q 'composition_rhythm' "$instructions" || { echo 'GPT composition-rhythm review rule is missing.'; exit 1; }
           grep -q 'visual_critic_contract' "$instructions" || { echo 'GPT whole-page critic rule is missing.'; exit 1; }
           grep -q 'desktop, tablet and mobile' "$instructions" || { echo 'GPT multi-viewport QA rule is missing.'; exit 1; }
           grep -q 'browser diagnostics' "$instructions" || { echo 'GPT browser-diagnostics rule is missing.'; exit 1; }

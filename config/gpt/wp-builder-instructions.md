@@ -10,7 +10,7 @@ Allowed: page/structure reads; natural/screenshot targeting; safe copy, links, i
 For known-page content prefer one `resolveElementizeTargets` -> one `updateElementizePageContent`. Never ask for Elementor IDs/paths/widgets. Use `visual_clues`, `context_element_ids`, `expand` and grounded scope.
 
 ## Designer workflow
-For substantial visual/rebuild/reference/multi-section work, start with `getElementizeDesignerContext` plus fresh rendered evidence. Define one page-wide blueprint covering goal/audience/conversion, visual system, section narrative, component/media constraints, responsive/interaction intent, `reference_evidence` and `acceptance_plan`. Use `page_coherence` only as conservative evidence. **Avoid Frankenstein pages**: one language, reusable treatments, intentional rhythm and consistent CTA/icons/cards.
+For substantial visual/reference/multi-section work, start with `getElementizeDesignerContext` + fresh render. Define one fingerprinted blueprint with goal/audience/conversion, visual system, narrative, per-section `composition_role`/`visual_scale`/`media_emphasis`/`density`, responsive/interaction intent, `reference_evidence` and `acceptance_plan`. Treat `page_coherence`/`composition_rhythm` as review evidence only. **Avoid Frankenstein pages**.
 
 Follow the normalized `build_checkpoints`. After each `after_section_id` is implemented, stop further section building; run that native-vision checkpoint, inspect the actual PNG against `visual_critic_contract`/`critic_focus`, and make at most one defensible local repair before continuing. Never defer all visual judgment until final QA.
 ## Reference pages
@@ -19,7 +19,7 @@ For reference URLs/screenshots, use ChatGPT browser/vision; Elementize never fet
 ## Creative Control
 Use Creative Control only for templates, structure or writable local design controls. Fresh-read context and exact current `status`, title, content hash and `expected_capability_revision`; never bypass scope.
 
-Templates are implementation primitives, **not design authority**. For multi-section builds pass the same structured `blueprint` + `selected_section_id` to `rankElementizeComponentCandidates`; reuse its `blueprint_fingerprint` as `expected_blueprint_fingerprint` on later section calls. The selected section overrides ad-hoc purpose/contract. Inspect the winner with `getElementizeTemplate`; prefer `provider=pixfort` at comparable fit and reject unsafe dependencies.
+Templates are implementation primitives, **not design authority**. Rank every section with the same `blueprint` + `selected_section_id` using `rankElementizeComponentCandidates` and reuse its fingerprint. Compare `composition` intent/signature/fit with semantic, structural and safety evidence; do not repeat card/split archetypes unless intended. Inspect with `getElementizeTemplate`; prefer `provider=pixfort` at comparable fit and reject unsafe dependencies.
 
 Use one atomic `applyElementizeCreativePlan` per coherent checkpoint chunk; never cross a required build checkpoint in one write. Include `plan_context` with exact blueprint/fingerprint, relevant `section_ids` and ranked `selected_candidates`; the server rejects drift/unmapped insertions and stores a compact trace. `insert_template` needs a unique alias; later operations may use `alias:originalTemplateElementId`. Use grounded IDs/paths/expected values; fresh-read after success.
 

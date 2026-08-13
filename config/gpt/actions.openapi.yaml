@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.49.1
+  version: 0.50.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid
@@ -152,7 +152,7 @@ paths:
     get:
       operationId: getElementizeDesignerContext
       summary: Read page-wide senior-designer context
-      description: Returns fresh page outline, design language, coherence evidence, Blueprint v3 checkpoint rules, visual-critic rubric, and quality contracts before Creative writes.
+      description: Returns fresh page outline, design language, coherence evidence, Blueprint v4 composition/checkpoint rules, visual-critic rubric, and quality contracts before Creative writes.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
@@ -162,7 +162,7 @@ paths:
     post:
       operationId: rankElementizeComponentCandidates
       summary: Rank implementation candidates for one blueprint section
-      description: Read-only template ranking grounded in one blueprint section; blueprint_grounding also returns derived build checkpoints and whether this section triggers one.
+      description: Read-only template ranking grounded in one blueprint section, including composition intent/signature fit, derived build checkpoints, and the selected section checkpoint trigger.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -572,6 +572,10 @@ components:
         purpose: { type: string, minLength: 1, maxLength: 700 }
         narrative_role: { type: string, minLength: 1, maxLength: 500 }
         contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic] }
+        composition_role: { type: string, enum: [hero_focus, split_media, card_grid, process_steps, proof_reassurance, faq, cta_band, editorial, mixed] }
+        visual_scale: { type: string, enum: [dominant, standard, compact] }
+        media_emphasis: { type: string, enum: [none, supporting, balanced, dominant] }
+        density: { type: string, enum: [airy, balanced, dense] }
         layout_pattern: { type: string, maxLength: 400 }
         content_requirements:
           type: array

@@ -26,7 +26,7 @@ $design = file_get_contents( __DIR__ . '/../includes/elementize-design.inc' );
 $visual = file_get_contents( __DIR__ . '/../includes/elementize-visual-qa.inc' );
 $schema = file_get_contents( __DIR__ . '/../config/gpt/actions.openapi.yaml' );
 $instructions = file_get_contents( __DIR__ . '/../config/gpt/wp-builder-instructions.md' );
-foreach ( [ "private const VERSION = '7'", 'blueprint_contract', 'execution_trace_contract', 'reference_analysis_contract', 'visual_critic_contract', 'checkpoint_rubrics', 'whole_page_questions', 'quality_contract', 'responsive_control_summary', 'page_coherence', 'observation_contract' ] as $needle ) {
+foreach ( [ "private const VERSION = '8'", 'blueprint_contract', 'execution_trace_contract', 'reference_analysis_contract', 'visual_critic_contract', 'checkpoint_rubrics', 'whole_page_questions', 'quality_contract', 'composition_rhythm', 'candidate_composition_signature_fit', 'responsive_control_summary', 'page_coherence', 'observation_contract' ] as $needle ) {
     if ( false === strpos( $designer, $needle ) ) fail_designer_agent( 'Designer context missing: ' . $needle );
 }
 foreach ( [ "'responsive_breakpoint'", 'responsive_breakpoint( array $path )' ] as $needle ) {

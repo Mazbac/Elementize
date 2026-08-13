@@ -19,8 +19,8 @@ $blueprint = [
     'conversion_goal' => 'Request a demo.',
     'visual_direction' => 'Coherent B2B SaaS.',
     'sections' => [
-        [ 'id' => 'features', 'purpose' => 'Explain benefits.', 'narrative_role' => 'Education.', 'contract' => 'feature_grid' ],
-        [ 'id' => 'close', 'purpose' => 'Convert interest.', 'narrative_role' => 'Final conversion.', 'contract' => 'cta' ],
+        [ 'id' => 'features', 'purpose' => 'Explain benefits.', 'narrative_role' => 'Education.', 'contract' => 'feature_grid', 'composition_role' => 'card_grid' ],
+        [ 'id' => 'close', 'purpose' => 'Convert interest.', 'narrative_role' => 'Final conversion.', 'contract' => 'cta', 'composition_role' => 'cta_band' ],
     ],
 ];
 
@@ -42,6 +42,9 @@ $operations = [
 ];
 $trace = Elementize_Execution_Trace::normalize( $context, $operations );
 if ( ! is_array( $trace ) || empty( $trace['trace_verified'] ) ) fail_trace( 'Valid execution trace was not verified.' );
+if ( ( $trace['trace_version'] ?? '' ) !== '2' ) fail_trace( 'Execution trace version did not advance.' );
+if ( ( $trace['sections'][0]['composition_role'] ?? '' ) !== 'card_grid' || ( $trace['sections'][1]['composition_role'] ?? '' ) !== 'cta_band' ) fail_trace( 'Compact section trace lost composition roles.' );
+if ( ( $trace['selected_candidates'][0]['section_composition_role'] ?? '' ) !== 'card_grid' || ( $trace['selected_candidates'][1]['section_composition_role'] ?? '' ) !== 'cta_band' ) fail_trace( 'Candidate trace lost section composition roles.' );
 if ( ( $trace['blueprint_fingerprint'] ?? '' ) !== $fingerprint ) fail_trace( 'Verified trace lost blueprint fingerprint.' );
 if ( 2 !== (int) ( $trace['insertion_count_verified'] ?? 0 ) ) fail_trace( 'Insertion count did not verify.' );
 if ( isset( $trace['blueprint'] ) ) fail_trace( 'Full blueprint leaked into compact execution trace.' );
