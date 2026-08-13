@@ -1,0 +1,13 @@
+name: Native visual loop contract
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-native-visual-loop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate native rendered repair loop
+        run: php tests/native-visual-loop-contract.php

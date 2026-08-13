@@ -83,16 +83,9 @@ final class Elementize_Media_Import {
         $has_ref = 1 === count( $refs );
         $has_url = '' !== $generated_url;
 
-        if ( count( $refs ) > 1 ) {
-            return new WP_Error( 'elementize_generated_media_file_count', 'Exactly one generated ChatGPT image may be imported at a time.', [ 'status' => 400 ] );
-        }
-        if ( $has_ref === $has_url ) {
-            return new WP_Error( 'elementize_generated_media_source_invalid', 'Provide exactly one generated-image source: one openaiFileIdRefs item or generated_image_url.', [ 'status' => 400 ] );
-        }
-
-        if ( $has_ref ) {
-            return self::import_openai_ref( $request, 'chatgpt_generated', 'generated ChatGPT image' );
-        }
+        if ( count( $refs ) > 1 ) return new WP_Error( 'elementize_generated_media_file_count', 'Exactly one generated ChatGPT image may be imported at a time.', [ 'status' => 400 ] );
+        if ( $has_ref === $has_url ) return new WP_Error( 'elementize_generated_media_source_invalid', 'Provide exactly one generated-image source: one openaiFileIdRefs item or generated_image_url.', [ 'status' => 400 ] );
+        if ( $has_ref ) return self::import_openai_ref( $request, 'chatgpt_generated', 'generated ChatGPT image' );
 
         if ( strlen( $generated_url ) > self::MAX_URL || ! self::openai_file_url( $generated_url ) ) {
             return new WP_Error( 'elementize_generated_media_url_invalid', 'generated_image_url must be an HTTPS image URL on an allowed OpenAI file host.', [ 'status' => 400 ] );
@@ -148,6 +141,7 @@ final class Elementize_Media_Import {
         $data['generated_image_import_openai_only'] = true;
         $data['remote_image_import'] = true;
         $data['remote_image_import_https_only'] = true;
+        $data['media_import_retry_deduplication'] = true;
         $data['media_import_max_bytes'] = self::MAX_IMAGE_BYTES;
         $data['media_import_allowed_mime_types'] = array_keys( self::ALLOWED_MIMES );
         $response->set_data( $data );
@@ -168,6 +162,16 @@ final class Elementize_Media_Import {
         if ( strlen( $source_id ) > self::MAX_SOURCE_ID || strlen( $download_url ) > self::MAX_URL ) return new WP_Error( 'elementize_chat_media_reference_invalid', 'The ChatGPT image reference exceeds Elementize safety limits.', [ 'status' => 400 ] );
         if ( ! str_starts_with( $source_mime, 'image/' ) ) return new WP_Error( 'elementize_chat_media_not_image', 'The supplied ChatGPT file is not an image.', [ 'status' => 400 ] );
         if ( ! self::openai_file_url( $download_url ) ) return new WP_Error( 'elementize_chat_media_source_forbidden', 'The ChatGPT image URL is not on an allowed OpenAI file host.', [ 'status' => 400 ] );
+
+        $existing = self::find_existing_attachment( '_elementize_chat_file_id', $source_id );
+        if ( $existing > 0 ) {
+            $result = self::existing_result( $existing );
+            $result['source_file_id'] = $source_id;
+            $result['source_name'] = $source_name;
+            $result['source_mime_type'] = $source_mime;
+            $result['source_type'] = $source_type;
+            return new WP_REST_Response( $result, 201 );
+        }
 
         $meta = [
             '_elementize_import_source' => $source_type,
@@ -197,8 +201,8 @@ final class Elementize_Media_Import {
         if ( ! is_string( $tmp ) || '' === $tmp ) return new WP_Error( 'elementize_media_temp_failed', 'WordPress could not create a temporary file.', [ 'status' => 500 ] );
 
         $remote = wp_safe_remote_get( $url, [
-            'timeout' => 20,
-            'redirection' => 2,
+            'timeout' => 30,
+            'redirection' => 3,
             'stream' => true,
             'filename' => $tmp,
             'limit_response_size' => self::MAX_IMAGE_BYTES + 1,
@@ -213,10 +217,22 @@ final class Elementize_Media_Import {
         if ( $bytes < 1 || $bytes > self::MAX_IMAGE_BYTES ) { @unlink( $tmp ); return new WP_Error( 'elementize_media_size_invalid', 'The image must be between 1 byte and 10 MiB.', [ 'status' => 400 ] ); }
         $actual_mime = function_exists( 'wp_get_image_mime' ) ? (string) wp_get_image_mime( $tmp ) : '';
         if ( ! isset( self::ALLOWED_MIMES[ $actual_mime ] ) ) { @unlink( $tmp ); return new WP_Error( 'elementize_media_mime_invalid', 'The downloaded file is not a supported JPG, PNG, WEBP, AVIF, or GIF image.', [ 'status' => 400 ] ); }
-        $dimensions = @getimagesize( $tmp );
+
+        $dimensions = function_exists( 'wp_getimagesize' ) ? wp_getimagesize( $tmp ) : @getimagesize( $tmp );
         $width = is_array( $dimensions ) && isset( $dimensions[0] ) ? absint( $dimensions[0] ) : 0;
         $height = is_array( $dimensions ) && isset( $dimensions[1] ) ? absint( $dimensions[1] ) : 0;
         if ( $width < 1 || $height < 1 || ( $width * $height ) > self::MAX_IMAGE_PIXELS ) { @unlink( $tmp ); return new WP_Error( 'elementize_media_dimensions_invalid', 'The image dimensions are invalid or exceed the 60-megapixel safety limit.', [ 'status' => 400 ] ); }
+
+        $sha256 = hash_file( 'sha256', $tmp );
+        if ( is_string( $sha256 ) && '' !== $sha256 ) {
+            $existing = self::find_existing_attachment( '_elementize_sha256', $sha256 );
+            if ( $existing > 0 ) {
+                @unlink( $tmp );
+                return self::existing_result( $existing, $sha256 );
+            }
+        } else {
+            $sha256 = '';
+        }
 
         $base = sanitize_file_name( pathinfo( $source_name, PATHINFO_FILENAME ) );
         if ( '' === $base ) $base = 'elementize-image';
@@ -236,13 +252,46 @@ final class Elementize_Media_Import {
         if ( '' !== $alt ) update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
         foreach ( $meta as $key => $value ) update_post_meta( $attachment_id, $key, $value );
         update_post_meta( $attachment_id, '_elementize_imported_at_gmt', gmdate( 'Y-m-d H:i:s' ) );
-        $file = get_attached_file( $attachment_id );
-        $sha256 = is_string( $file ) && is_file( $file ) ? hash_file( 'sha256', $file ) : '';
+        if ( '' !== $sha256 ) update_post_meta( $attachment_id, '_elementize_sha256', $sha256 );
+
         return [
             'imported' => true,
+            'deduplicated' => false,
             'detected_mime_type' => $actual_mime,
             'bytes_downloaded' => $bytes,
-            'sha256' => is_string( $sha256 ) ? $sha256 : '',
+            'sha256' => $sha256,
+            'image' => Elementize_Media_Library::snapshot( $attachment_id ),
+        ];
+    }
+
+    private static function find_existing_attachment( string $meta_key, string $meta_value ): int {
+        if ( '' === $meta_value ) return 0;
+        $ids = get_posts( [
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'post_mime_type' => 'image',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'orderby' => 'ID',
+            'order' => 'DESC',
+            'meta_key' => $meta_key,
+            'meta_value' => $meta_value,
+            'no_found_rows' => true,
+            'suppress_filters' => true,
+        ] );
+        $attachment_id = absint( is_array( $ids ) && isset( $ids[0] ) ? $ids[0] : 0 );
+        if ( $attachment_id < 1 || ! wp_attachment_is_image( $attachment_id ) || ! current_user_can( 'edit_post', $attachment_id ) ) return 0;
+        return $attachment_id;
+    }
+
+    private static function existing_result( int $attachment_id, string $sha256 = '' ): array {
+        if ( '' === $sha256 ) $sha256 = (string) get_post_meta( $attachment_id, '_elementize_sha256', true );
+        return [
+            'imported' => true,
+            'deduplicated' => true,
+            'detected_mime_type' => (string) get_post_mime_type( $attachment_id ),
+            'bytes_downloaded' => 0,
+            'sha256' => $sha256,
             'image' => Elementize_Media_Library::snapshot( $attachment_id ),
         ];
     }

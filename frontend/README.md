@@ -1,16 +1,16 @@
 # Elementize admin frontend
 
-React + TypeScript + Mantine frontend for the WordPress admin experience.
+The WordPress admin UI is built with React, TypeScript, Vite, Tailwind CSS, Radix UI primitives, and the local component layer in `src/components/ui/`.
 
 ## Development
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-The development server is for component work only. WordPress uses the production bundle.
+The Vite development server is for frontend work only. WordPress uses the generated production assets.
 
 ## Production bundle
 
@@ -20,35 +20,30 @@ npm ci
 npm run build
 ```
 
-The build writes exactly these runtime assets:
+The build writes:
 
 - `assets/admin/elementize-admin.js`
 - `assets/admin/elementize-admin.css`
+If the production assets are absent, Elementize deliberately falls back to the PHP onboarding/setup screen so a missing frontend build does not block configuration.
 
-If those assets are absent, Elementize deliberately falls back to the existing PHP onboarding screen so setup is never blocked by a missing frontend build.
+## UI conventions
 
-## Pure Mantine rule
+- Prefer the existing local UI primitives before adding another component dependency.
+- Keep WordPress/PHP authoritative for capabilities, permissions, nonces, connection state, secrets, and mutations.
+- Keep frontend actions typed through `src/types.ts` and `src/lib/actions.ts`.
+- Reuse the existing Tailwind token/theme system instead of adding one-off inline styling systems.
+- Add a dependency only when it is used by shipped source code; remove abandoned primitives and packages together.
+- Generated files in `assets/admin/` are build output. Change source under `frontend/src/`, then rebuild.
 
-The WordPress admin frontend is intentionally **pure Mantine**.
+## Source layout
 
-- Every visible UI primitive and layout must come from `@mantine/core`.
-- Mantine hooks may come from `@mantine/hooks`.
-- Do not add custom frontend CSS files.
-- Do not add `className` styling hooks to frontend TSX.
-- Do not build visible UI with raw layout tags such as `div`, `section`, `nav`, `main`, `aside`, `header`, `footer`, `form`, `input` or `span`.
-- Use Mantine components, Mantine style props, Mantine variants and the central Mantine theme instead.
-- WordPress/PHP continues to own capabilities, permissions, nonces, connection state and secret generation.
+```text
+src/
+  app/          app shell
+  components/   shared UI
+  lib/          action/client helpers
+  pages/        WordPress admin screens
+  types.ts      shared frontend contract types
+```
 
-## Approved palette
-
-The theme may use only these Elementize colors:
-
-- `#f2f3f7`
-- `#94adbf`
-- `#ccafe6`
-- `#9854cb`
-- `#64379f`
-- `#56188f`
-- `#584170`
-- `#2a1b3a`
-- `#1d0432`
+`components.json` keeps the shadcn-compatible component configuration for the local UI layer. The shadcn CLI is not a project dependency; invoke it explicitly with `npx` only when intentionally adding a component.

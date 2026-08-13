@@ -1,4 +1,4 @@
-import type { ElementizeAdminConfig } from '../types';
+import type { ActivityResponse, ConnectionSummary, ElementizeAdminConfig } from '../types';
 
 export async function copyText(text: string): Promise<void> {
   if (navigator.clipboard && window.isSecureContext) {
@@ -18,10 +18,11 @@ export async function copyText(text: string): Promise<void> {
   if (!copied) throw new Error('Clipboard access is unavailable in this browser.');
 }
 
-export async function generateConnectionKey(config: ElementizeAdminConfig): Promise<string> {
+async function postAdminAjax<T>(config: ElementizeAdminConfig, action: string, fields: Record<string, string> = {}): Promise<T> {
   const body = new URLSearchParams();
-  body.set('action', 'elementize_generate_connection_key');
+  body.set('action', action);
   body.set('nonce', config.nonces.generateKey);
+  Object.entries(fields).forEach(([key, value]) => body.set(key, value));
 
   const response = await fetch(config.urls.ajax, {
     method: 'POST',
@@ -31,12 +32,40 @@ export async function generateConnectionKey(config: ElementizeAdminConfig): Prom
   });
   const payload = (await response.json()) as {
     success?: boolean;
-    data?: { connection_key?: string; message?: string };
+    data?: T & { message?: string };
   };
 
-  if (!payload?.success || !payload.data?.connection_key) {
-    throw new Error(payload?.data?.message || 'Could not generate the connection key.');
+  if (!payload?.success || !payload.data) {
+    throw new Error(payload?.data?.message || 'Elementize could not complete the request.');
   }
+  return payload.data;
+}
 
-  return payload.data.connection_key;
+export async function generateConnectionKey(config: ElementizeAdminConfig): Promise<string> {
+  const data = await postAdminAjax<{ connection_key?: string }>(config, 'elementize_generate_connection_key');
+  if (!data.connection_key) throw new Error('Could not generate the connection key.');
+  return data.connection_key;
+}
+
+export async function getConnections(config: ElementizeAdminConfig): Promise<ConnectionSummary> {
+  return postAdminAjax<ConnectionSummary>(config, 'elementize_get_connections');
+}
+
+export async function revokeConnection(config: ElementizeAdminConfig, uuid: string): Promise<ConnectionSummary> {
+  return postAdminAjax<ConnectionSummary>(config, 'elementize_revoke_connection', { uuid });
+}
+
+export async function revokeAllConnections(config: ElementizeAdminConfig): Promise<ConnectionSummary> {
+  return postAdminAjax<ConnectionSummary>(config, 'elementize_revoke_all_connections');
+}
+
+export async function getActivity(config: ElementizeAdminConfig, limit = 20): Promise<ActivityResponse> {
+  return postAdminAjax<ActivityResponse>(config, 'elementize_get_activity', { limit: String(limit) });
+}
+
+export async function undoActivity(config: ElementizeAdminConfig, activityId: string, published: boolean): Promise<void> {
+  await postAdminAjax(config, 'elementize_undo_activity', {
+    activity_id: activityId,
+    confirm_published_page: published ? '1' : '0',
+  });
 }

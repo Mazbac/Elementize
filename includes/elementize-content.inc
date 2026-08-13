@@ -10,6 +10,8 @@ final class Elementize_Content {
     private const MAX_PATH_SEGMENT = 200;
     private const MAX_LINK = 2048;
     private const MAX_ICON = 255;
+    private const MAX_ELEMENT_DEPTH = 80;
+    private const MAX_SETTINGS_VISITS = 20000;
     private const KINDS = [ 'text', 'link', 'media', 'pixfort_icon' ];
 
     public static function init(): void {
@@ -49,19 +51,29 @@ final class Elementize_Content {
         ] );
     }
 
+    public static function discover_items( array $elements ): array {
+        $items = [];
+        $state = [ 'settings_visits' => 0 ];
+        self::collect_elements( $elements, $items, '', 0, $state );
+        return $items;
+    }
+
+    public static function is_writable_text( array $path, string $value ): bool {
+        return self::copy_field( $path, $value );
+    }
+
     public static function read( WP_REST_Request $request ) {
         $id = absint( $request['id'] );
         $loaded = Elementize_Core::elements( $id );
         if ( is_wp_error( $loaded ) ) return $loaded;
         $kind = strtolower( trim( (string) $request->get_param( 'kind' ) ) ) ?: 'all';
         if ( 'all' !== $kind && ! in_array( $kind, self::KINDS, true ) ) return new WP_Error( 'elementize_invalid_content_kind', 'kind must be all, text, link, media, or pixfort_icon.', [ 'status' => 400 ] );
-        $items = [];
-        self::collect_elements( $loaded['elements'], $items );
+        $items = self::discover_items( $loaded['elements'] );
         $filters = [
             'kind' => $kind,
             'element_id' => trim( (string) $request->get_param( 'element_id' ) ),
             'top_level_id' => trim( (string) $request->get_param( 'top_level_id' ) ),
-            'q' => strtolower( trim( (string) $request->get_param( 'q' ) ) ),
+            'q' => self::lower( trim( (string) $request->get_param( 'q' ) ) ),
         ];
         $filtered = array_values( array_filter( $items, static fn( array $item ): bool => self::matches( $item, $filters ) ) );
         $offset = max( 0, absint( $request->get_param( 'offset' ) ) );
@@ -76,6 +88,7 @@ final class Elementize_Content {
             'shared_or_embedded_template_writes' => false,
             'dynamic_values_writable' => false,
             'global_style_values_writable' => false,
+            'generic_safe_text_detection' => true,
             'supported_kinds' => self::KINDS,
             'counts' => $counts,
             'total_item_count' => count( $items ),
@@ -129,17 +142,16 @@ final class Elementize_Content {
         if ( is_wp_error( $revision ) ) return $revision;
         try { $saved = $document->save( [ 'elements' => $elements ] ); }
         catch ( Throwable $e ) {
-            $rollback = self::restore( $document, $id, $before, $before_hash );
+            $rollback = self::rollback_cleanup( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_save_failed', 'Elementor could not save the content changes: ' . $e->getMessage(), [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
         if ( ! $saved ) {
-            $rollback = self::restore( $document, $id, $before, $before_hash );
+            $rollback = self::rollback_cleanup( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_save_failed', 'Elementor refused to save the content changes.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
         $persisted = Elementize_Core::persisted_elements( $id );
         if ( is_wp_error( $persisted ) || ! self::verify_changes( $persisted, $changes ) ) {
-            $rollback = self::restore( $document, $id, $before, $before_hash );
-            Elementize_Core::regenerate_css( $id );
+            $rollback = self::rollback_cleanup( $document, $id, $before, $before_hash );
             return new WP_Error( 'elementize_verification_failed', 'Persisted Elementor data did not verify every requested change, so Elementize attempted to restore the exact pre-change content.', [ 'status' => 500, 'revision_id' => $revision, 'rollback_verified' => $rollback ] );
         }
         Elementize_Core::regenerate_css( $id );
@@ -147,7 +159,8 @@ final class Elementize_Content {
         return new WP_REST_Response( [ 'saved' => true, 'page' => Elementize_Core::page_identity( $id ), 'updated_count' => count( $changes ), 'revision_id' => $revision, 'content_hash' => Elementize_Core::hash_elements( $persisted ), 'persisted_verification' => true, 'changes' => $changes ], 200 );
     }
 
-    private static function collect_elements( array $elements, array &$items, string $top = '' ): void {
+    private static function collect_elements( array $elements, array &$items, string $top, int $depth, array &$state ): void {
+        if ( $depth > self::MAX_ELEMENT_DEPTH || count( $items ) >= self::MAX_ITEMS ) return;
         foreach ( $elements as $element ) {
             if ( count( $items ) >= self::MAX_ITEMS ) return;
             if ( ! is_array( $element ) ) continue;
@@ -155,18 +168,19 @@ final class Elementize_Content {
             $current_top = '' !== $top ? $top : $id;
             $type = is_string( $element['elType'] ?? null ) ? $element['elType'] : '';
             $widget = is_string( $element['widgetType'] ?? null ) ? $element['widgetType'] : '';
-            if ( '' !== $id && is_array( $element['settings'] ?? null ) ) self::collect_settings( $element['settings'], [], $id, $current_top, $type, $widget, $items );
-            if ( is_array( $element['elements'] ?? null ) ) self::collect_elements( $element['elements'], $items, $current_top );
+            if ( '' !== $id && is_array( $element['settings'] ?? null ) ) self::collect_settings( $element['settings'], [], $id, $current_top, $type, $widget, $items, $state );
+            if ( is_array( $element['elements'] ?? null ) ) self::collect_elements( $element['elements'], $items, $current_top, $depth + 1, $state );
         }
     }
 
-    private static function collect_settings( $value, array $path, string $id, string $top, string $type, string $widget, array &$items ): void {
-        if ( count( $items ) >= self::MAX_ITEMS ) return;
+    private static function collect_settings( $value, array $path, string $id, string $top, string $type, string $widget, array &$items, array &$state ): void {
+        if ( count( $items ) >= self::MAX_ITEMS || count( $path ) > self::MAX_PATH_DEPTH || (int) $state['settings_visits'] >= self::MAX_SETTINGS_VISITS ) return;
+        $state['settings_visits'] = (int) $state['settings_visits'] + 1;
         if ( is_array( $value ) ) {
             if ( self::media_target( $path, $value ) ) { $items[] = self::item( 'media', $id, $top, $type, $widget, $path, self::media_snapshot( $value ) ); return; }
             foreach ( $value as $key => $child ) {
-                self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $top, $type, $widget, $items );
-                if ( count( $items ) >= self::MAX_ITEMS ) return;
+                self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $top, $type, $widget, $items, $state );
+                if ( count( $items ) >= self::MAX_ITEMS || (int) $state['settings_visits'] >= self::MAX_SETTINGS_VISITS ) return;
             }
             return;
         }
@@ -180,7 +194,10 @@ final class Elementize_Content {
 
     private static function item( string $kind, string $id, string $top, string $type, string $widget, array $path, $value ): array {
         $item = [ 'kind' => $kind, 'element_id' => $id, 'top_level_id' => $top, 'element_type' => $type, 'widget_type' => $widget, 'setting_path' => array_values( $path ), 'setting_key' => self::last_key( $path ), 'value' => $value, 'writable' => true ];
-        if ( 'text' === $kind ) $item['format'] = wp_strip_all_tags( (string) $value ) === $value ? 'text' : 'html';
+        if ( 'text' === $kind ) {
+            $item['format'] = wp_strip_all_tags( (string) $value ) === $value ? 'text' : 'html';
+            $item['text_detection'] = self::known_copy_key( self::last_key( $path ) ) ? 'known_copy_field' : 'generic_safe_string';
+        }
         if ( 'media' === $kind ) $item['attachment_id'] = absint( $value['id'] ?? 0 );
         return $item;
     }
@@ -191,7 +208,8 @@ final class Elementize_Content {
         if ( '' !== $filters['top_level_id'] && $filters['top_level_id'] !== $item['top_level_id'] ) return false;
         if ( '' === $filters['q'] ) return true;
         $value = is_scalar( $item['value'] ) ? (string) $item['value'] : (string) wp_json_encode( $item['value'] );
-        return false !== stripos( implode( ' ', [ $item['kind'], $item['element_id'], $item['top_level_id'], $item['widget_type'], $item['setting_key'], wp_strip_all_tags( $value ) ] ), $filters['q'] );
+        $haystack = self::lower( implode( ' ', [ $item['kind'], $item['element_id'], $item['top_level_id'], $item['widget_type'], $item['setting_key'], wp_strip_all_tags( $value ) ] ) );
+        return false !== strpos( $haystack, $filters['q'] );
     }
 
     private static function validate_update( $update, int $index ) {
@@ -206,7 +224,7 @@ final class Elementize_Content {
         }
         if ( self::path_has( $update['setting_path'], '__globals__' ) ) return self::invalid_update( $index, 'Global style values are not writable.' );
         if ( 'media' === $kind ) {
-            if ( ! is_numeric( $update['expected_attachment_id'] ?? null ) || ! is_numeric( $update['attachment_id'] ?? null ) ) return self::invalid_update( $index, 'Media writes require expected_attachment_id and attachment_id.' );
+            if ( ! self::integerish( $update['expected_attachment_id'] ?? null ) || ! self::integerish( $update['attachment_id'] ?? null ) ) return self::invalid_update( $index, 'Media writes require integer expected_attachment_id and attachment_id values.' );
             return true;
         }
         if ( ! is_string( $update['expected_value'] ?? null ) || ! is_string( $update['value'] ?? null ) ) return self::invalid_update( $index, 'expected_value and value are required strings.' );
@@ -221,7 +239,8 @@ final class Elementize_Content {
         return new WP_Error( 'elementize_invalid_update', 'Invalid content update at index ' . $index . ': ' . $message, [ 'status' => 400 ] );
     }
 
-    private static function apply_update( array &$elements, array $update, &$old, &$new ) {
+    private static function apply_update( array &$elements, array $update, &$old, &$new, int $depth = 0 ) {
+        if ( $depth > self::MAX_ELEMENT_DEPTH ) return false;
         foreach ( $elements as &$element ) {
             if ( ! is_array( $element ) ) continue;
             if ( (string) ( $element['id'] ?? '' ) === (string) $update['element_id'] ) {
@@ -238,7 +257,7 @@ final class Elementize_Content {
                 return self::apply_media( $cursor, $update, $old, $new );
             }
             if ( is_array( $element['elements'] ?? null ) ) {
-                $result = self::apply_update( $element['elements'], $update, $old, $new );
+                $result = self::apply_update( $element['elements'], $update, $old, $new, $depth + 1 );
                 if ( true === $result || is_wp_error( $result ) ) return $result;
             }
         }
@@ -247,7 +266,7 @@ final class Elementize_Content {
     }
 
     private static function apply_text( &$cursor, array $update, &$old, &$new ) {
-        if ( ! is_string( $cursor ) || ! self::copy_field( $update['setting_path'], $cursor ) ) return new WP_Error( 'elementize_not_text_field', 'Elementize only permits text writes to recognized copy fields.', [ 'status' => 400 ] );
+        if ( ! is_string( $cursor ) || ! self::copy_field( $update['setting_path'], $cursor ) ) return new WP_Error( 'elementize_not_text_field', 'Elementize only permits text writes to safe human-readable content fields.', [ 'status' => 400 ] );
         if ( $cursor !== $update['expected_value'] ) return new WP_Error( 'elementize_value_changed', 'The target text changed after the fresh content read.', [ 'status' => 409 ] );
         $old = $cursor;
         $cursor = $new = wp_kses_post( $update['value'] );
@@ -306,7 +325,8 @@ final class Elementize_Content {
         return true;
     }
 
-    private static function read_setting( array $elements, string $id, array $path, bool &$found ) {
+    private static function read_setting( array $elements, string $id, array $path, bool &$found, int $depth = 0 ) {
+        if ( $depth > self::MAX_ELEMENT_DEPTH ) { $found = false; return null; }
         foreach ( $elements as $element ) {
             if ( ! is_array( $element ) ) continue;
             if ( (string) ( $element['id'] ?? '' ) === $id ) {
@@ -319,7 +339,7 @@ final class Elementize_Content {
                 return $cursor;
             }
             if ( is_array( $element['elements'] ?? null ) ) {
-                $value = self::read_setting( $element['elements'], $id, $path, $found );
+                $value = self::read_setting( $element['elements'], $id, $path, $found, $depth + 1 );
                 if ( $found ) return $value;
             }
         }
@@ -332,6 +352,13 @@ final class Elementize_Content {
         if ( ! $saved ) return false;
         $persisted = Elementize_Core::persisted_elements( $id );
         return is_array( $persisted ) && hash_equals( $before_hash, Elementize_Core::hash_elements( $persisted ) );
+    }
+
+    private static function rollback_cleanup( $document, int $id, array $before, string $before_hash ): bool {
+        $restored = self::restore( $document, $id, $before, $before_hash );
+        Elementize_Core::regenerate_css( $id );
+        clean_post_cache( $id );
+        return $restored;
     }
 
     private static function media_snapshot( array $value ): array {
@@ -355,10 +382,63 @@ final class Elementize_Content {
     }
 
     private static function copy_field( array $path, string $value ): bool {
-        if ( '' === trim( $value ) || strlen( $value ) > self::MAX_TEXT || self::dynamic( $value ) ) return false;
+        if ( '' === trim( $value ) || strlen( $value ) > self::MAX_TEXT || self::dynamic( $value ) || self::path_has( $path, '__globals__' ) ) return false;
         $key = self::last_key( $path );
-        if ( '' === $key || preg_match( '/(^|_)(url|link|href|src|id|class|selector|shortcode|icon|image|media|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow)(_|$)/i', $key ) ) return false;
-        return (bool) preg_match( '/(^|_)(title|text|content|editor|description|heading|headline|subtitle|sub_title|label|caption|button_text|btn_text|placeholder|prefix|suffix|message)(_|$)/i', $key );
+        if ( '' === $key ) return false;
+
+        if ( self::known_copy_key( $key ) ) {
+            if ( self::known_technical_copy_collision( $path, $key ) || self::technical_value( $value ) ) return false;
+            return true;
+        }
+        if ( self::technical_path( $path ) ) return false;
+        return self::looks_like_human_copy( $value, $path, $key );
+    }
+
+    private static function known_copy_key( string $key ): bool {
+        return (bool) preg_match( '/(^|_)(title|text|content|editor|description|heading|headline|subtitle|sub_title|label|caption|button_text|btn_text|button_label|cta_text|placeholder|prefix|suffix|message|quote|author|client|person|eyebrow|kicker|overline|tagline|question|answer|testimonial|review|feature|service|intro|body|paragraph|copy|notice|note|html)(_|$)/i', $key );
+    }
+
+    private static function technical_key_pattern(): string {
+        return '/(^|_)(css|custom_css|selector|class|classes|shortcode|template|template_id|html_tag|aria|attribute|attributes|url|link|href|src|id|element_id|html_id|icon|image|media|logo|photo|thumbnail|poster|video|color|background|gradient|font|typography|size|width|height|margin|padding|border|radius|opacity|align|justify|position|offset|z_index|animation|transition|transform|query|taxonomy|post_id|flex|grid|layout|display|direction|gap|wrap|grow|shrink|basis|order|overflow|breakpoint|responsive|visibility|motion|mask|filter|blend|shadow|menu_id|form_id|role|rel|target|tag|type|style|source|control|config|option|device|mode|variant|skin|scheme|unit)(_|$)/i';
+    }
+
+    private static function known_technical_copy_collision( array $path, string $key ): bool {
+        if ( preg_match( self::technical_key_pattern(), $key ) ) return true;
+        return self::technical_path( array_slice( $path, 0, -1 ) );
+    }
+
+    private static function technical_path( array $path ): bool {
+        foreach ( $path as $segment ) {
+            if ( is_string( $segment ) && preg_match( self::technical_key_pattern(), strtolower( $segment ) ) ) return true;
+        }
+        return false;
+    }
+
+    private static function technical_value( string $value ): bool {
+        $plain = trim( html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+        if ( '' === $plain || is_serialized( $plain ) ) return true;
+        $decoded = json_decode( $plain, true );
+        if ( ( is_array( $decoded ) || is_object( $decoded ) ) && JSON_ERROR_NONE === json_last_error() ) return true;
+        if ( preg_match( '#^(https?://|mailto:|tel:)#i', $plain ) ) return true;
+        if ( preg_match( '#^(Line|Duotone|Solid)/pixfort-icon-#', $plain ) ) return true;
+        if ( preg_match( '/^#[0-9a-f]{3,8}$/i', $plain ) || preg_match( '/^(rgb|rgba|hsl|hsla)\\(/i', $plain ) ) return true;
+        if ( preg_match( '/^-?\\d+(?:\\.\\d+)?(?:px|em|rem|%|vh|vw|deg|s|ms)?$/i', $plain ) ) return true;
+        $enum = strtolower( $plain );
+        return in_array( $enum, [ 'default','none','inherit','initial','auto','left','right','center','top','bottom','middle','solid','dashed','dotted','cover','contain','fixed','absolute','relative','sticky','row','column','nowrap','wrap','flex','grid','block','inline','hidden','visible' ], true );
+    }
+
+    private static function looks_like_human_copy( string $value, array $path, string $key ): bool {
+        $plain = trim( html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+        if ( '' === $plain || self::technical_value( $value ) ) return false;
+
+        $joined = strtolower( implode( '_', array_map( static fn( $part ) => is_string( $part ) ? $part : '', $path ) ) );
+        if ( preg_match( '/(^|_)(form|input|field|validation|webhook)(_|$)/', $joined ) && in_array( $key, [ 'name', 'value' ], true ) ) return false;
+        if ( in_array( $key, [ 'name', 'author_name', 'client_name', 'person_name' ], true ) ) return true;
+
+        if ( false !== strpos( $plain, ' ' ) ) return true;
+        if ( preg_match( '/[.!?,:;]/', $plain ) ) return true;
+        if ( preg_match( '/<[^>]+>/', $value ) ) return true;
+        return strlen( $plain ) >= 24;
     }
 
     private static function link_path( array $path, string $widget ): bool {
@@ -395,6 +475,15 @@ final class Elementize_Content {
 
     private static function dynamic( string $value ): bool {
         return str_starts_with( ltrim( $value ), '[elementor-tag' );
+    }
+
+    private static function integerish( $value ): bool {
+        if ( is_int( $value ) ) return $value >= 0;
+        return is_string( $value ) && (bool) preg_match( '/^\\d+$/', $value );
+    }
+
+    private static function lower( string $value ): string {
+        return function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
     }
 
     private static function last_key( array $path ): string {
