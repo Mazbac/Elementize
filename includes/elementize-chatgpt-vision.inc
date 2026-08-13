@@ -14,9 +14,54 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * internal preview URL and never claims visual_analysis_verified on the server.
  */
 final class Elementize_ChatGPT_Vision {
-    private const VERSION = '1';
+    private const VERSION = '2';
     private const SCREENSHOT_ENTRY = 'screenshot.png';
     private const MAX_SCREENSHOT_BYTES = 10485760;
+    private const FILE_TTL = 180;
+    private const FILE_PREFIX = 'elementize_chatgpt_vision_file_v2_';
+    private const FILE_NAME_PREFIX = 'elementize-chatgpt-vision-';
+
+    public static function init(): void {
+        add_action( 'rest_api_init', [ self::class, 'routes' ], 30 );
+        add_filter( 'rest_pre_serve_request', [ self::class, 'serve_returned_file' ], 10, 4 );
+    }
+
+    public static function routes(): void {
+        register_rest_route( Elementize_Core::NS, '/visual-qa-files/(?P<token>[a-f0-9]{64})', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [ self::class, 'returned_file_marker' ],
+            'permission_callback' => '__return_true',
+            'args' => [ 'token' => [ 'type' => 'string', 'required' => true ] ],
+        ] );
+    }
+
+    public static function returned_file_marker( WP_REST_Request $request ) {
+        $meta = self::returned_file_meta( (string) $request['token'] );
+        if ( is_wp_error( $meta ) ) return $meta;
+        return new WP_REST_Response( [ 'download_ready' => true ], 200 );
+    }
+
+    public static function serve_returned_file( $served, $result, WP_REST_Request $request, $server ) {
+        if ( $served ) return true;
+        $route = (string) $request->get_route();
+        if ( ! preg_match( '#^/' . preg_quote( Elementize_Core::NS, '#' ) . '/visual-qa-files/(?P<token>[a-f0-9]{64})$#', $route, $match ) ) return $served;
+        if ( ! $result instanceof WP_REST_Response || 200 !== $result->get_status() ) return $served;
+        $meta = self::returned_file_meta( (string) ( $match['token'] ?? '' ) );
+        if ( is_wp_error( $meta ) ) return $served;
+
+        $path = (string) ( $meta['path'] ?? '' );
+        $name = (string) ( $meta['name'] ?? 'elementize-visual.zip' );
+        $size = absint( $meta['size'] ?? 0 );
+        if ( headers_sent() || '' === $path || $size < 1 ) return $served;
+        header( 'Content-Type: application/zip' );
+        header( 'Content-Disposition: attachment; filename="' . str_replace( '"', '', basename( $name ) ) . '"' );
+        header( 'Content-Length: ' . $size );
+        header( 'Cache-Control: private, no-store, max-age=0' );
+        header( 'Pragma: no-cache' );
+        header( 'X-Content-Type-Options: nosniff' );
+        if ( 'HEAD' !== strtoupper( (string) $request->get_method() ) ) readfile( $path );
+        return true;
+    }
 
     public static function handle( WP_REST_Request $request ) {
         $route = (string) $request->get_route();
@@ -188,6 +233,13 @@ final class Elementize_ChatGPT_Vision {
             $base['reason'] = self::clip( (string) $archive->get_error_message(), 500 );
             return new WP_REST_Response( $base, 200 );
         }
+        if ( strlen( $archive ) > self::MAX_SCREENSHOT_BYTES ) {
+            $base['capture_state'] = 'complete';
+            $base['visual_render_verified'] = true;
+            $base['stage'] = 'chatgpt_vision_handoff';
+            $base['reason'] = 'The ZIP handoff exceeded the 10 MB returned-file safety limit.';
+            return new WP_REST_Response( $base, 200 );
+        }
 
         $probe = Elementize_Visual_QA::browser_probe_for_job( $job_id );
         $scroll_height = absint( $probe['diagnostics']['document']['scrollHeight'] ?? 0 ) ?: null;
@@ -232,14 +284,87 @@ final class Elementize_ChatGPT_Vision {
         $base['quality_gate_evaluation'] = $quality['quality_gate_evaluation'];
         $base['repair_signal_summary'] = $quality['repair_signal_summary'];
         $base['repair_signals'] = $quality['repair_signals'];
-        $base['openaiFileResponse'] = [ [
-            'name' => 'elementize-visual-' . $job_id . '.zip',
-            'mime_type' => 'application/zip',
-            'content' => base64_encode( $archive ),
-        ] ];
-        $base['note'] = 'Rendered capture succeeded. The returned ZIP contains screenshot.png. Extract screenshot.png from that conversation ZIP, then inspect the PNG itself with ChatGPT vision. Do not claim visual analysis from metadata or ZIP existence alone.';
+        $returned_file = self::create_returned_file( $archive, $job_id, (int) ( $base['page']['id'] ?? 0 ), (string) ( $base['content_hash'] ?? '' ), absint( $base['capability_revision'] ?? 0 ) );
+        if ( is_string( $returned_file ) && '' !== $returned_file ) {
+            $base['openaiFileResponse'] = [ $returned_file ];
+            $base['chatgpt_vision_handoff_transport'] = 'signed_url';
+        } else {
+            $base['openaiFileResponse'] = [ [
+                'name' => 'elementize-visual-' . $job_id . '.zip',
+                'mime_type' => 'application/zip',
+                'content' => base64_encode( $archive ),
+            ] ];
+            $base['chatgpt_vision_handoff_transport'] = 'inline_fallback';
+        }
+        $base['chatgpt_vision_handoff_file_bytes'] = strlen( $archive );
+        $base['chatgpt_vision_handoff_file_sha256'] = hash( 'sha256', $archive );
+        $base['note'] = 'Rendered capture succeeded. The returned ZIP contains screenshot.png. Extract screenshot.png from the returned conversation file, then inspect the PNG itself with ChatGPT vision. Do not claim visual analysis from metadata or ZIP existence alone.';
 
         return new WP_REST_Response( $base, 200 );
+    }
+
+    private static function create_returned_file( string $archive, string $job_id, int $page_id, string $content_hash, int $capability_revision ): string {
+        if ( ! class_exists( 'Elementize_Onboarding' ) || ! method_exists( 'Elementize_Onboarding', 'public_api_origin' ) ) return '';
+        $origin = trim( (string) Elementize_Onboarding::public_api_origin() );
+        if ( '' === $origin || 'https://' !== strtolower( substr( $origin, 0, 8 ) ) ) return '';
+        $size = strlen( $archive );
+        if ( $size < 1 || $size > self::MAX_SCREENSHOT_BYTES ) return '';
+        try { $token = bin2hex( random_bytes( 32 ) ); } catch ( Throwable $e ) { return ''; }
+        if ( 64 !== strlen( $token ) ) return '';
+
+        self::cleanup_returned_files();
+        $path = trailingslashit( get_temp_dir() ) . self::FILE_NAME_PREFIX . $token . '.zip';
+        $written = @file_put_contents( $path, $archive, LOCK_EX );
+        if ( $size !== $written || ! is_file( $path ) ) { @unlink( $path ); return ''; }
+        @chmod( $path, 0600 );
+        $name = 'elementize-visual-' . preg_replace( '/[^A-Za-z0-9_-]/', '-', $job_id ) . '.zip';
+        $meta = [
+            'path' => $path,
+            'name' => $name,
+            'size' => $size,
+            'sha256' => hash( 'sha256', $archive ),
+            'page_id' => $page_id,
+            'content_hash' => $content_hash,
+            'capability_revision' => $capability_revision,
+            'expires_at' => time() + self::FILE_TTL,
+        ];
+        set_transient( self::FILE_PREFIX . $token, $meta, self::FILE_TTL );
+        return rtrim( $origin, '/' ) . '/wp-json/' . trim( Elementize_Core::NS, '/' ) . '/visual-qa-files/' . $token;
+    }
+
+    private static function returned_file_meta( string $token ) {
+        $token = strtolower( trim( $token ) );
+        if ( ! preg_match( '/^[a-f0-9]{64}$/', $token ) ) return new WP_Error( 'elementize_visual_file_invalid', 'Returned Visual QA file token is invalid.', [ 'status' => 404 ] );
+        $key = self::FILE_PREFIX . $token;
+        $meta = get_transient( $key );
+        if ( ! is_array( $meta ) ) return new WP_Error( 'elementize_visual_file_expired', 'Returned Visual QA file is unavailable or expired.', [ 'status' => 404 ] );
+        $path = (string) ( $meta['path'] ?? '' );
+        if ( time() > absint( $meta['expires_at'] ?? 0 ) ) { self::delete_returned_file( $key, $path ); return new WP_Error( 'elementize_visual_file_expired', 'Returned Visual QA file expired.', [ 'status' => 410 ] ); }
+        if ( ! class_exists( 'Elementize_Capabilities' ) || ! method_exists( 'Elementize_Capabilities', 'state' ) || ! method_exists( 'Elementize_Core', 'elements' ) || ! method_exists( 'Elementize_Core', 'hash_elements' ) ) { self::delete_returned_file( $key, $path ); return new WP_Error( 'elementize_visual_file_state_unavailable', 'Returned Visual QA file freshness could not be verified.', [ 'status' => 503 ] ); }
+        $page_id = absint( $meta['page_id'] ?? 0 );
+        $expected_hash = (string) ( $meta['content_hash'] ?? '' );
+        $expected_revision = absint( $meta['capability_revision'] ?? 0 );
+        $state = Elementize_Capabilities::state();
+        $loaded = $page_id > 0 ? Elementize_Core::elements( $page_id ) : new WP_Error( 'elementize_visual_file_page_invalid' );
+        $current_hash = is_wp_error( $loaded ) ? '' : Elementize_Core::hash_elements( (array) ( $loaded['elements'] ?? [] ) );
+        if ( empty( $state['creative_enabled'] ) || absint( $state['scope_page_id'] ?? 0 ) !== $page_id || absint( $state['revision'] ?? 0 ) !== $expected_revision || '' === $expected_hash || '' === $current_hash || ! hash_equals( $expected_hash, $current_hash ) ) { self::delete_returned_file( $key, $path ); return new WP_Error( 'elementize_visual_file_stale', 'Returned Visual QA file no longer matches fresh Creative page state.', [ 'status' => 410 ] ); }
+        $temp = wp_normalize_path( trailingslashit( get_temp_dir() ) );
+        $normalized = wp_normalize_path( $path );
+        if ( '' === $normalized || 0 !== strpos( strtolower( $normalized ), strtolower( $temp . self::FILE_NAME_PREFIX ) ) || ! is_file( $path ) ) return new WP_Error( 'elementize_visual_file_missing', 'Returned Visual QA file is unavailable.', [ 'status' => 404 ] );
+        $size = filesize( $path );
+        if ( false === $size || (int) $size !== absint( $meta['size'] ?? 0 ) || (string) ( $meta['sha256'] ?? '' ) !== hash_file( 'sha256', $path ) ) { self::delete_returned_file( $key, $path ); return new WP_Error( 'elementize_visual_file_changed', 'Returned Visual QA file failed integrity verification.', [ 'status' => 410 ] ); }
+        return $meta;
+    }
+
+    private static function delete_returned_file( string $key, string $path ): void {
+        if ( '' !== $path && is_file( $path ) ) @unlink( $path );
+        delete_transient( $key );
+    }
+
+    private static function cleanup_returned_files(): void {
+        $pattern = trailingslashit( get_temp_dir() ) . self::FILE_NAME_PREFIX . '*.zip';
+        $cutoff = time() - self::FILE_TTL - 60;
+        foreach ( (array) glob( $pattern ) as $path ) if ( is_file( $path ) && (int) @filemtime( $path ) < $cutoff ) @unlink( $path );
     }
 
     private static function zip_single_file( string $filename, string $bytes ) {

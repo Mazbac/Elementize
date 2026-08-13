@@ -24,6 +24,7 @@ final class Elementize_Visual_QA {
         add_action( 'wp_ajax_nopriv_elementize_visual_probe', [ self::class, 'receive_browser_probe' ] );
         add_action( 'wp_ajax_elementize_visual_probe', [ self::class, 'receive_browser_probe' ] );
         add_filter( 'redirect_canonical', [ self::class, 'disable_canonical_for_preview' ], 10, 2 );
+        if ( class_exists( 'Elementize_ChatGPT_Vision' ) ) Elementize_ChatGPT_Vision::init();
     }
 
     public static function routes(): void {

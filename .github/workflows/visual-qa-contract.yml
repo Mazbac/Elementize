@@ -17,6 +17,7 @@ jobs:
           handoff="includes/elementize-chatgpt-vision.inc"
           url_test="tests/visual-qa-url-contract.php"
           handoff_test="tests/chatgpt-vision-handoff-contract.php"
+          returned_file_test="tests/chatgpt-vision-returned-file-contract.php"
           timing_test="tests/visual-qa-timing-contract.php"
           quality_test="tests/visual-qa-quality-contract.php"
           grep -q "private const VERSION = '11'" "$runtime" || { echo 'Rendered Visual QA v11 is not active.'; exit 1; }
@@ -38,11 +39,14 @@ jobs:
           test -f "$url_test" || { echo 'Visual QA URL regression test is missing.'; exit 1; }
           test -f "$handoff" || { echo 'Native ChatGPT vision handoff runtime is missing.'; exit 1; }
           test -f "$handoff_test" || { echo 'Native ChatGPT vision handoff contract test is missing.'; exit 1; }
+          test -f "$returned_file_test" || { echo 'Signed returned-file transport contract test is missing.'; exit 1; }
           test -f "$timing_test" || { echo 'Visual QA timing regression test is missing.'; exit 1; }
           test -f "$quality_test" || { echo 'Visual QA quality evaluator contract test is missing.'; exit 1; }
           grep -q "quality_gate_evaluation" "$runtime" || { echo 'Deterministic Visual QA gate evaluation is missing.'; exit 1; }
           grep -q "safe_to_autorepair' => false" "$runtime" || { echo 'Repair signals must not authorize automatic writes.'; exit 1; }
           grep -q "openaiFileResponse" "$handoff" || { echo 'GPT Action returned-file handoff is missing.'; exit 1; }
+          grep -q "'signed_url'" "$handoff" || { echo 'Signed URL returned-file transport is missing.'; exit 1; }
+          grep -Fq "visual-qa-files/(?P<token>[a-f0-9]{64})" "$handoff" || { echo 'Opaque returned-file route is missing.'; exit 1; }
           grep -q "application/zip" "$handoff" || { echo 'Image-safe ZIP handoff is missing.'; exit 1; }
           grep -q "screenshot.png" "$handoff" || { echo 'Native vision screenshot entry is missing.'; exit 1; }
           grep -q "set_param( 'analyze', false )" "$handoff" || { echo 'Native ChatGPT vision must reuse capture-only mode.'; exit 1; }
@@ -50,9 +54,11 @@ jobs:
           php -l "$handoff"
           php -l "$url_test"
           php -l "$handoff_test"
+          php -l "$returned_file_test"
           php -l "$timing_test"
           php -l "$quality_test"
           php "$url_test"
           php "$handoff_test"
+          php "$returned_file_test"
           php "$timing_test"
           php "$quality_test"

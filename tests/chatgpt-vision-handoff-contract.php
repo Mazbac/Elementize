@@ -25,9 +25,13 @@ if ( false === strpos( $zip, "PK\x01\x02" ) || false === strpos( $zip, "PK\x05\x
 $source = file_get_contents( __DIR__ . '/../includes/elementize-chatgpt-vision.inc' );
 if ( ! is_string( $source ) ) fail_chatgpt_vision_contract( 'Could not read native ChatGPT vision source.' );
 foreach ( [
+    "private const VERSION = '2'",
+    'public static function init(): void',
     'public static function handle( WP_REST_Request $request )',
     'openaiFileResponse',
     "'mime_type' => 'application/zip'",
+    "'signed_url'",
+    "'inline_fallback'",
     "private const SCREENSHOT_ENTRY = 'screenshot.png'",
     "set_param( 'analyze', false )",
     "'provider' => 'chatgpt_native_vision'",
@@ -47,6 +51,8 @@ if ( false !== strpos( $source, 'rest_request_before_callbacks' ) || false !== s
 }
 $bootstrap = file_get_contents( __DIR__ . '/../includes/elementize-bootstrap.inc' );
 if ( ! is_string( $bootstrap ) || false === strpos( $bootstrap, "require_once __DIR__ . '/elementize-chatgpt-vision.inc';" ) || false !== strpos( $bootstrap, 'Elementize_ChatGPT_Vision::init();' ) ) {
-    fail_chatgpt_vision_contract( 'Bootstrap must load native ChatGPT vision directly without an interception initializer.' );
+    fail_chatgpt_vision_contract( 'Bootstrap must keep native ChatGPT vision inside the Visual QA subsystem.' );
 }
+$visual_source = file_get_contents( __DIR__ . '/../includes/elementize-visual-qa.inc' );
+if ( ! is_string( $visual_source ) || false === strpos( $visual_source, 'Elementize_ChatGPT_Vision::init();' ) ) fail_chatgpt_vision_contract( 'Visual QA must initialize the signed returned-file transport.' );
 echo "ChatGPT native vision handoff contract OK\n";
