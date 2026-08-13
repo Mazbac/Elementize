@@ -150,9 +150,22 @@ final class Elementize_Component_Intelligence {
         ] ) );
         $hits = 0;
         foreach ( $tokens as $token ) if ( false !== strpos( $haystack, $token ) ) $hits++;
-        $score = min( 18, $hits * 3 );
+        $score = min( 15, $hits * 3 );
+        foreach ( self::contract_terms( $input['contract'] ) as $term ) {
+            if ( false !== strpos( $haystack, $term ) ) { $score += 5; break; }
+        }
         if ( 'pixfort' === (string) ( $item['provider'] ?? '' ) ) $score += 2;
         return min( 20, $score );
+    }
+
+    private static function contract_terms( string $contract ): array {
+        return match ( $contract ) {
+            'testimonial_grid' => [ 'testimonial', 'review', 'reviews', 'quote', 'client' ],
+            'feature_grid' => [ 'feature', 'features', 'service', 'services', 'card', 'cards', 'solution', 'solutions' ],
+            'cta' => [ 'cta', 'call-to-action', 'action', 'contact' ],
+            'content_split' => [ 'content', 'about', 'intro', 'image', 'showcase', 'story' ],
+            default => [],
+        };
     }
 
     private static function score_candidate( array $item, array $template, array $input, array $page_tokens, int $metadata_score ): array {
