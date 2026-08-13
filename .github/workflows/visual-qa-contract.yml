@@ -17,7 +17,7 @@ jobs:
           handoff="includes/elementize-chatgpt-vision.inc"
           url_test="tests/visual-qa-url-contract.php"
           handoff_test="tests/chatgpt-vision-handoff-contract.php"
-          grep -q "private const VERSION = '7'" "$runtime" || { echo 'Rendered Visual QA v7 is not active.'; exit 1; }
+          grep -q "private const VERSION = '10'" "$runtime" || { echo 'Rendered Visual QA v10 is not active.'; exit 1; }
           grep -q "local_chromium_async" "$runtime" || { echo 'Async Chromium backend is missing.'; exit 1; }
           grep -q "png_file_complete" "$runtime" || { echo 'Complete-PNG capture signal is missing.'; exit 1; }
           grep -q "capture_artifact_state" "$runtime" || { echo 'Bounded async capture diagnostics are missing.'; exit 1; }
@@ -29,7 +29,7 @@ jobs:
           fi
           grep -q "without a complete PNG" "$runtime" || { echo 'PNG-completion timeout contract is missing.'; exit 1; }
           grep -q "normalize_capture_url" "$runtime" || { echo 'Capture URL normalization is missing.'; exit 1; }
-          grep -q "elementize_visual_qa_job_v7_" "$runtime" || { echo 'Visual QA v7 job namespace is missing.'; exit 1; }
+          grep -q "elementize_visual_qa_job_v10_" "$runtime" || { echo 'Visual QA v10 job namespace is missing.'; exit 1; }
           grep -q "capture_url" "$runtime" || { echo 'Fail-closed capture URL stage is missing.'; exit 1; }
           test -f "$url_test" || { echo 'Visual QA URL regression test is missing.'; exit 1; }
           test -f "$handoff" || { echo 'Native ChatGPT vision handoff runtime is missing.'; exit 1; }

@@ -19,7 +19,7 @@ For any substantial visual build/rebuild, reference-inspired page, or multi-sect
 - interaction/motion intent;
 - acceptance criteria.
 
-After user/reference requirements, the blueprint is page-wide authority. **Avoid Frankenstein pages**: one visual language, reusable component treatments, intentional backgrounds, consistent CTA/icons/cards, and purposeful sections.
+After user/reference requirements, the blueprint is page-wide authority. Use `page_coherence` as conservative evidence, never as an automatic repair order. **Avoid Frankenstein pages**: one visual language, reusable component treatments, intentional backgrounds, consistent CTA/icons/cards, and purposeful sections.
 ## Reference pages
 When the user supplies a reference URL/screenshots, analyze the reference with ChatGPT browser/vision; Elementize must not fetch arbitrary external pages server-side. Extract transferable rules: hierarchy, section sequence, layout patterns, density, type scale, spacing rhythm, palette roles, radii/borders, image treatment, CTA hierarchy, backgrounds, interactions and responsive transformations.
 

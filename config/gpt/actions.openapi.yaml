@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.43.0
+  version: 0.44.0
   description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
 servers:
   - url: https://example.invalid

@@ -40,9 +40,11 @@ Templates are treated as structural building blocks. The target page's existing 
 
 ### Designer-agent foundation
 
-Creative Control now exposes a read-only `designer-context` for page-wide planning before a substantial build. It combines the fresh page outline with observed palette, spacing, radius and typography evidence, responsive-control evidence, and explicit blueprint/reference/quality contracts. The Custom GPT remains the design brain; the server supplies evidence and guarded execution rather than making opaque aesthetic decisions.
+Creative Control now exposes a read-only `designer-context` for page-wide planning before a substantial build. It combines the fresh page outline with observed palette, spacing, radius and typography evidence, responsive-control evidence, conservative page-coherence signals, and explicit blueprint/reference/quality contracts. The Custom GPT remains the design brain; the server supplies evidence and guarded execution rather than making opaque aesthetic decisions.
 
 Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elementize intentionally does not turn arbitrary external URLs into a server-side fetch surface. The GPT extracts transferable layout/design rules, creates a page blueprint, maps those requirements onto Pixfort/Elementor primitives, and then validates the target page through Elementize.
+
+The coherence layer compares like-for-like component roles (for example buttons to buttons), reports evidence coverage/truncation, and treats low-confidence signals as review candidates rather than automatic defects.
 
 Writable design controls now report a `responsive_breakpoint` so the GPT can distinguish inherited desktop behavior from explicit tablet/mobile overrides. Responsive changes should be made only for a verified breakpoint problem.
 
@@ -180,6 +182,7 @@ includes/
   elementize-content.inc
   elementize-context.inc
   elementize-design.inc
+  elementize-coherence.inc
   elementize-designer.inc
   elementize-component-intelligence.inc
   elementize-tree.inc

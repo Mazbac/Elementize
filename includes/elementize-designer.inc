@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * blueprint/QA contracts so ChatGPT can reason page-wide before mutating.
  */
 final class Elementize_Designer {
-    private const VERSION = '1';
+    private const VERSION = '2';
     private const MAX_SECTIONS = 80;
 
     public static function init(): void {
@@ -32,7 +32,7 @@ final class Elementize_Designer {
         $loaded = Elementize_Core::elements( $id );
         if ( is_wp_error( $loaded ) ) return $loaded;
         $state = Elementize_Capabilities::state();
-        $profile = Elementize_Design::profile_for_elements( $loaded['elements'], '', 600 );
+        $profile = Elementize_Design::profile_for_elements( $loaded['elements'], '', 1200 );
         $sections = self::section_outline( $loaded['elements'] );
         return new WP_REST_Response( [
             'designer_context_version' => self::VERSION,
@@ -55,6 +55,7 @@ final class Elementize_Designer {
                 'normalization_candidates' => $profile['normalization_candidates'] ?? [],
             ],
             'responsive_control_summary' => self::responsive_summary( (array) ( $profile['controls'] ?? [] ) ),
+            'page_coherence' => Elementize_Coherence::analyze( $loaded['elements'], $profile ),
             'blueprint_contract' => self::blueprint_contract(),
             'reference_analysis_contract' => self::reference_contract(),
             'quality_contract' => self::quality_contract(),

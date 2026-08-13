@@ -33,7 +33,7 @@ Component Intelligence is read-only planning support. Rank candidates from fresh
 
 ## Designer-agent behavior
 
-For substantial visual work, read the page-wide designer context before writing. Reference evidence is converted into a blueprint: page/conversion goal, section narrative, reusable visual system, responsive strategy, interaction intent, and acceptance criteria. Templates remain implementation primitives; candidate choice should minimize structural mismatch, normalization cost, responsive risk, dependency risk and unnecessary complexity.
+For substantial visual work, read the page-wide designer context before writing. Treat page-coherence findings as conservative read-only evidence: compare like-for-like roles, respect evidence truncation, and never mutate merely because a heuristic fired. Reference evidence is converted into a blueprint: page/conversion goal, section narrative, reusable visual system, responsive strategy, interaction intent, and acceptance criteria. Templates remain implementation primitives; candidate choice should minimize structural mismatch, normalization cost, responsive risk, dependency risk and unnecessary complexity.
 
 Rendered QA supports desktop/tablet/mobile. Add breakpoint-specific values only when a verified viewport problem requires them. Passive browser diagnostics are allowed because they are page-scoped and read-only; unrestricted navigation, form submission, crawling, or browser mutation remains out of scope.
 
