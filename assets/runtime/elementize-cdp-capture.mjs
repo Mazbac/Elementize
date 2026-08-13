@@ -34,7 +34,13 @@ try {
     } catch {}
     if (!target) await sleep(50);
   }
-  if (!target?.webSocketDebuggerUrl) throw new Error('No inspectable Chrome page target was found.');
+  if (!target?.webSocketDebuggerUrl) {
+    try {
+      const created = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' });
+      if (created.ok) target = await created.json();
+    } catch {}
+  }
+  if (!target?.webSocketDebuggerUrl) throw new Error('No inspectable Chrome page target was found or could be created.');
 
   ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
@@ -70,7 +76,13 @@ try {
     if (ready?.result?.value === 'complete') break;
     await sleep(50);
   }
-  await sleep(Math.max(300, settleMs));
+  const probeStarted = Date.now();
+  let probeReady = false;
+  while (Date.now() - probeStarted < Math.max(1000, settleMs)) {
+    const probe = await send('Runtime.evaluate', { expression: '!!document.getElementById("elementize-browser-qa-result")', returnByValue: true });
+    if (probe?.result?.value === true) { probeReady = true; break; }
+    await sleep(200);
+  }
   const measured = await send('Runtime.evaluate', {
     expression: '({innerWidth,innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0)})',
     returnByValue: true
@@ -83,7 +95,7 @@ try {
   });
   if (!shot?.data) throw new Error('Chrome did not return screenshot data.');
   await writeFile(screenshot, Buffer.from(shot.data, 'base64'));
-  process.stdout.write(JSON.stringify({ ok: true, width, height, captureHeight, metrics }) + '\n');
+  process.stdout.write(JSON.stringify({ ok: true, width, height, captureHeight, probeReady, metrics }) + '\n');
 } finally {
   try { ws?.close(); } catch {}
   try { chrome.kill(); } catch {}

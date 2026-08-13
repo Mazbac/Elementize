@@ -2,11 +2,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Visual_QA {
-    private const VERSION = '9';
+    private const VERSION = '10';
     private const TTL = 180;
     private const JOB_TTL = 180;
     private const JOB_TIMEOUT_SECONDS = 75;
-    private const JOB_PREFIX = 'elementize_visual_qa_job_v9_';
+    private const JOB_PREFIX = 'elementize_visual_qa_job_v10_';
     private const CHROME_PATH_CONST = 'ELEMENTIZE_CHROME_PATH';
     private const NODE_PATH_CONST = 'ELEMENTIZE_NODE_PATH';
     private const VIEWPORT_WIDTH = 1440;
@@ -140,6 +140,21 @@ final class Elementize_Visual_QA {
         $paths = is_array( $job['paths'] ?? null ) ? $job['paths'] : [];
         $capture_complete = self::capture_job_complete( $paths, $job_id );
         if ( ! $capture_complete ) {
+            $done_exists = isset( $paths['done'] ) && is_string( $paths['done'] ) && is_file( $paths['done'] );
+            $png_complete = self::png_file_complete( (string) ( $paths['screenshot'] ?? '' ) );
+            if ( $done_exists ) {
+                $diagnostic = self::read_capture_log( (string) ( $paths['log'] ?? '' ) );
+                $artifact_state = self::capture_artifact_state( $paths );
+                self::cleanup_job( $job );
+                delete_transient( $job_key );
+                $base['capture_state'] = 'failed';
+                $base['stage'] = $png_complete ? 'browser_probe' : 'capture';
+                $base['capture_artifact_state'] = $artifact_state;
+                $base['reason'] = self::clip( $png_complete
+                    ? 'The browser runner finished but signed browser diagnostics were not verified.' . ( '' !== $diagnostic ? ' Runner detail: ' . $diagnostic : '' )
+                    : 'The browser runner finished without producing a complete PNG.' . ( '' !== $diagnostic ? ' Runner detail: ' . $diagnostic : '' ), 500 );
+                return new WP_REST_Response( $base, 200 );
+            }
             $elapsed = max( 0, time() - absint( $job['started_at'] ?? 0 ) );
             if ( $elapsed <= self::JOB_TIMEOUT_SECONDS ) return new WP_REST_Response( self::pending_payload( $base, $job_id, $job ), 200 );
 
@@ -148,9 +163,9 @@ final class Elementize_Visual_QA {
             self::cleanup_job( $job );
             delete_transient( $job_key );
             $base['capture_state'] = 'failed';
-            $base['stage'] = 'capture';
+            $base['stage'] = $png_complete ? 'browser_probe' : 'capture';
             $base['capture_artifact_state'] = $artifact_state;
-            $base['reason'] = self::clip( 'Asynchronous local browser capture exceeded ' . self::JOB_TIMEOUT_SECONDS . ' seconds without a complete PNG.' . ( '' !== $diagnostic ? ' Browser detail: ' . $diagnostic : '' ), 500 );
+            $base['reason'] = self::clip( 'Asynchronous local browser QA exceeded ' . self::JOB_TIMEOUT_SECONDS . ' seconds before all required artifacts were verified.' . ( '' !== $diagnostic ? ' Runner detail: ' . $diagnostic : '' ), 500 );
             return new WP_REST_Response( $base, 200 );
         }
 
@@ -574,6 +589,7 @@ final class Elementize_Visual_QA {
         if ( '' === $browser || ! is_file( $browser ) ) return new WP_Error( 'elementize_visual_browser_missing', 'A supported local browser executable was not found.' );
         $paths = self::temp_paths( $job_id );
         self::cleanup_paths( $paths );
+        $paths['profile'] .= '-' . substr( hash( 'sha256', $job_id . "\n" . microtime( true ) . "\n" . wp_rand() ), 0, 10 );
         if ( ! wp_mkdir_p( $paths['profile'] ) ) return new WP_Error( 'elementize_visual_profile_failed', 'Could not create an isolated local browser profile.' );
         $cdp_script = ELEMENTIZE_DIR . '/assets/runtime/elementize-cdp-capture.mjs';
         $exact = '' !== $node && is_file( $node ) && is_file( $cdp_script );

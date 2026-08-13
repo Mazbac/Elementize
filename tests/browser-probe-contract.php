@@ -23,6 +23,7 @@ foreach ( [
     'elementize_visual_browser_probe_v2_',
     "'wp_ajax_nopriv_elementize_visual_probe'",
     'elementize_visual_viewport',
+    'runner finished but signed browser diagnostics',
     'restorationFailures',
     '!e.closest("form")',
     'button[aria-expanded]',
