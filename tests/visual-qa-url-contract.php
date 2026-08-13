@@ -43,7 +43,6 @@ function fail_visual_qa_url_contract( string $message ): void {
 }
 
 $normalize = new ReflectionMethod( Elementize_Visual_QA::class, 'normalize_capture_url' );
-$normalize->setAccessible( true );
 
 $cases = [
     'https://example.com/path' => 'https://example.com/path',
@@ -66,7 +65,6 @@ foreach ( $cases as $input => $expected ) {
 }
 
 $windows_runner = new ReflectionMethod( Elementize_Visual_QA::class, 'windows_runner' );
-$windows_runner->setAccessible( true );
 $paths = [
     'screenshot' => 'C:\\Temp\\elementize-test.png',
     'profile' => 'C:\\Temp\\elementize-profile',

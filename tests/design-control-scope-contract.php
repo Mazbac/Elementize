@@ -7,7 +7,6 @@ require_once __DIR__ . '/../includes/elementize-design.inc';
 function fail_scope( string $m ): void { fwrite( STDERR, $m . "\n" ); exit( 1 ); }
 function expect_scope( $ok, string $m ): void { if ( ! $ok ) fail_scope( $m ); }
 $method = new ReflectionMethod( Elementize_Design::class, 'control' );
-$method->setAccessible( true );
 $settings = [ 'items' => [
     [ 'text' => 'From scattered security work to one clear workflow.' ],
     [ 'text' => 'Three simple steps keep risks, responsibilities and proof connected.' ],

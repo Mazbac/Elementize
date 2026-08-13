@@ -3,7 +3,6 @@ define( 'ABSPATH', __DIR__ . '/../' );
 require_once __DIR__ . '/../includes/runtime/elementize-pixfort-repeater-colors.inc';
 function fail_repeater_path( string $message ): void { fwrite( STDERR, $message . "\n" ); exit( 1 ); }
 $method = new ReflectionMethod( Elementize_Pixfort_Repeater_Colors::class, 'repeater_index' );
-$method->setAccessible( true );
 $cases = [
     [ 0, 0 ],
     [ 7, 7 ],

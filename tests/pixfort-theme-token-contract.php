@@ -37,7 +37,6 @@ function fail_pixfort_theme_token_contract( string $message ): void {
 
 function set_private_static_pixfort( string $property, $value ): void {
     $reflection = new ReflectionProperty( Elementize_Pixfort_Theme_Tokens::class, $property );
-    $reflection->setAccessible( true );
     $reflection->setValue( null, $value );
 }
 

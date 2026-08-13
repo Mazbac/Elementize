@@ -19,7 +19,6 @@ function fail_chatgpt_vision_contract( string $message ): void {
 }
 
 $zip_method = new ReflectionMethod( Elementize_ChatGPT_Vision::class, 'zip_single_file' );
-$zip_method->setAccessible( true );
 $fixture = "ELEMENTIZE_NATIVE_VISION_FIXTURE\x00\x01\x02";
 $zip = $zip_method->invoke( null, 'screenshot.png', $fixture );
 if ( $zip instanceof WP_Error || ! is_string( $zip ) ) fail_chatgpt_vision_contract( 'Single-file ZIP helper did not return archive bytes.' );

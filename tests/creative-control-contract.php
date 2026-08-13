@@ -37,7 +37,6 @@ function assert_not_same_creative( $unexpected, $actual, string $message ): void
 }
 function private_creative( string $method, array $args = [] ) {
     $reflection = new ReflectionMethod( Elementize_Creative::class, $method );
-    $reflection->setAccessible( true );
     return $reflection->invokeArgs( null, $args );
 }
 

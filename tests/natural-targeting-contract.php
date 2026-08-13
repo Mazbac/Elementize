@@ -14,7 +14,6 @@ require_once __DIR__ . '/../includes/elementize-context.inc';
 
 function invoke_private( string $class, string $method, array $args = [] ) {
     $reflection = new ReflectionMethod( $class, $method );
-    $reflection->setAccessible( true );
     return $reflection->invokeArgs( null, $args );
 }
 
