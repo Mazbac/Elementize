@@ -28,6 +28,7 @@ final class Elementize_Creative {
                 'content_hash' => [ 'type' => 'string', 'required' => true ],
                 'expected_capability_revision' => [ 'type' => 'integer', 'required' => true, 'minimum' => 1, 'sanitize_callback' => 'absint' ],
                 'plan_label' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
+                'plan_context' => [ 'type' => 'object', 'required' => false ],
                 'operations' => [ 'type' => 'array', 'required' => true ],
                 'confirm_creative_write' => [ 'type' => 'boolean', 'required' => true ],
                 'confirm_published_page' => [ 'type' => 'boolean', 'default' => false ],
@@ -59,6 +60,8 @@ final class Elementize_Creative {
         $operations = $request->get_param( 'operations' );
         if ( ! is_array( $operations ) || ! $operations ) return new WP_Error( 'elementize_creative_operations_required', 'At least one creative operation is required.', [ 'status' => 400 ] );
         if ( count( $operations ) > self::MAX_OPERATIONS ) return new WP_Error( 'elementize_creative_operations_limit', 'Send at most ' . self::MAX_OPERATIONS . ' creative operations in one transaction.', [ 'status' => 400 ] );
+        $plan_trace = Elementize_Execution_Trace::normalize( $request->get_param( 'plan_context' ), $operations );
+        if ( is_wp_error( $plan_trace ) ) return $plan_trace;
 
         $working = $before;
         $managed_before = self::managed_roots( $id );
@@ -167,7 +170,7 @@ final class Elementize_Creative {
         Elementize_Core::regenerate_css( $id );
         clean_post_cache( $id );
         $after_hash = $persisted_hash;
-        $activity_id = self::record_activity( $id, (int) $revision, $before_hash, $after_hash, $changes, sanitize_text_field( (string) $request->get_param( 'plan_label' ) ) );
+        $activity_id = self::record_activity( $id, (int) $revision, $before_hash, $after_hash, $changes, sanitize_text_field( (string) $request->get_param( 'plan_label' ) ), is_array( $plan_trace ) ? $plan_trace : null );
         if ( is_wp_error( $activity_id ) ) {
             $rollback = self::restore_page( $document, $id, $before, $before_hash );
             self::save_managed_roots( $id, $managed_before );
@@ -190,6 +193,8 @@ final class Elementize_Creative {
             'managed_root_verification' => true,
             'capability_revision' => $capability_revision,
             'operation_count' => count( $operations ),
+            'plan_trace_verified' => is_array( $plan_trace ) ? true : null,
+            'plan_trace' => is_array( $plan_trace ) ? $plan_trace : null,
             'changes' => $changes,
             'aliases' => self::public_aliases( $aliases ),
             'managed_root_ids' => array_values( array_keys( $managed ) ),
@@ -541,7 +546,7 @@ final class Elementize_Creative {
         return $ok;
     }
 
-    private static function record_activity( int $page_id, int $revision_id, string $before_hash, string $after_hash, array $changes, string $label ) {
+    private static function record_activity( int $page_id, int $revision_id, string $before_hash, string $after_hash, array $changes, string $label, ?array $plan_trace ) {
         $records = get_option( self::ACTIVITY_LOG, [] );
         if ( ! is_array( $records ) ) $records = [];
         $post = get_post( $page_id );
@@ -565,6 +570,7 @@ final class Elementize_Creative {
             'changes' => self::activity_changes( $changes ),
             'creative' => true,
             'plan_label' => $label,
+            'plan_trace' => $plan_trace,
             'undone_at_gmt' => '',
             'undo_revision_id' => 0,
         ] );

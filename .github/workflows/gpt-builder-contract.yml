@@ -32,6 +32,7 @@ jobs:
           includes/elementize-creative.inc
           includes/elementize-design.inc
           includes/elementize-designer.inc
+          includes/elementize-execution-trace.inc
           includes/elementize-media-import.inc
           includes/elementize-media-library.inc
           includes/elementize-onboarding.inc
@@ -55,10 +56,10 @@ jobs:
           require_count=$(grep -c '^require_once __DIR__' includes/elementize-bootstrap.inc || true)
           init_count=$(grep -c '^Elementize_.*::init();$' includes/elementize-bootstrap.inc || true)
           echo "Bootstrap modules: ${require_count} requires / ${init_count} init calls"
-          test "$require_count" -eq 25
+          test "$require_count" -eq 26
           test "$init_count" -eq 20
 
-          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens pixfort-repeater-colors content context capabilities design coherence blueprint designer component-intelligence tree templates template-response creative creative-save-diagnostics visual-qa chatgpt-vision media-library media-import activity connections onboarding; do
+          for module in core pixfort-icons pixfort-transport pixfort-theme-tokens pixfort-repeater-colors content context capabilities design coherence blueprint designer component-intelligence execution-trace tree templates template-response creative creative-save-diagnostics visual-qa chatgpt-vision media-library media-import activity connections onboarding; do
             grep -q "elementize-${module}.inc" includes/elementize-bootstrap.inc || { echo "Bootstrap missing module: ${module}"; exit 1; }
           done
           test ! -d includes/runtime || { echo 'Superseded includes/runtime directory returned.'; exit 1; }
@@ -80,11 +81,13 @@ jobs:
           grep -q "class Elementize_Coherence" includes/elementize-coherence.inc || { echo 'Page coherence evidence runtime is missing.'; exit 1; }
           grep -q "class Elementize_Blueprint" includes/elementize-blueprint.inc || { echo 'Structured blueprint runtime is missing.'; exit 1; }
           grep -q "class Elementize_Designer" includes/elementize-designer.inc || { echo 'Designer-agent context runtime is missing.'; exit 1; }
+          grep -q "class Elementize_Execution_Trace" includes/elementize-execution-trace.inc || { echo 'Blueprint execution trace runtime is missing.'; exit 1; }
           grep -q "blueprint_contract" includes/elementize-designer.inc || { echo 'Designer blueprint contract is missing.'; exit 1; }
           grep -q "responsive_breakpoint" includes/elementize-design.inc || { echo 'Responsive design-control metadata is missing.'; exit 1; }
           php tests/designer-agent-contract.php
           php tests/coherence-engine-contract.php
           php tests/blueprint-contract.php
+          php tests/execution-trace-contract.php
           php tests/component-intelligence-contract.php
           php tests/browser-probe-contract.php
           php tests/cdp-responsive-contract.php

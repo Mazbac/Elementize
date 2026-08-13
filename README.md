@@ -52,6 +52,8 @@ Writable design controls now report a `responsive_breakpoint` so the GPT can dis
 
 For substantial Creative builds, `rankElementizeComponentCandidates` can consume the full structured blueprint plus one `selected_section_id`. The selected section—not a new ad-hoc brief—drives semantic/structural ranking, and `expected_blueprint_fingerprint` can fail closed if the page plan changed between section calls. Manual purpose/contract ranking remains available for bounded one-off work. Ranking is read-only and explainable: semantic fit, actual widget structure, page-design compatibility, responsive evidence, dependency safety, and estimated normalization cost. A high score is planning evidence only; ChatGPT must still inspect the chosen template and all Creative mutation guards remain unchanged.
 
+Blueprint-grounded Creative transactions can additionally send `plan_context`. Elementize revalidates the full blueprint fingerprint before any mutation, verifies every declared template candidate against the actual insertion operations and section contract, then persists only a compact trace (fingerprint, phase, section IDs/contracts and candidate identifiers/scores). The full blueprint remains conversation-owned and is never copied into Activity.
+
 ## Media sources
 
 Every page image replacement uses a WordPress attachment ID. Elementize supports four ways to obtain one:
@@ -186,6 +188,7 @@ includes/
   elementize-blueprint.inc
   elementize-designer.inc
   elementize-component-intelligence.inc
+  elementize-execution-trace.inc
   elementize-tree.inc
   elementize-templates.inc
   elementize-template-response.inc

@@ -13,6 +13,7 @@ require_once __DIR__ . '/elementize-coherence.inc';
 require_once __DIR__ . '/elementize-blueprint.inc';
 require_once __DIR__ . '/elementize-designer.inc';
 require_once __DIR__ . '/elementize-component-intelligence.inc';
+require_once __DIR__ . '/elementize-execution-trace.inc';
 require_once __DIR__ . '/elementize-tree.inc';
 require_once __DIR__ . '/elementize-templates.inc';
 require_once __DIR__ . '/elementize-template-response.inc';

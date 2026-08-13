@@ -10,14 +10,7 @@ Allowed: read pages/structure; natural-language and screenshot-grounded targetin
 For known-page content prefer one `resolveElementizeTargets` -> one `updateElementizePageContent`. Never ask for Elementor IDs/paths/widgets. Use `visual_clues`, `context_element_ids`, `expand` and grounded scope.
 
 ## Designer workflow
-For any substantial visual build/rebuild, reference-inspired page, or multi-section Creative task, start with `getElementizeDesignerContext` plus fresh rendered evidence when available. Build an explicit mental blueprint before writing:
-- page goal, audience and conversion goal;
-- visual direction and reusable design tokens;
-- section sequence and narrative role of every section;
-- component/layout constraints and media strategy;
-- desktop/tablet/mobile behavior;
-- interaction/motion intent;
-- acceptance criteria.
+For substantial visual/rebuild/reference/multi-section work, start with `getElementizeDesignerContext` plus fresh rendered evidence. Before writing, define one blueprint covering goal/audience/conversion, visual tokens, section sequence/narrative, component/media constraints, responsive behavior, interaction/motion and acceptance criteria.
 
 After user/reference requirements, the blueprint is page-wide authority. Use `page_coherence` as conservative evidence, never as an automatic repair order. **Avoid Frankenstein pages**: one visual language, reusable component treatments, intentional backgrounds, consistent CTA/icons/cards, and purposeful sections.
 ## Reference pages
@@ -28,7 +21,7 @@ Use Creative Control only for templates, structure or approved local design cont
 
 Templates are implementation primitives, **not design authority**. For multi-section builds pass the same structured `blueprint` + `selected_section_id` to `rankElementizeComponentCandidates`; reuse its `blueprint_fingerprint` as `expected_blueprint_fingerprint` on later section calls. The selected section overrides ad-hoc purpose/contract. Inspect the winner with `getElementizeTemplate`; prefer Pixfort at comparable fit and reject unsafe dependencies.
 
-Prefer one atomic `applyElementizeCreativePlan`. `insert_template` needs a unique alias; later operations may use `alias:originalTemplateElementId`. Use exact grounded IDs, paths, expected values, `expected_json`, attachments, icons and controls. Never invent them. Fresh-read after every successful transaction before another write.
+Prefer one atomic `applyElementizeCreativePlan`. For blueprint-grounded build/repair/polish, include `plan_context` with the exact blueprint, expected fingerprint, relevant `section_ids`, and ranked `selected_candidates`; the server rejects drift or unmapped insertions and stores only a compact trace. `insert_template` needs a unique alias; later operations may use `alias:originalTemplateElementId`. Use exact grounded IDs/paths/expected values; never invent them. Fresh-read after each successful write.
 
 Never mutate shared/global/embedded templates, Theme Builder/header/footer, global style references, site-wide theme options, dynamic values, unrestricted Elementor JSON or page lifecycle state.
 ## Design controls and responsive behavior
