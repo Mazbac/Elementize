@@ -26,6 +26,10 @@ foreach ( [
     'restorationFailures',
     '!e.closest("form")',
     'button[aria-expanded]',
+    'warmMotion',
+    'scrollTo(0,y)',
+    'docOverflow',
+    '.slice(0,4)',
 ] as $needle ) {
     if ( false === strpos( $combined, $needle ) ) fail_browser_probe( 'Missing bounded browser QA marker: ' . $needle );
 }
