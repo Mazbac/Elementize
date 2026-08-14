@@ -18,4 +18,5 @@ define( 'ELEMENTIZE_DIR', __DIR__ );
 
 require_once __DIR__ . '/includes/elementize-bootstrap.inc';
 
-register_activation_hook( __FILE__, [ Elementize_Onboarding::class, 'activate' ] );
+Elementize_Bootstrap::init();
+register_activation_hook( __FILE__, [ Elementize_Bootstrap::class, 'activate' ] );

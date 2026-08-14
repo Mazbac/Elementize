@@ -14,11 +14,6 @@ final class Elementize_Media_Import {
         'image/gif' => 'gif',
     ];
 
-    public static function init(): void {
-        add_action( 'rest_api_init', [ self::class, 'routes' ], 35 );
-        add_filter( 'rest_request_after_callbacks', [ self::class, 'annotate_status' ], 90, 3 );
-    }
-
     public static function routes(): void {
         register_rest_route( Elementize_Core::NS, '/media/images/import-chat-file', [
             'methods' => WP_REST_Server::CREATABLE,
@@ -48,17 +43,13 @@ final class Elementize_Media_Import {
         return self::import_openai_ref( $request );
     }
 
-    public static function annotate_status( $response, $handler, WP_REST_Request $request ) {
-        if ( '/' . Elementize_Core::NS . '/status' !== $request->get_route() ) return $response;
-        if ( is_wp_error( $response ) || ! $response instanceof WP_REST_Response ) return $response;
-        $data = $response->get_data();
-        if ( ! is_array( $data ) ) return $response;
-        $data['conversation_image_import'] = true;
-        $data['media_import_retry_deduplication'] = true;
-        $data['media_import_max_bytes'] = self::MAX_IMAGE_BYTES;
-        $data['media_import_allowed_mime_types'] = array_keys( self::ALLOWED_MIMES );
-        $response->set_data( $data );
-        return $response;
+    public static function status_capabilities(): array {
+        return [
+            'conversation_image_import' => true,
+            'media_import_retry_deduplication' => true,
+            'media_import_max_bytes' => self::MAX_IMAGE_BYTES,
+            'media_import_allowed_mime_types' => array_keys( self::ALLOWED_MIMES ),
+        ];
     }
 
     private static function import_openai_ref( WP_REST_Request $request ) {

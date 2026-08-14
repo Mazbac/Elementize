@@ -4,10 +4,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 final class Elementize_Media_Library {
     private const MAX_PER_PAGE = 50;
 
-    public static function init(): void {
-        add_action( 'rest_api_init', [ self::class, 'routes' ], 30 );
-    }
-
     public static function routes(): void {
         register_rest_route( Elementize_Core::NS, '/media/images', [
             'methods' => WP_REST_Server::READABLE,

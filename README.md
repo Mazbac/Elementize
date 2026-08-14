@@ -53,7 +53,7 @@ Elementize therefore includes a free relay design for local Windows development:
 4. A Windows login monitor recreates the Quick Tunnel after reboot/crash and redeploys only the Worker's `TARGET_ORIGIN` value.
 5. The stable Worker URL is written to `elementize-public-origin.txt`, which the plugin detects automatically.
 
-This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps. The account subdomain is derived from the Cloudflare account ID, while each Elementize site gets its own Worker name, local runtime directory, logs, mutex and Windows startup entry so multiple installations do not overwrite each other.
+This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps. The account subdomain is derived from the Cloudflare account ID, while each Elementize site gets its own Worker name, local runtime directory, logs, mutex and Windows startup entry so multiple installations do not overwrite each other. Wrangler is installed once per site and reused; its `node_modules` live outside the Worker deploy source so tooling files can never be uploaded with the relay.
 
 Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-free-cloudflare-relay.ps1` directly.
 
@@ -76,10 +76,10 @@ tools/windows/
 tests/bare-essentials-contract.php
 ```
 
-There is no React frontend, template engine, designer agent, visual-QA runtime, Activity subsystem, or Creative Control runtime.
+There is no React frontend, template engine, designer agent, visual-QA runtime, Activity subsystem, or Creative Control runtime. Normal public-site requests load only the lightweight Elementize bootstrap; editor/media/Pixfort modules are lazy-loaded for REST calls and setup code is loaded only in wp-admin.
 
 ## Validation
 
-`tests/bare-essentials-contract.php` locks the reduced runtime/API surface. GitHub CI runs the contract plus PHP syntax checks on PHP 8.0 and 8.3.
+`tests/bare-essentials-contract.php` locks the reduced runtime/API surface and the relay/runtime separation. GitHub CI runs PHP syntax + the contract on PHP 8.0 and 8.3, while OpenAPI, Worker and PowerShell checks run once per workflow.
 
 `elementize-public-origin.txt` is machine-local runtime state and must never be committed.

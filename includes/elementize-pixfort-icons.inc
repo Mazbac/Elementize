@@ -10,11 +10,7 @@ final class Elementize_Pixfort_Icons {
     private const CACHE_TTL = 43200;
     private const CACHE_VERSION = '1';
     private static ?array $memory_index = null;
-
-    public static function init(): void {
-        add_action( 'rest_api_init', [ self::class, 'routes' ], 25 );
-        add_filter( 'rest_request_after_callbacks', [ self::class, 'annotate_status' ], 91, 3 );
-    }
+    private static ?array $memory_lookup = null;
 
     public static function routes(): void {
         register_rest_route( Elementize_Core::NS, '/pixfort/icons', [
@@ -40,25 +36,31 @@ final class Elementize_Pixfort_Icons {
         $query = strtolower( trim( (string) $request->get_param( 'q' ) ) );
         $page = max( 1, absint( $request->get_param( 'page' ) ) );
         $per_page = min( self::MAX_PER_PAGE, max( 1, absint( $request->get_param( 'per_page' ) ) ) );
+        $offset = ( $page - 1 ) * $per_page;
 
         $items = [];
+        $matched_bases = 0;
+        $flat_index = 0;
         foreach ( $index['bases'] as $base ) {
             $name = substr( $base, strlen( 'pixfort-icon-' ) );
             $label = ucwords( str_replace( [ '-', '_' ], ' ', $name ) );
             if ( '' !== $query && false === strpos( strtolower( $base . ' ' . $label ), $query ) ) continue;
+            $matched_bases++;
             foreach ( $styles as $style ) {
-                $items[] = [
-                    'value' => $style . '/' . $base,
-                    'style' => $style,
-                    'icon_id' => $base,
-                    'name' => $name,
-                    'label' => $label,
-                ];
+                if ( $flat_index >= $offset && count( $items ) < $per_page ) {
+                    $items[] = [
+                        'value' => $style . '/' . $base,
+                        'style' => $style,
+                        'icon_id' => $base,
+                        'name' => $name,
+                        'label' => $label,
+                    ];
+                }
+                $flat_index++;
             }
         }
 
-        $total = count( $items );
-        $offset = ( $page - 1 ) * $per_page;
+        $total = $matched_bases * count( $styles );
         return new WP_REST_Response( [
             'q' => $query,
             'style' => $style_param,
@@ -72,7 +74,7 @@ final class Elementize_Pixfort_Icons {
             'discovery_source' => 'installed_pixfort_and_theme_assets',
             'scanned_files' => $index['scanned_files'],
             'scan_truncated' => $index['scan_truncated'],
-            'items' => array_slice( $items, $offset, $per_page ),
+            'items' => $items,
         ], 200 );
     }
 
@@ -84,19 +86,16 @@ final class Elementize_Pixfort_Icons {
         if ( empty( $index['bases'] ) ) {
             return new WP_Error( 'elementize_pixfort_icon_library_unavailable', 'Elementize could not index the installed Pixfort icon library. Choose the icon in Elementor instead.', [ 'status' => 503 ] );
         }
-        return in_array( $matches[2], $index['bases'], true );
+        if ( null === self::$memory_lookup ) self::$memory_lookup = array_fill_keys( $index['bases'], true );
+        return isset( self::$memory_lookup[ $matches[2] ] );
     }
 
-    public static function annotate_status( $response, $handler, WP_REST_Request $request ) {
-        if ( '/' . Elementize_Core::NS . '/status' !== $request->get_route() ) return $response;
-        if ( is_wp_error( $response ) || ! $response instanceof WP_REST_Response ) return $response;
-        $data = $response->get_data();
-        if ( ! is_array( $data ) ) return $response;
-        $data['pixfort_icon_library_search'] = true;
-        $data['pixfort_icon_styles'] = self::STYLES;
-        $data['pixfort_icon_values_verified_against_installed_assets'] = true;
-        $response->set_data( $data );
-        return $response;
+    public static function status_capabilities(): array {
+        return [
+            'pixfort_icon_library_search' => true,
+            'pixfort_icon_styles' => self::STYLES,
+            'pixfort_icon_values_verified_against_installed_assets' => true,
+        ];
     }
 
     private static function styles_for_filter( string $style ) {

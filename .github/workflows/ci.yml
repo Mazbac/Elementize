@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  validate:
+  php:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -22,6 +22,11 @@ jobs:
           find includes -type f -name '*.inc' -print0 | xargs -0 -n1 php -l
       - name: Bare essentials contract
         run: php tests/bare-essentials-contract.php
+
+  tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: OpenAPI contract
         run: npx --yes @redocly/cli@latest lint config/gpt/actions.openapi.yaml --skip-rule no-server-example.com
       - name: Worker syntax

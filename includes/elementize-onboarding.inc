@@ -14,11 +14,6 @@ final class Elementize_Onboarding {
         add_action( 'wp_ajax_elementize_generate_connection_key', [ self::class, 'generate_key' ] );
     }
 
-    public static function public_api_origin(): string {
-        $env = self::environment();
-        return (string) $env['effective_origin'];
-    }
-
     public static function activate(): void {
         set_transient( self::REDIRECT_TRANSIENT, '1', 60 );
     }

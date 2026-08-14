@@ -77,41 +77,60 @@ Write-Host "npm: $npmPath"
 
 $elementizeRoot = Join-Path $env:LOCALAPPDATA 'Elementize'
 $runtimeRoot = Join-Path (Join-Path $elementizeRoot 'sites') $siteKey
-$workerDir = Join-Path $runtimeRoot 'cloudflare-relay'
-New-Item -ItemType Directory -Force -Path $workerDir | Out-Null
-Copy-Item -Force (Join-Path $pluginRoot 'tools\cloudflare-relay\worker.js') (Join-Path $workerDir 'worker.js')
+$projectDir = Join-Path $runtimeRoot 'worker'
+$wranglerDir = Join-Path $runtimeRoot 'wrangler'
+New-Item -ItemType Directory -Force -Path $projectDir, $wranglerDir | Out-Null
+Copy-Item -Force (Join-Path $pluginRoot 'tools\cloudflare-relay\worker.js') (Join-Path $projectDir 'worker.js')
 Copy-Item -Force (Join-Path $pluginRoot 'tools\windows\start-free-cloudflare-relay.ps1') (Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1')
 
 @{
-    name = 'elementize-cloudflare-relay-runtime'
+    name = 'elementize-cloudflare-relay-tooling'
     private = $true
-} | ConvertTo-Json | Set-Content -Path (Join-Path $workerDir 'package.json') -Encoding UTF8
+} | ConvertTo-Json | Set-Content -Path (Join-Path $wranglerDir 'package.json') -Encoding UTF8
 
-Write-Step 'Install Wrangler locally'
-$nodeModules = Join-Path $workerDir 'node_modules'
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($workerDir, [System.StringComparison]::OrdinalIgnoreCase)
-    } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-if (Test-Path $nodeModules) {
-    1..3 | ForEach-Object {
-        if (Test-Path $nodeModules) {
-            try { Remove-Item -LiteralPath $nodeModules -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Milliseconds 500 }
+Write-Step 'Check Wrangler runtime'
+$wrangler = Join-Path $wranglerDir 'node_modules\.bin\wrangler.cmd'
+$reuseWrangler = $false
+if (Test-Path $wrangler) {
+    $versionOutput = @(& $wrangler --version 2>&1)
+    $versionText = ($versionOutput | ForEach-Object { [string]$_ }) -join "`n"
+    $versionMatch = [regex]::Match($versionText, '\b(\d+)\.\d+\.\d+\b')
+    $reuseWrangler = $LASTEXITCODE -eq 0 -and $versionMatch.Success -and [int]$versionMatch.Groups[1].Value -ge 4
+    if ($reuseWrangler) { Write-Host "Wrangler: reuse $($versionMatch.Value)" }
+}
+
+if (-not $reuseWrangler) {
+    Write-Step 'Install Wrangler locally once'
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($wranglerDir) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    $nodeModules = Join-Path $wranglerDir 'node_modules'
+    if (Test-Path $nodeModules) {
+        1..3 | ForEach-Object {
+            if (Test-Path $nodeModules) {
+                try { Remove-Item -LiteralPath $nodeModules -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Milliseconds 500 }
+            }
         }
     }
-}
-Push-Location $workerDir
-try {
-    & $npmPath install --no-audit --no-fund --save-dev wrangler@latest
-    if ($LASTEXITCODE -ne 0) {
-        if (Test-Path $nodeModules) { Remove-Item -LiteralPath $nodeModules -Recurse -Force -ErrorAction SilentlyContinue }
+    Push-Location $wranglerDir
+    try {
         & $npmPath install --no-audit --no-fund --save-dev wrangler@latest
-    }
-    if ($LASTEXITCODE -ne 0) { throw 'Wrangler installation failed after one clean retry.' }
-} finally { Pop-Location }
-$wrangler = Join-Path $workerDir 'node_modules\.bin\wrangler.cmd'
+        if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $nodeModules) { Remove-Item -LiteralPath $nodeModules -Recurse -Force -ErrorAction SilentlyContinue }
+            & $npmPath install --no-audit --no-fund --save-dev wrangler@latest
+        }
+        if ($LASTEXITCODE -ne 0) { throw 'Wrangler installation failed after one clean retry.' }
+    } finally { Pop-Location }
+}
 if (-not (Test-Path $wrangler)) { throw 'Wrangler executable was not created.' }
+
+$legacyRelayDir = Join-Path $runtimeRoot 'cloudflare-relay'
+if (Test-Path $legacyRelayDir) {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($legacyRelayDir) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $legacyRelayDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-Step 'Authorize the free Cloudflare account once'
 $who = @(& $wrangler whoami 2>&1)
@@ -129,27 +148,43 @@ if (-not $accountIdMatch.Success) { throw 'Could not determine the Cloudflare ac
 $workersDevSubdomain = 'elementize-' + $accountIdMatch.Value.Substring(0, 12).ToLowerInvariant()
 
 $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
+$existingStableOrigin = ''
+if (Test-Path $settingsPath) {
+    try {
+        $existingSettings = Get-Content -Raw $settingsPath | ConvertFrom-Json
+        if ([string]$existingSettings.siteKey -eq $siteKey -and [string]$existingSettings.workerName -eq $WorkerName) {
+            $candidate = [string]$existingSettings.stableOrigin
+            if ($candidate -match '^https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$') { $existingStableOrigin = $candidate }
+        }
+    } catch {}
+}
 $settings = [ordered]@{
     siteKey = $siteKey
     localOrigin = $LocalOrigin
     pluginRoot = $pluginRoot
     cloudflared = $cloudflared
     nodeDir = $nodeDir
-    workerDir = $workerDir
+    projectDir = $projectDir
+    wranglerDir = $wranglerDir
     workerName = $WorkerName
     workersDevSubdomain = $workersDevSubdomain
-    stableOrigin = ''
+    stableOrigin = $existingStableOrigin
 }
 $settings | ConvertTo-Json -Depth 5 | Set-Content -Path $settingsPath -Encoding UTF8
 
-Write-Host "`nFIRST-TIME workers.dev registration (only if Wrangler asks):" -ForegroundColor Yellow
-Write-Host '  1. "Would you like to register a workers.dev subdomain now?" -> press Enter for Yes'
-Write-Host "  2. Subdomain -> type EXACTLY: $workersDevSubdomain" -ForegroundColor Yellow
-Write-Host '  3. Final confirmation -> press Enter for Yes'
-Write-Host 'After this one-time registration, future starts are automatic.' -ForegroundColor DarkGray
+if (-not $existingStableOrigin) {
+    Write-Host "`nFIRST-TIME workers.dev registration (only if Wrangler asks):" -ForegroundColor Yellow
+    Write-Host '  1. "Would you like to register a workers.dev subdomain now?" -> press Enter for Yes'
+    Write-Host "  2. Subdomain -> type EXACTLY: $workersDevSubdomain" -ForegroundColor Yellow
+    Write-Host '  3. Final confirmation -> press Enter for Yes'
+    Write-Host 'After this one-time registration, future starts are automatic.' -ForegroundColor DarkGray
+}
 
 Write-Step 'Create the stable workers.dev relay'
 $startScript = Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1'
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -and $_.CommandLine.Contains($startScript) } |
+    ForEach-Object { if ($_.ProcessId -ne $PID) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript -Once
 if ($LASTEXITCODE -ne 0) { throw 'The first Cloudflare relay deployment failed.' }
 $originFile = Join-Path $pluginRoot 'elementize-public-origin.txt'

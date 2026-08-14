@@ -33,7 +33,7 @@ Never blindly retry after an unknown mutation result; read fresh state first.
 
 ## Connectivity
 
-The preferred local-development connection is the free Cloudflare relay in `tools/`: a stable `workers.dev` Worker fronts a rotating Quick Tunnel and a hidden Windows monitor repairs the target automatically. Do not require a paid Cloudflare plan or purchased domain for Elementize setup.
+The preferred local-development connection is the free Cloudflare relay in `tools/`: a stable `workers.dev` Worker fronts a rotating Quick Tunnel and a hidden Windows monitor repairs the target automatically. Do not require a paid Cloudflare plan or purchased domain for Elementize setup. Keep the Worker deploy source isolated from Wrangler/npm tooling, and reuse a healthy local Wrangler runtime instead of reinstalling it on every setup run.
 
 Never commit Cloudflare credentials, OAuth state, tunnel URLs, Application Passwords, connection keys, nonces, local runtime logs, or `elementize-public-origin.txt`.
 
@@ -41,6 +41,7 @@ Never commit Cloudflare credentials, OAuth state, tunnel URLs, Application Passw
 
 - `main` is the accepted product state; feature work stays on its branch until explicitly merged.
 - Keep the runtime and GPT Action surface minimal and documented.
+- Keep normal public-site requests on the lightweight bootstrap; REST/editor modules must stay lazy-loaded.
 - Keep plugin version and GPT Action schema version synchronized.
 - Update GPT schema/instructions whenever the public REST contract changes.
 - PHP syntax, the bare-essentials contract, and PowerShell parser checks must pass before completion.

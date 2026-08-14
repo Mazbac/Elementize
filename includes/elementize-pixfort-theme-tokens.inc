@@ -14,20 +14,10 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  */
 final class Elementize_Pixfort_Theme_Tokens {
     private const MAX_OPTIONS = 80;
-    private const MAX_WIDGETS = 300;
-    private const MAX_DIAGNOSTIC_KEYS = 12;
     private static array $meta_cache = [];
+    private static array $resolved_cache = [];
+    private static array $widget_cache = [];
     private static ?array $theme_roles = null;
-    private static ?array $widget_types = null;
-    private static array $diagnostics = [
-        'attempts' => 0,
-        'recognized' => 0,
-        'widget_unavailable' => 0,
-        'control_unavailable' => 0,
-        'options_unavailable' => 0,
-        'current_value_not_allowed' => 0,
-        'keys' => [],
-    ];
 
     public static function control_meta( string $widget_type, string $setting_key, $current_value ): ?array {
         $widget_type = sanitize_key( $widget_type );
@@ -35,17 +25,16 @@ final class Elementize_Pixfort_Theme_Tokens {
         if ( ! str_starts_with( $widget_type, 'pix-' ) || '' === $setting_key || ! self::looks_like_color_key( $setting_key ) ) return null;
         if ( ! is_string( $current_value ) || '' === trim( $current_value ) || self::literal_css_color( $current_value ) ) return null;
 
-        self::$diagnostics['attempts']++;
-        self::remember_diagnostic_key( $widget_type, $setting_key, $current_value );
+        $resolved_key = $widget_type . '|' . $setting_key . '|' . $current_value;
+        if ( array_key_exists( $resolved_key, self::$resolved_cache ) ) return self::$resolved_cache[ $resolved_key ];
 
         $cache_key = $widget_type . '|' . $setting_key;
         if ( ! array_key_exists( $cache_key, self::$meta_cache ) ) {
             self::$meta_cache[ $cache_key ] = self::read_control_meta( $widget_type, $setting_key );
         }
         $meta = self::$meta_cache[ $cache_key ];
-        if ( ! is_array( $meta ) ) return null;
-        if ( ! array_key_exists( $current_value, $meta['options'] ) ) {
-            self::$diagnostics['current_value_not_allowed']++;
+        if ( ! is_array( $meta ) || ! array_key_exists( $current_value, $meta['options'] ) ) {
+            self::$resolved_cache[ $resolved_key ] = null;
             return null;
         }
 
@@ -83,8 +72,7 @@ final class Elementize_Pixfort_Theme_Tokens {
             $normalization[] = $option;
         }
 
-        self::$diagnostics['recognized']++;
-        return [
+        $resolved = [
             'source' => 'installed_elementor_pixfort_widget_control',
             'control_lookup_source' => (string) ( $meta['lookup_source'] ?? '' ),
             'control_type' => (string) ( $meta['type'] ?? '' ),
@@ -99,19 +87,8 @@ final class Elementize_Pixfort_Theme_Tokens {
             'normalization_writable' => ! empty( $normalization ),
             'theme_roles_detected' => array_values( array_keys( $roles ) ),
         ];
-    }
-
-    public static function is_control( string $widget_type, string $setting_key, $current_value ): bool {
-        return is_array( self::control_meta( $widget_type, $setting_key, $current_value ) );
-    }
-
-    public static function is_any_control( string $setting_key, $current_value ): bool {
-        $setting_key = sanitize_key( $setting_key );
-        if ( '' === $setting_key || ! is_string( $current_value ) ) return false;
-        foreach ( self::pixfort_widget_types() as $widget_type ) {
-            if ( self::is_control( $widget_type, $setting_key, $current_value ) ) return true;
-        }
-        return false;
+        self::$resolved_cache[ $resolved_key ] = $resolved;
+        return $resolved;
     }
 
     public static function validate_transition( string $widget_type, string $setting_key, $current_value, $new_value ) {
@@ -150,27 +127,7 @@ final class Elementize_Pixfort_Theme_Tokens {
         return $new_value;
     }
 
-    public static function validate_any_transition( string $setting_key, $current_value, $new_value ) {
-        foreach ( self::pixfort_widget_types() as $widget_type ) {
-            $validated = self::validate_transition( $widget_type, $setting_key, $current_value, $new_value );
-            if ( ! is_wp_error( $validated ) ) return $validated;
-        }
-        return new WP_Error( 'elementize_pixfort_theme_token_not_allowed', 'No exact installed Pixfort widget control allowed that semantic color-token transition.', [ 'status' => 400 ] );
-    }
-
-    public static function diagnostics(): array {
-        return [
-            'attempts' => (int) self::$diagnostics['attempts'],
-            'recognized' => (int) self::$diagnostics['recognized'],
-            'widget_unavailable' => (int) self::$diagnostics['widget_unavailable'],
-            'control_unavailable' => (int) self::$diagnostics['control_unavailable'],
-            'options_unavailable' => (int) self::$diagnostics['options_unavailable'],
-            'current_value_not_allowed' => (int) self::$diagnostics['current_value_not_allowed'],
-            'sample_keys' => array_values( self::$diagnostics['keys'] ),
-        ];
-    }
-
-    public static function theme_roles(): array {
+    private static function theme_roles(): array {
         if ( null !== self::$theme_roles ) return self::$theme_roles;
         self::$theme_roles = [];
 
@@ -243,7 +200,6 @@ final class Elementize_Pixfort_Theme_Tokens {
     private static function read_control_meta( string $widget_type, string $setting_key ): ?array {
         $widget = self::widget_instance( $widget_type );
         if ( ! is_object( $widget ) || ! method_exists( $widget, 'get_controls' ) ) {
-            self::$diagnostics['widget_unavailable']++;
             return null;
         }
 
@@ -265,10 +221,7 @@ final class Elementize_Pixfort_Theme_Tokens {
                 $lookup_source = 'get_controls_map';
             }
         }
-        if ( ! is_array( $control ) ) {
-            self::$diagnostics['control_unavailable']++;
-            return null;
-        }
+        if ( ! is_array( $control ) ) return null;
 
         $options = self::flatten_options( $control['options'] ?? null );
         if ( ! $options && is_array( $control['groups'] ?? null ) ) {
@@ -281,10 +234,7 @@ final class Elementize_Pixfort_Theme_Tokens {
             }
             if ( $options ) $lookup_source .= '+grouped_options';
         }
-        if ( ! $options ) {
-            self::$diagnostics['options_unavailable']++;
-            return null;
-        }
+        if ( ! $options ) return null;
         return [
             'type' => sanitize_key( (string) ( $control['type'] ?? '' ) ),
             'lookup_source' => $lookup_source,
@@ -313,54 +263,25 @@ final class Elementize_Pixfort_Theme_Tokens {
     }
 
     private static function widget_instance( string $widget_type ) {
-        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->widgets_manager ) ) return null;
-        $manager = \Elementor\Plugin::$instance->widgets_manager;
-        if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_widget_types' ) ) return null;
-        try {
-            $widget = $manager->get_widget_types( $widget_type );
-            if ( is_object( $widget ) ) return $widget;
-            $all = $manager->get_widget_types();
-            if ( ! is_array( $all ) ) return null;
-            if ( is_object( $all[ $widget_type ] ?? null ) ) return $all[ $widget_type ];
-            foreach ( $all as $candidate ) {
-                if ( ! is_object( $candidate ) || ! method_exists( $candidate, 'get_name' ) ) continue;
-                try { $name = sanitize_key( (string) $candidate->get_name() ); } catch ( Throwable $ignored ) { continue; }
-                if ( $name === $widget_type ) return $candidate;
+        if ( array_key_exists( $widget_type, self::$widget_cache ) ) return self::$widget_cache[ $widget_type ];
+        $resolved = null;
+        if ( class_exists( '\\Elementor\\Plugin' ) && isset( \Elementor\Plugin::$instance->widgets_manager ) ) {
+            $manager = \Elementor\Plugin::$instance->widgets_manager;
+            if ( is_object( $manager ) && method_exists( $manager, 'get_widget_types' ) ) {
+                try {
+                    $widget = $manager->get_widget_types( $widget_type );
+                    if ( is_object( $widget ) ) $resolved = $widget;
+                    if ( ! $resolved ) {
+                        $all = $manager->get_widget_types();
+                        if ( is_array( $all ) && is_object( $all[ $widget_type ] ?? null ) ) $resolved = $all[ $widget_type ];
+                    }
+                } catch ( Throwable $ignored ) {
+                    $resolved = null;
+                }
             }
-        } catch ( Throwable $ignored ) {
-            return null;
         }
-        return null;
-    }
-
-    private static function pixfort_widget_types(): array {
-        if ( null !== self::$widget_types ) return self::$widget_types;
-        self::$widget_types = [];
-        if ( ! class_exists( '\\Elementor\\Plugin' ) || ! isset( \Elementor\Plugin::$instance->widgets_manager ) ) return self::$widget_types;
-        $manager = \Elementor\Plugin::$instance->widgets_manager;
-        if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_widget_types' ) ) return self::$widget_types;
-        try { $all = $manager->get_widget_types(); } catch ( Throwable $ignored ) { $all = []; }
-        foreach ( array_slice( is_array( $all ) ? $all : [], 0, self::MAX_WIDGETS, true ) as $name => $widget ) {
-            if ( ! is_object( $widget ) ) continue;
-            $resolved = sanitize_key( (string) $name );
-            if ( method_exists( $widget, 'get_name' ) ) {
-                try { $candidate = sanitize_key( (string) $widget->get_name() ); } catch ( Throwable $ignored ) { $candidate = ''; }
-                if ( '' !== $candidate ) $resolved = $candidate;
-            }
-            if ( str_starts_with( $resolved, 'pix-' ) && ! in_array( $resolved, self::$widget_types, true ) ) self::$widget_types[] = $resolved;
-        }
-        return self::$widget_types;
-    }
-
-    private static function remember_diagnostic_key( string $widget_type, string $setting_key, string $current_value ): void {
-        $key = $widget_type . '|' . $setting_key . '|' . $current_value;
-        if ( isset( self::$diagnostics['keys'][ $key ] ) ) return;
-        if ( count( self::$diagnostics['keys'] ) >= self::MAX_DIAGNOSTIC_KEYS ) return;
-        self::$diagnostics['keys'][ $key ] = [
-            'widget_type' => $widget_type,
-            'setting_key' => $setting_key,
-            'current_value' => $current_value,
-        ];
+        self::$widget_cache[ $widget_type ] = $resolved;
+        return $resolved;
     }
 
     private static function looks_like_color_key( string $key ): bool {

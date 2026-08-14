@@ -3,10 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 final class Elementize_Core {
     public const NS = 'elementize/v1';
-
-    public static function init(): void {
-        add_action( 'rest_api_init', [ self::class, 'routes' ] );
-    }
+    private static ?array $pixfort_info = null;
 
     public static function routes(): void {
         register_rest_route( self::NS, '/status', [
@@ -55,7 +52,7 @@ final class Elementize_Core {
         $elementor_loaded = class_exists( '\\Elementor\\Plugin' );
         $pixfort_loaded = ! empty( $pixfort['active'] );
         $revisions_enabled = self::page_revisions_available();
-        return new WP_REST_Response( [
+        $data = [
             'elementize_version' => defined( 'ELEMENTIZE_VERSION' ) ? ELEMENTIZE_VERSION : 'unknown',
             'scope' => 'elementor_pixfort_content_only',
             'ready' => $elementor_loaded && $pixfort_loaded && $revisions_enabled,
@@ -73,7 +70,6 @@ final class Elementize_Core {
             'local_color_editing' => true,
             'pixfort_semantic_color_editing' => true,
             'media_library_search' => true,
-            'conversation_image_import' => true,
             'page_creation' => false,
             'template_insertion' => false,
             'structure_editing' => false,
@@ -93,7 +89,9 @@ final class Elementize_Core {
                 'published_page_confirmation' => true,
             ],
             'setup_url' => admin_url( 'admin.php?page=elementize' ),
-        ], 200 );
+        ];
+        $data = array_merge( $data, Elementize_Media_Import::status_capabilities(), Elementize_Pixfort_Icons::status_capabilities() );
+        return new WP_REST_Response( $data, 200 );
     }
 
     public static function pages( WP_REST_Request $request ): WP_REST_Response {
@@ -140,6 +138,7 @@ final class Elementize_Core {
         return [
             'id' => $id,
             'title' => $post ? (string) $post->post_title : '',
+            'slug' => $post ? (string) $post->post_name : '',
             'status' => $post ? (string) $post->post_status : '',
             'modified_gmt' => $post ? (string) $post->post_modified_gmt : '',
             'permalink' => get_permalink( $id ),
@@ -221,6 +220,7 @@ final class Elementize_Core {
     }
 
     public static function pixfort_info(): array {
+        if ( null !== self::$pixfort_info ) return self::$pixfort_info;
         if ( ! function_exists( 'get_plugins' ) ) require_once ABSPATH . 'wp-admin/includes/plugin.php';
         $active = (array) get_option( 'active_plugins', [] );
         if ( is_multisite() ) $active = array_merge( $active, array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) ) );
@@ -229,8 +229,10 @@ final class Elementize_Core {
             $data = $plugins[ $file ] ?? [];
             $name = (string) ( $data['Name'] ?? '' );
             if ( false === stripos( $file, 'pixfort-core' ) && false === stripos( $name, 'pixfort core' ) ) continue;
-            return [ 'active' => true, 'name' => '' !== $name ? $name : 'Pixfort Core', 'version' => (string) ( $data['Version'] ?? '' ) ];
+            self::$pixfort_info = [ 'active' => true, 'name' => '' !== $name ? $name : 'Pixfort Core', 'version' => (string) ( $data['Version'] ?? '' ) ];
+            return self::$pixfort_info;
         }
-        return [ 'active' => false, 'name' => '', 'version' => '' ];
+        self::$pixfort_info = [ 'active' => false, 'name' => '', 'version' => '' ];
+        return self::$pixfort_info;
     }
 }

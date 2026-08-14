@@ -42,13 +42,30 @@ foreach (['Creative', 'VisualQA', 'Designer', 'ComponentCandidates', 'Template',
     $assert(stripos(implode('|', $actualOps), $forbidden) === false, "Removed operation family returned: $forbidden");
 }
 
+$plugin = $read($root . '/elementize.php');
+$bootstrap = $read($root . '/includes/elementize-bootstrap.inc');
 $content = $read($root . '/includes/elementize-content.inc');
 $assert(str_contains($content, "private const KINDS = [ 'text', 'color', 'media', 'pixfort_icon' ];"), 'Only text/color/media/icon kinds may be writable.');
 $assert(!str_contains($content, "'link' =>"), 'Link editing must not return as a writable kind.');
+$assert(str_contains($plugin, 'Elementize_Bootstrap::init();'), 'Plugin entrypoint must use the lightweight bootstrap.');
+$assert(str_contains($plugin, '[ Elementize_Bootstrap::class, \'activate\' ]'), 'Activation must lazy-load through the bootstrap.');
+$assert(str_contains($bootstrap, "add_action( 'rest_api_init', [ self::class, 'register_rest_routes' ], 1 )"), 'REST classes must be lazy-loaded only when REST initializes.');
+$assert(str_contains($bootstrap, 'if ( is_admin() ) self::load_admin();'), 'Admin setup must load only in wp-admin.');
+$assert(!str_contains($content, "add_action( 'rest_api_init'"), 'Content module must not register redundant REST hooks.');
 
 $core = $read($root . '/includes/elementize-core.inc');
+$mediaImport = $read($root . '/includes/elementize-media-import.inc');
+$icons = $read($root . '/includes/elementize-pixfort-icons.inc');
+$themeTokens = $read($root . '/includes/elementize-pixfort-theme-tokens.inc');
 $assert(str_contains($core, "'design_intelligence' => false"), 'Status must explicitly report design intelligence disabled.');
 $assert(str_contains($core, "'visual_qa_agent' => false"), 'Status must explicitly report visual QA disabled.');
+$assert(str_contains($core, 'Elementize_Media_Import::status_capabilities()'), 'Status must compose media capabilities directly.');
+$assert(str_contains($core, 'Elementize_Pixfort_Icons::status_capabilities()'), 'Status must compose icon capabilities directly.');
+$assert(!str_contains($mediaImport, 'rest_request_after_callbacks'), 'Media import must not hook every REST response just to annotate status.');
+$assert(!str_contains($icons, 'rest_request_after_callbacks'), 'Icon search must not hook every REST response just to annotate status.');
+$assert(!str_contains($themeTokens, '$diagnostics'), 'Removed Pixfort diagnostic state must not return.');
+$assert(!str_contains($themeTokens, 'validate_any_transition'), 'Unused cross-widget semantic transition helper must stay removed.');
+$assert(!str_contains($themeTokens, 'is_any_control'), 'Unused cross-widget semantic-control scan must stay removed.');
 
 $onboarding = $read($root . '/includes/elementize-onboarding.inc');
 $assert(str_contains($onboarding, 'elementize-public-origin.txt'), 'Persistent relay origin file must be supported.');
@@ -66,17 +83,24 @@ $assert(str_contains($installer, "Substring(0, 12)"), 'workers.dev account subdo
 $assert(str_contains($installer, '$siteHash = Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8'), 'Worker identity must include a deterministic site-origin hash.');
 $assert(str_contains($installer, '$WorkerName = "elementize-relay-$siteKey"'), 'Default Worker name must be unique per site.');
 $assert(str_contains($installer, 'Join-Path (Join-Path $elementizeRoot \'sites\') $siteKey'), 'Each site must have its own local relay runtime directory.');
+$assert(str_contains($installer, '$projectDir = Join-Path $runtimeRoot \'worker\''), 'Worker deploy source must live outside the Wrangler toolchain.');
+$assert(str_contains($installer, '$wranglerDir = Join-Path $runtimeRoot \'wrangler\''), 'Wrangler must have a separate tooling directory.');
+$assert(str_contains($installer, 'Wrangler: reuse'), 'A healthy local Wrangler install must be reused instead of reinstalled on every setup run.');
+$assert(str_contains($installer, 'existingStableOrigin'), 'Reinstall must preserve an already-known stable workers.dev URL.');
+$assert(str_contains($installer, 'projectDir = $projectDir') && str_contains($installer, 'wranglerDir = $wranglerDir'), 'Relay settings must persist separate Worker and Wrangler directories.');
 $assert(str_contains($installer, 'siteKey = $siteKey'), 'Per-site runtime settings must persist the site key.');
 $assert(str_contains($installer, '("Elementize-$siteKey.cmd")'), 'Windows startup entry must be unique per site.');
 $assert(str_contains($installer, 'workersDevSubdomain = $workersDevSubdomain'), 'Windows installer must persist an explicit first-run workers.dev subdomain.');
 $assert(str_contains($installer, 'Subdomain -> type EXACTLY:'), 'Windows installer must explain the exact workers.dev answer before Wrangler prompts.');
 $assert(str_contains($starter, '$runtimeRoot = Split-Path -Parent $PSCommandPath'), 'Relay startup must bind itself to its per-site runtime directory.');
 $assert(str_contains($starter, '$mutexName = \'Local\\ElementizeCloudflareRelay_\' + $siteKey'), 'Relay monitor mutex must be unique per site.');
+$assert(str_contains($starter, '$projectDir = [string]$settings.projectDir'), 'Relay startup must deploy from the isolated Worker project directory.');
+$assert(str_contains($starter, '$wranglerDir = [string]$settings.wranglerDir'), 'Relay startup must execute Wrangler from the isolated tooling directory.');
+$assert(str_contains($starter, 'Push-Location $projectDir'), 'Wrangler deploy must run from the Worker-only source directory.');
 $assert(str_contains($starter, '$nodeDir = [string]$settings.nodeDir'), 'Relay startup must restore the persisted Node.js directory.');
 $assert(str_contains($starter, 'CommandLine.Contains($quickLog)'), 'Relay startup must only stop its own site-specific cloudflared process.');
 $assert(str_contains($starter, 'Subdomain -> $workersDevSubdomain'), 'Relay startup must repeat the exact workers.dev answer at first publish.');
 
-$plugin = $read($root . '/elementize.php');
 preg_match('/Version:\s*([0-9.]+)/', $plugin, $pluginVersion);
 preg_match('/define\(\s*\'ELEMENTIZE_VERSION\',\s*\'([0-9.]+)\'/', $plugin, $runtimeVersion);
 preg_match('/^\s*version:\s*([0-9.]+)/m', $schema, $schemaVersion);

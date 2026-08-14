@@ -13,10 +13,6 @@ final class Elementize_Content {
     private const MAX_SETTINGS_VISITS = 20000;
     private const KINDS = [ 'text', 'color', 'media', 'pixfort_icon' ];
 
-    public static function init(): void {
-        add_action( 'rest_api_init', [ self::class, 'routes' ], 20 );
-    }
-
     public static function routes(): void {
         register_rest_route( Elementize_Core::NS, '/pages/(?P<id>\\d+)/content', [
             [
@@ -57,10 +53,6 @@ final class Elementize_Content {
         return $items;
     }
 
-    public static function is_writable_text( array $path, string $value ): bool {
-        return self::copy_field( $path, $value );
-    }
-
     public static function read( WP_REST_Request $request ) {
         $id = absint( $request['id'] );
         $loaded = Elementize_Core::elements( $id );
@@ -74,12 +66,18 @@ final class Elementize_Content {
             'top_level_id' => trim( (string) $request->get_param( 'top_level_id' ) ),
             'q' => self::lower( trim( (string) $request->get_param( 'q' ) ) ),
         ];
-        $filtered = array_values( array_filter( $items, static fn( array $item ): bool => self::matches( $item, $filters ) ) );
+
         $offset = max( 0, absint( $request->get_param( 'offset' ) ) );
         $limit = min( 500, max( 1, absint( $request->get_param( 'limit' ) ) ) );
-        $returned = array_slice( $filtered, $offset, $limit );
         $counts = array_fill_keys( self::KINDS, 0 );
-        foreach ( $items as $item ) $counts[ $item['kind'] ]++;
+        $returned = [];
+        $matched_count = 0;
+        foreach ( $items as $item ) {
+            $counts[ $item['kind'] ]++;
+            if ( ! self::matches( $item, $filters ) ) continue;
+            if ( $matched_count >= $offset && count( $returned ) < $limit ) $returned[] = $item;
+            $matched_count++;
+        }
         return new WP_REST_Response( [
             'page' => Elementize_Core::page_identity( $id, $loaded['document'] ),
             'content_hash' => Elementize_Core::hash_elements( $loaded['elements'] ),
@@ -91,11 +89,11 @@ final class Elementize_Content {
             'supported_kinds' => self::KINDS,
             'counts' => $counts,
             'total_item_count' => count( $items ),
-            'matched_item_count' => count( $filtered ),
+            'matched_item_count' => $matched_count,
             'returned_item_count' => count( $returned ),
             'offset' => $offset,
             'limit' => $limit,
-            'next_offset' => ( $offset + count( $returned ) ) < count( $filtered ) ? $offset + count( $returned ) : null,
+            'next_offset' => ( $offset + count( $returned ) ) < $matched_count ? $offset + count( $returned ) : null,
             'items' => $returned,
         ], 200 );
     }
@@ -178,7 +176,9 @@ final class Elementize_Content {
         if ( is_array( $value ) ) {
             if ( self::media_target( $path, $value ) ) { $items[] = self::item( 'media', $id, $top, $type, $widget, $path, self::media_snapshot( $value ) ); return; }
             foreach ( $value as $key => $child ) {
-                self::collect_settings( $child, array_merge( $path, [ is_int( $key ) ? $key : (string) $key ] ), $id, $top, $type, $widget, $items, $state );
+                $child_path = $path;
+                $child_path[] = is_int( $key ) ? $key : (string) $key;
+                self::collect_settings( $child, $child_path, $id, $top, $type, $widget, $items, $state );
                 if ( count( $items ) >= self::MAX_ITEMS || (int) $state['settings_visits'] >= self::MAX_SETTINGS_VISITS ) return;
             }
             return;

@@ -33,7 +33,8 @@ try {
             $cloudflared = [string]$settings.cloudflared
             $localOrigin = [string]$settings.localOrigin
             $pluginRoot = [string]$settings.pluginRoot
-            $workerDir = [string]$settings.workerDir
+            $projectDir = [string]$settings.projectDir
+            $wranglerDir = [string]$settings.wranglerDir
             $workerName = [string]$settings.workerName
             $nodeDir = [string]$settings.nodeDir
             if (-not $nodeDir) {
@@ -44,8 +45,9 @@ try {
             if (-not $nodeDir -or -not (Test-Path (Join-Path $nodeDir 'node.exe'))) { throw 'Permanent Node.js runtime is missing.' }
             $env:Path = $nodeDir + ';' + (($env:Path -split ';' | Where-Object { $_ -and $_ -ne $nodeDir }) -join ';')
             if (-not (Test-Path $cloudflared)) { throw 'cloudflared executable is missing.' }
-            if (-not (Test-Path $workerDir)) { throw 'Elementize Cloudflare Worker runtime is missing.' }
-            $wrangler = Join-Path $workerDir 'node_modules\.bin\wrangler.cmd'
+            if (-not (Test-Path $projectDir)) { throw 'Elementize Cloudflare Worker project is missing.' }
+            if (-not (Test-Path $wranglerDir)) { throw 'Elementize Wrangler runtime is missing.' }
+            $wrangler = Join-Path $wranglerDir 'node_modules\.bin\wrangler.cmd'
             if (-not (Test-Path $wrangler)) { throw 'Wrangler runtime is missing. Run the Elementize relay installer again.' }
 
             try { $localUri = [Uri]$localOrigin } catch { throw 'Configured localOrigin is invalid.' }
@@ -80,9 +82,9 @@ try {
                 workers_dev = $true
                 vars = [ordered]@{ TARGET_ORIGIN = $quickOrigin }
             }
-            $config | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $workerDir 'wrangler.jsonc') -Encoding UTF8
+            $config | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $projectDir 'wrangler.jsonc') -Encoding UTF8
 
-            Push-Location $workerDir
+            Push-Location $projectDir
             try {
                 if (-not [string]$settings.stableOrigin) {
                     $workersDevSubdomain = [string]$settings.workersDevSubdomain
