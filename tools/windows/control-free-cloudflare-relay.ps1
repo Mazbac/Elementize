@@ -85,7 +85,8 @@ function Get-TunnelProcesses {
     })
 }
 function Stop-LegacyRelayForSite {
-    $legacyRoot = Join-Path $env:LOCALAPPDATA 'Elementize'
+    if (-not $localAppData) { return }
+    $legacyRoot = Join-Path $localAppData 'Elementize'
     $legacySettings = Join-Path $legacyRoot 'relay-settings.json'
     $legacyMatches = $false
     if (Test-Path $legacySettings) {
@@ -116,9 +117,15 @@ function Stop-LegacyRelayForSite {
 }
 
 function Write-Autostart {
+    if (-not $startupCmd) { throw 'Windows Startup path could not be resolved for this Elementize site.' }
     if (-not (Test-Path $startScript)) { throw 'Elementize relay runtime is not installed for this site.' }
     $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$startScript`"`r`n"
     Set-Content -Path $startupCmd -Value $cmd -Encoding ASCII
+}
+
+function Remove-Autostart {
+    if (-not $startupCmd) { throw 'Windows Startup path could not be resolved for this Elementize site.' }
+    Remove-Item -LiteralPath $startupCmd -Force -ErrorAction SilentlyContinue
 }
 
 function Stop-Relay {
@@ -147,7 +154,7 @@ function Get-State {
         installed = (Test-Path $settingsPath) -and (Test-Path $startScript)
         running = @(Get-MonitorProcesses).Count -gt 0
         tunnel_running = @(Get-TunnelProcesses).Count -gt 0
-        autostart = Test-Path $startupCmd
+        autostart = [bool]($startupCmd -and (Test-Path $startupCmd))
         site_key = $siteKey
         stable_origin = $stableOrigin
     }
@@ -156,9 +163,9 @@ switch ($Action) {
     'start' { Start-Relay }
     'stop' { Stop-Relay }
     'enable' { Write-Autostart; Start-Relay }
-    'disable' { Stop-Relay; Remove-Item -LiteralPath $startupCmd -Force -ErrorAction SilentlyContinue }
+    'disable' { Stop-Relay; Remove-Autostart }
     'autostart-on' { Write-Autostart }
-    'autostart-off' { Remove-Item -LiteralPath $startupCmd -Force -ErrorAction SilentlyContinue }
+    'autostart-off' { Remove-Autostart }
     'status' { }
 }
 

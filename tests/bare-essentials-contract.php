@@ -112,8 +112,9 @@ $assert(str_contains($controller, "ValidateSet('status','start','stop','enable',
 $assert(str_contains($controller, 'Stop-LegacyRelayForSite'), 'Relay controller must retire matching legacy Elementize relay processes.');
 $assert(str_contains($controller, '$hostMatches.Count -eq 1'), 'Relay controller may fall back to a unique host match when WordPress reports a different local scheme.');
 $assert(str_contains($controller, '$env:USERPROFILE') && str_contains($controller, "'AppData\\Local'"), 'Relay controller must recover LocalAppData when PHP-CGI omits LOCALAPPDATA.');
+$assert(str_contains($controller, "Join-Path \$localAppData 'Elementize'") && ! str_contains($controller, "Join-Path \$env:LOCALAPPDATA 'Elementize'"), 'Legacy relay cleanup must use the web-context-safe LocalAppData resolution.');
 $assert(str_contains($controller, '[string]$RuntimeRoot') && str_contains($controller, '[string]$StartupCmd'), 'Relay controller must accept explicit installer-resolved runtime paths.');
-$assert(str_contains($controller, "'disable' { Stop-Relay; Remove-Item"), 'Full relay shutdown must stop the relay and disable Windows autostart.');
+$assert(str_contains($controller, 'function Remove-Autostart') && str_contains($controller, "'disable' { Stop-Relay; Remove-Autostart }"), 'Full relay shutdown must stop the relay and disable Windows autostart through a guarded path.');
 $assert(str_contains($controller, "'enable' { Write-Autostart; Start-Relay }"), 'Full relay startup must enable Windows autostart and start the relay.');
 
 preg_match('/Version:\s*([0-9.]+)/', $plugin, $pluginVersion);
