@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 0.50.0
-  description: Guarded natural-language Elementor editing with optional page-scoped Creative Control for templates, structure, design, media, copy, links, and Pixfort icons.
+  version: 1.0.0
+  description: Direct guarded editing of existing Elementor + Pixfort content. Supports text, local colours, images and verified Pixfort icons only.
+  license:
+    name: GPL-2.0-or-later
+    identifier: GPL-2.0-or-later
+security:
+  - basicAuth: []
 servers:
   - url: https://example.invalid
     description: Replaced automatically by the Elementize setup screen.
@@ -11,9 +16,10 @@ paths:
   /wp-json/elementize/v1/status:
     get:
       operationId: getElementizeStatus
-      summary: Check readiness and active editing capabilities
+      summary: Check Elementize readiness
       responses:
-        '200': { description: Elementize status, editing profile, capability revision, and supported operations }
+        '200': { description: 'Plugin, Elementor, Pixfort and editing capability status' }
+        '401': { description: Authentication required }
 
   /wp-json/elementize/v1/pages:
     get:
@@ -25,73 +31,32 @@ paths:
         - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
       responses:
         '200': { description: Editable Elementor pages }
-
-  /wp-json/elementize/v1/pages/{id}/structure:
-    get:
-      operationId: getElementizePageStructure
-      summary: Read the semantic Elementor page map
-      description: Returns sections, containers, cards/groups, widgets, snippets, parent/sibling relationships, and optional exact editable content fields from the main Elementor document.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-        - { name: q, in: query, required: false, schema: { type: string } }
-        - { name: element_id, in: query, required: false, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 300, default: 120 } }
-        - { name: include_fields, in: query, required: false, schema: { type: boolean, default: false } }
-      responses:
-        '200': { description: Semantic page structure and repeated sibling groups }
-
-  /wp-json/elementize/v1/pages/{id}/resolve:
-    post:
-      operationId: resolveElementizeTargets
-      summary: Resolve natural language or screenshot clues to exact Elementor targets
-      description: Uses natural descriptions, screenshot clues, and prior selection IDs. Can expand one match to siblings, its repeated group, or its whole section.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [description]
-              properties:
-                description: { type: string, minLength: 1, maxLength: 1000 }
-                visual_clues:
-                  type: array
-                  maxItems: 12
-                  items: { type: string, maxLength: 300 }
-                context_element_ids:
-                  type: array
-                  maxItems: 30
-                  items: { type: string, maxLength: 100 }
-                scope_element_id: { type: string, maxLength: 100 }
-                expand: { type: string, enum: [auto, none, siblings, group, section], default: auto }
-                expected_count: { type: integer, minimum: 1, maximum: 50 }
-      responses:
-        '200': { description: Ranked targets, reusable context, exact writable fields, and a fresh content hash }
-        '400': { description: Invalid resolver request }
-        '409': { description: Requested scope no longer exists }
+        '401': { description: Authentication required }
+        '403': { description: Page editing permission required }
 
   /wp-json/elementize/v1/pages/{id}/content:
     get:
       operationId: getElementizePageContent
-      summary: Read editable copy, links, images, and Pixfort icons
-      description: Returns exact element IDs, setting paths, current values, page identity, and a fresh content hash for safe content fields.
+      summary: Read directly editable fields on an existing page
+      description: Returns exact element IDs, setting paths, current values and a fresh content hash. Only text, colour, media and Pixfort-icon fields are exposed.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-        - { name: kind, in: query, required: false, schema: { type: string, enum: [all, text, link, media, pixfort_icon], default: all } }
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [all, text, color, media, pixfort_icon], default: all } }
         - { name: element_id, in: query, required: false, schema: { type: string } }
         - { name: top_level_id, in: query, required: false, schema: { type: string } }
         - { name: q, in: query, required: false, schema: { type: string } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
       responses:
-        '200': { description: Fresh editable page-content snapshot }
+        '200': { description: Fresh editable field snapshot }
+        '401': { description: Authentication required }
+        '403': { description: Page editing permission required }
+        '404': { description: Page not found }
+
     post:
       operationId: updateElementizePageContent
-      summary: Guardedly update copy, links, images, or Pixfort icons
-      description: Content-only fast path. Uses exact fresh fields and page state. Standard editing may use this even when Creative Control is off.
+      summary: Update existing text, colours, images or Pixfort icons
+      description: Guarded direct edit only. Never creates, inserts, moves, duplicates or deletes Elementor elements.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
@@ -117,7 +82,7 @@ paths:
                     additionalProperties: false
                     required: [kind, element_id, setting_path]
                     properties:
-                      kind: { type: string, enum: [text, link, media, pixfort_icon] }
+                      kind: { type: string, enum: [text, color, media, pixfort_icon] }
                       element_id: { type: string, maxLength: 100 }
                       setting_path:
                         type: array
@@ -132,250 +97,30 @@ paths:
                       expected_attachment_id: { type: integer, minimum: 0 }
                       attachment_id: { type: integer, minimum: 1 }
       responses:
-        '200': { description: Content changes saved and verified in persisted Elementor data }
-        '400': { description: Unsafe content field/value or missing confirmation }
-        '409': { description: Page, revision capability, or target changed after the fresh read }
-
-  /wp-json/elementize/v1/pages/{id}/design-profile:
-    get:
-      operationId: getElementizePageDesignProfile
-      summary: Read the page design language and creative controls
-      description: Returns observed palette, spacing, radius and typography tokens plus exact writable design controls, Creative Control state, capability revision, and design guidelines.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-        - { name: element_id, in: query, required: false, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1200, default: 300 } }
-      responses:
-        '200': { description: Fresh design profile, capability state, and exact safe design controls }
-
-  /wp-json/elementize/v1/pages/{id}/designer-context:
-    get:
-      operationId: getElementizeDesignerContext
-      summary: Read page-wide senior-designer context
-      description: Returns fresh page outline, design language, coherence evidence, Blueprint v4 composition/checkpoint rules, visual-critic rubric, and quality contracts before Creative writes.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: Fresh read-only designer context and page-wide quality contracts }
-
-  /wp-json/elementize/v1/pages/{id}/component-candidates:
-    post:
-      operationId: rankElementizeComponentCandidates
-      summary: Rank implementation candidates for one blueprint section
-      description: Read-only template ranking grounded in one blueprint section, including composition intent/signature fit, derived build checkpoints, and the selected section checkpoint trigger.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                purpose: { type: string, minLength: 1, maxLength: 800 }
-                contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic], default: generic }
-                provider: { type: string, enum: [all, pixfort, local], default: all }
-                keywords:
-                  type: array
-                  maxItems: 12
-                  items: { type: string, maxLength: 80 }
-                blueprint: { $ref: '#/components/schemas/ElementizeBlueprint' }
-                selected_section_id: { type: string, minLength: 1, maxLength: 80 }
-                expected_blueprint_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
-                limit: { type: integer, minimum: 1, maximum: 8, default: 5 }
-      responses:
-        '200': { description: Explainable read-only component candidates grounded in the current page and installed templates }
-        '400': { description: Invalid component-ranking request }
-
-  /wp-json/elementize/v1/pages/{id}/visual-qa:
-    get:
-      operationId: getElementizePageVisualQA
-      summary: Render the active Creative page for native ChatGPT visual QA
-      description: Read-only Creative-page QA with viewport, motion and bounded interaction modes. Exact CDP captures expose viewport_exact=true; analyze=true returns screenshot.png in a private ZIP for native vision.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-        - { name: analyze, in: query, required: false, schema: { type: boolean, default: true } }
-        - { name: viewport, in: query, required: false, schema: { type: string, enum: [desktop, tablet, mobile], default: desktop } }
-        - { name: motion, in: query, required: false, schema: { type: string, enum: [settled, live], default: settled } }
-        - { name: interaction_probe, in: query, required: false, schema: { type: string, enum: [passive, safe], default: passive } }
-      responses:
-        '200':
-          description: Render verification, bounded capture metadata, and optional native ChatGPT vision ZIP handoff
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-                properties:
-                  quality_gate_evaluation: { $ref: '#/components/schemas/ElementizeQualityGateEvaluation' }
-                  repair_signal_summary: { $ref: '#/components/schemas/ElementizeRepairSignalSummary' }
-                  repair_signals:
-                    type: array
-                    maxItems: 24
-                    items: { $ref: '#/components/schemas/ElementizeRepairSignal' }
-                  openaiFileResponse:
-                    type: array
-                    maxItems: 1
-                    items:
-                      oneOf:
-                        - { type: string, format: uri }
-                        - type: object
-                          required: [name, mime_type, content]
-                          properties:
-                            name: { type: string }
-                            mime_type: { type: string }
-                            content: { type: string, format: byte }
-        '403': { description: Page is not the active Creative Control page }
-  /wp-json/elementize/v1/templates:
-    get:
-      operationId: searchElementizeTemplates
-      summary: Search detected Pixfort and local Elementor template sources
-      description: Pixfort-native sources are discovered at runtime when registered with Elementor. Local Elementor templates are available as a safe fallback. Prefer Pixfort-native matches when available.
-      parameters:
-        - { name: q, in: query, required: false, schema: { type: string } }
-        - { name: type, in: query, required: false, schema: { type: string, enum: [all, page, section, container], default: all } }
-        - { name: provider, in: query, required: false, schema: { type: string, enum: [all, pixfort, local], default: all } }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
-      responses:
-        '200': { description: Matching templates and detected template-source metadata }
-
-  /wp-json/elementize/v1/templates/{source_id}/{template_id}:
-    get:
-      operationId: getElementizeTemplate
-      summary: Inspect one template before insertion
-      description: Returns template structure, editable content fields, design controls, warnings, and whether it is eligible for managed local insertion.
-      parameters:
-        - { name: source_id, in: path, required: true, schema: { type: string } }
-        - { name: template_id, in: path, required: true, schema: { type: string } }
-      responses:
-        '200': { description: Template structure and exact pre-insertion fields }
-        '400': { description: Unsafe embedded/global template dependency }
-        '404': { description: Template source or item not found }
-        '503': { description: Template provider did not return usable Elementor data }
-
-  /wp-json/elementize/v1/pages/{id}/creative:
-    post:
-      operationId: applyElementizeCreativePlan
-      summary: Apply one atomic guarded creative transaction
-      description: Creative Control only. Inserts templates, removes/duplicates/moves/reorders elements, changes approved design controls, and edits content in one revision-backed verified transaction.
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [expected_status, expected_title, content_hash, expected_capability_revision, operations, confirm_creative_write]
-              properties:
-                expected_status: { type: string }
-                expected_title: { type: string }
-                content_hash: { type: string }
-                expected_capability_revision: { type: integer, minimum: 1 }
-                plan_label: { type: string, maxLength: 200 }
-                plan_context: { $ref: '#/components/schemas/ElementizeExecutionPlanContext' }
-                confirm_creative_write: { type: boolean, enum: [true] }
-                confirm_published_page: { type: boolean, default: false }
-                operations:
-                  type: array
-                  minItems: 1
-                  maxItems: 50
-                  items:
-                    type: object
-                    additionalProperties: false
-                    required: [type]
-                    properties:
-                      type: { type: string, enum: [insert_template, remove_element, duplicate_element, move_element, reorder_children, style, content] }
-                      alias: { type: string, maxLength: 60 }
-                      source_id: { type: string, maxLength: 100 }
-                      template_id: { type: string, maxLength: 200 }
-                      contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic] }
-                      element_ref: { type: string, maxLength: 160, description: 'Existing element ID or alias:originalTemplateElementId from an earlier insert_template operation in this transaction.' }
-                      anchor_ref: { type: string, maxLength: 160 }
-                      parent_ref: { type: string, maxLength: 160 }
-                      position: { type: string, enum: [before, after, inside_start, inside_end, page_start, page_end] }
-                      ordered_refs:
-                        type: array
-                        maxItems: 100
-                        items: { type: string, maxLength: 160 }
-                      kind: { type: string, enum: [text, link, media, pixfort_icon] }
-                      setting_path:
-                        type: array
-                        minItems: 1
-                        maxItems: 30
-                        items:
-                          anyOf:
-                            - { type: string, maxLength: 200 }
-                            - { type: integer }
-                      expected_value: { type: string }
-                      value: { type: string }
-                      expected_attachment_id: { type: integer, minimum: 0 }
-                      attachment_id: { type: integer, minimum: 1 }
-                      expected_json: { type: string, description: Exact value_json returned for an approved design control. }
-                      value_json: { type: string, description: JSON-encoded replacement value using the same Elementor value shape. }
-      responses:
-        '200': { description: Entire creative transaction persisted and verified, with aliases, activity ID, managed roots, and deterministic quality summary }
-        '400': { description: Invalid, unsafe, structurally inconsistent, or unconfirmed creative plan }
-        '403': { description: Creative Control disabled or enabled for a different page }
-        '409': { description: Page content or capability revision changed after the creative read }
-
-  /wp-json/elementize/v1/activity:
-    get:
-      operationId: listElementizeActivity
-      summary: Read recent Elementize Activity and guarded Undo availability
-      description: Returns recent activity records with page identity, revision hashes, Creative metadata, snapshot availability, and whether each record is currently safe to undo.
-      parameters:
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
-      responses:
-        '200': { description: Recent Activity records and fresh undo availability }
-        '401': { description: Authentication required }
-        '403': { description: Administrator permission required }
-
-  /wp-json/elementize/v1/activity/{activity_id}/undo:
-    post:
-      operationId: undoElementizeActivity
-      summary: Guardedly undo one exact Activity record
-      description: Restores the verified pre-change snapshot only when the page still matches that Activity after-hash. Creative managed-root metadata is restored atomically with the page content.
-      parameters:
-        - { name: activity_id, in: path, required: true, schema: { type: string, pattern: '^[A-Fa-f0-9-]{36}$' } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [confirm_undo]
-              properties:
-                confirm_undo: { type: boolean, enum: [true] }
-                confirm_published_page: { type: boolean, default: false }
-      responses:
-        '200': { description: Activity undone with persisted verification and restored Creative managed metadata when applicable }
-        '400': { description: Undo confirmation missing or published-page confirmation required }
+        '200': { description: Requested direct edits saved and verified in persisted Elementor data }
+        '400': { description: 'Unsupported field or value, or required confirmation missing' }
         '403': { description: Administrator or page-edit permission required }
-        '404': { description: Activity record or page not found }
-        '409': { description: Activity already undone, snapshot invalid, or page changed after the activity }
+        '409': { description: Page or target changed after the fresh read }
 
   /wp-json/elementize/v1/media/images:
     get:
       operationId: searchElementizeMediaImages
-      summary: Search WordPress Media Library images
+      summary: Search existing WordPress images
       parameters:
         - { name: q, in: query, required: false, schema: { type: string } }
         - { name: filename, in: query, required: false, schema: { type: string } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
-        '200': { description: Matching WordPress image attachments }
+        '200': { description: Matching image attachments }
+        '401': { description: Authentication required }
+        '403': { description: Media permission required }
 
   /wp-json/elementize/v1/media/images/import-chat-file:
     post:
       operationId: importElementizeConversationImage
-      summary: Import one image attached in this ChatGPT conversation
-      description: Imports or reuses one verified conversation image and returns a WordPress attachment_id for a later guarded media update.
+      summary: Import one image supplied in this CustomGPT conversation
+      description: Imports or reuses one verified conversation image and returns a WordPress attachment_id that can immediately be used in updateElementizePageContent.
       requestBody:
         required: true
         content:
@@ -389,66 +134,15 @@ paths:
                   type: array
                   minItems: 1
                   maxItems: 1
-                  description: Exactly one user-supplied image from the current ChatGPT conversation. ChatGPT expands the file reference into file metadata at runtime.
+                  description: Exactly one user-supplied image from the current CustomGPT conversation.
                   items: { type: string }
                 title: { type: string }
                 alt: { type: string }
                 confirm_import: { type: boolean, enum: [true] }
       responses:
         '201': { description: Conversation image imported or safely deduplicated and verified }
-        '400': { description: Invalid file, unsupported image, or confirmation missing }
-
-  /wp-json/elementize/v1/media/images/import-generated:
-    post:
-      operationId: importElementizeGeneratedImage
-      summary: Import the image ChatGPT just generated into WordPress
-      description: 'Use exactly one source: openaiFileIdRefs when available, otherwise an allowed OpenAI-hosted generated_image_url. Retries are deduplicated when possible.'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [confirm_import]
-              properties:
-                openaiFileIdRefs:
-                  type: array
-                  minItems: 1
-                  maxItems: 1
-                  items: { type: string }
-                generated_image_url: { type: string, format: uri, maxLength: 8192 }
-                title: { type: string }
-                alt: { type: string }
-                confirm_import: { type: boolean, enum: [true] }
-      responses:
-        '201': { description: Generated image imported or safely deduplicated and verified }
-        '400': { description: Missing or unsafe generated-image source, unsupported image, or confirmation missing }
-        '502': { description: Generated image download failed }
-
-  /wp-json/elementize/v1/media/images/import-url:
-    post:
-      operationId: importElementizeRemoteImage
-      summary: Import one public HTTPS image into the WordPress Media Library
-      description: Imports or reuses a verified public HTTPS image and returns a WordPress attachment_id for a later guarded media update.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [url, confirm_import]
-              properties:
-                url: { type: string, format: uri, maxLength: 8192 }
-                source_page_url: { type: string, format: uri, maxLength: 8192 }
-                title: { type: string }
-                alt: { type: string }
-                confirm_import: { type: boolean, enum: [true] }
-      responses:
-        '201': { description: Remote image imported or safely deduplicated and verified }
-        '400': { description: Unsafe URL, unsupported image, or confirmation missing }
-        '502': { description: Remote image download failed }
+        '400': { description: 'Invalid image, unsupported format or confirmation missing' }
+        '403': { description: Media import permission required }
 
   /wp-json/elementize/v1/pixfort/icons:
     get:
@@ -463,227 +157,11 @@ paths:
       responses:
         '200': { description: Matching installed Pixfort icon values }
         '503': { description: Installed Pixfort icon library could not be indexed }
+        '401': { description: Authentication required }
+        '403': { description: Page editing permission required }
 
 components:
-  schemas:
-    ElementizeBlueprint:
-      type: object
-      additionalProperties: false
-      required: [page_goal, audience, conversion_goal, visual_direction, sections]
-      properties:
-        page_goal: { type: string, minLength: 1, maxLength: 600 }
-        audience: { type: string, minLength: 1, maxLength: 500 }
-        conversion_goal: { type: string, minLength: 1, maxLength: 500 }
-        visual_direction: { type: string, minLength: 1, maxLength: 800 }
-        design_tokens:
-          type: object
-          maxProperties: 16
-          additionalProperties: { type: string, maxLength: 180 }
-        responsive_strategy: { type: string, maxLength: 700 }
-        interaction_strategy: { type: string, maxLength: 700 }
-        acceptance_criteria:
-          type: array
-          maxItems: 16
-          items: { type: string, maxLength: 240 }
-        reference_basis:
-          type: object
-          additionalProperties: false
-          properties:
-            source_count: { type: integer, minimum: 0, maximum: 20 }
-            observed_viewports:
-              type: array
-              uniqueItems: true
-              maxItems: 3
-              items: { type: string, enum: [desktop, tablet, mobile] }
-            unresolved_hypotheses:
-              type: array
-              maxItems: 12
-              items: { type: string, maxLength: 240 }
-        reference_evidence: { $ref: '#/components/schemas/ElementizeReferenceEvidence' }
-        acceptance_plan: { $ref: '#/components/schemas/ElementizeAcceptancePlan' }
-        sections:
-          type: array
-          minItems: 1
-          maxItems: 24
-          items:
-            $ref: '#/components/schemas/ElementizeBlueprintSection'
-    ElementizeReferenceEvidence:
-      type: object
-      additionalProperties: false
-      properties:
-        observations:
-          type: array
-          maxItems: 48
-          items: { $ref: '#/components/schemas/ElementizeReferenceObservation' }
-    ElementizeReferenceObservation:
-      type: object
-      additionalProperties: false
-      required: [id, category, statement, viewport, evidence_kind, confidence, transferability]
-      properties:
-        id: { type: string, minLength: 1, maxLength: 80 }
-        category: { type: string, enum: [hierarchy, section_sequence, layout, density, typography, spacing, palette, radius_border, imagery, cta, background, interaction, responsive] }
-        statement: { type: string, minLength: 1, maxLength: 360 }
-        viewport: { type: string, enum: [desktop, tablet, mobile, cross_viewport, unknown] }
-        evidence_kind: { type: string, enum: [observed, inferred] }
-        confidence: { type: string, enum: [high, medium, low] }
-        transferability: { type: string, enum: [structural, visual, behavioral, site_specific] }
-        source_ref: { type: string, maxLength: 120 }
-    ElementizeAcceptancePlan:
-      type: object
-      additionalProperties: false
-      properties:
-        required_viewports:
-          type: array
-          minItems: 1
-          maxItems: 3
-          uniqueItems: true
-          items: { type: string, enum: [desktop, tablet, mobile] }
-        native_vision_viewports:
-          type: array
-          maxItems: 3
-          uniqueItems: true
-          items: { type: string, enum: [desktop, tablet, mobile] }
-        live_motion_viewports:
-          type: array
-          maxItems: 3
-          uniqueItems: true
-          items: { type: string, enum: [desktop, tablet, mobile] }
-        safe_interaction_viewports:
-          type: array
-          maxItems: 3
-          uniqueItems: true
-          items: { type: string, enum: [desktop, tablet, mobile] }
-        quality_gates:
-          type: array
-          maxItems: 9
-          uniqueItems: true
-          items: { type: string, enum: [visual_render_verified, viewport_exact, document_capture_complete, capture_bounds_ready, browser_probe_verified, no_horizontal_overflow, no_bad_internal_anchors, no_hidden_animated_elements, safe_interactions_pass] }
-        max_repair_cycles: { type: integer, minimum: 0, maximum: 3, default: 3 }
-        bounded_exceptions:
-          type: array
-          maxItems: 8
-          items: { type: string, maxLength: 240 }
-    ElementizeBlueprintSection:
-      type: object
-      additionalProperties: false
-      required: [id, purpose, narrative_role, contract]
-      properties:
-        id: { type: string, minLength: 1, maxLength: 80 }
-        purpose: { type: string, minLength: 1, maxLength: 700 }
-        narrative_role: { type: string, minLength: 1, maxLength: 500 }
-        contract: { type: string, enum: [feature_grid, content_split, testimonial_grid, cta, generic] }
-        composition_role: { type: string, enum: [hero_focus, split_media, card_grid, process_steps, proof_reassurance, faq, cta_band, editorial, mixed] }
-        visual_scale: { type: string, enum: [dominant, standard, compact] }
-        media_emphasis: { type: string, enum: [none, supporting, balanced, dominant] }
-        density: { type: string, enum: [airy, balanced, dense] }
-        layout_pattern: { type: string, maxLength: 400 }
-        content_requirements:
-          type: array
-          maxItems: 12
-          items: { type: string, maxLength: 220 }
-        component_constraints:
-          type: array
-          maxItems: 12
-          items: { type: string, maxLength: 220 }
-        visual_treatment: { type: string, maxLength: 500 }
-        responsive_behavior: { type: string, maxLength: 500 }
-        interaction_behavior: { type: string, maxLength: 500 }
-        keywords:
-          type: array
-          maxItems: 12
-          items: { type: string, maxLength: 80 }
-    ElementizeExecutionPlanContext:
-      type: object
-      additionalProperties: false
-      required: [blueprint, expected_blueprint_fingerprint, section_ids]
-      properties:
-        blueprint: { $ref: '#/components/schemas/ElementizeBlueprint' }
-        expected_blueprint_fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
-        phase: { type: string, enum: [build, repair, polish], default: build }
-        section_ids:
-          type: array
-          minItems: 1
-          maxItems: 24
-          uniqueItems: true
-          items: { type: string, minLength: 1, maxLength: 80 }
-        selected_candidates:
-          type: array
-          maxItems: 24
-          items: { $ref: '#/components/schemas/ElementizeExecutionCandidate' }
-    ElementizeExecutionCandidate:
-      type: object
-      additionalProperties: false
-      required: [section_id, source_id, template_id]
-      properties:
-        section_id: { type: string, minLength: 1, maxLength: 80 }
-        source_id: { type: string, minLength: 1, maxLength: 100 }
-        template_id: { type: string, minLength: 1, maxLength: 200 }
-        score: { type: integer, minimum: 0, maximum: 100 }
-        recommendation:
-          type: string
-          enum: [strong_candidate, inspect_and_compare, possible_but_normalization_heavy, weak_fit]
-    ElementizeQualityGateEvaluation:
-      type: object
-      additionalProperties: false
-      required: [version, viewport, interaction_probe, summary, failed_gates, gates]
-      properties:
-        version: { type: string }
-        viewport: { type: string, enum: [desktop, tablet, mobile] }
-        interaction_probe: { type: string, enum: [passive, safe] }
-        summary:
-          type: object
-          additionalProperties: false
-          required: [pass, fail, not_applicable, unavailable]
-          properties:
-            pass: { type: integer, minimum: 0 }
-            fail: { type: integer, minimum: 0 }
-            not_applicable: { type: integer, minimum: 0 }
-            unavailable: { type: integer, minimum: 0 }
-        failed_gates:
-          type: array
-          maxItems: 12
-          items: { type: string, maxLength: 80 }
-        gates:
-          type: object
-          additionalProperties: { $ref: '#/components/schemas/ElementizeQualityGate' }
-    ElementizeQualityGate:
-      type: object
-      additionalProperties: false
-      required: [state, evidence]
-      properties:
-        state: { type: string, enum: [pass, fail, not_applicable, unavailable] }
-        evidence:
-          type: object
-          additionalProperties: true
-    ElementizeRepairSignalSummary:
-      type: object
-      additionalProperties: false
-      required: [count, localized, unlocalized, blockers, categories, automatic_writes_authorized]
-      properties:
-        count: { type: integer, minimum: 0, maximum: 24 }
-        localized: { type: integer, minimum: 0, maximum: 24 }
-        unlocalized: { type: integer, minimum: 0, maximum: 24 }
-        blockers: { type: integer, minimum: 0, maximum: 24 }
-        categories:
-          type: object
-          additionalProperties: { type: integer, minimum: 0, maximum: 24 }
-        automatic_writes_authorized: { type: boolean }
-    ElementizeRepairSignal:
-      type: object
-      additionalProperties: false
-      required: [id, severity, category, viewport, message, evidence, repair_scope, write_hint, safe_to_autorepair]
-      properties:
-        id: { type: string, minLength: 1, maxLength: 100 }
-        severity: { type: string, enum: [blocker, high, medium, low] }
-        category: { type: string, enum: [infrastructure, responsive_overflow, content_link, motion_visibility, interaction_restoration, touch_target_review] }
-        gate: { type: [string, 'null'], maxLength: 80 }
-        viewport: { type: string, enum: [desktop, tablet, mobile] }
-        message: { type: string, maxLength: 300 }
-        element_id: { type: [string, 'null'], maxLength: 80 }
-        document_id: { type: [string, 'null'], maxLength: 40 }
-        evidence:
-          type: object
-          additionalProperties: true
-        repair_scope: { type: string, enum: [system, localize_first, local_if_verified, review_only] }
-        write_hint: { type: string, maxLength: 300 }
-        safe_to_autorepair: { type: boolean }
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic

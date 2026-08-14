@@ -1,0 +1,42 @@
+name: Elementize CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.0', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: PHP syntax
+        run: |
+          php -l elementize.php
+          find includes -type f -name '*.inc' -print0 | xargs -0 -n1 php -l
+      - name: Bare essentials contract
+        run: php tests/bare-essentials-contract.php
+      - name: OpenAPI contract
+        run: npx --yes @redocly/cli@latest lint config/gpt/actions.openapi.yaml --skip-rule no-server-example.com
+      - name: Worker syntax
+        run: node --check tools/cloudflare-relay/worker.js
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem tools/windows/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count) {
+              $failed = $true
+              $errors | ForEach-Object { Write-Error $_.Message }
+            }
+          }
+          if ($failed) { exit 1 }

@@ -32,31 +32,6 @@ final class Elementize_Media_Import {
             ],
         ] );
 
-        register_rest_route( Elementize_Core::NS, '/media/images/import-generated', [
-            'methods' => WP_REST_Server::CREATABLE,
-            'callback' => [ self::class, 'import_generated_image' ],
-            'permission_callback' => [ self::class, 'can_import' ],
-            'args' => [
-                'openaiFileIdRefs' => [ 'type' => 'array', 'required' => false, 'default' => [] ],
-                'generated_image_url' => [ 'type' => 'string', 'required' => false, 'default' => '' ],
-                'title' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
-                'alt' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
-                'confirm_import' => [ 'type' => 'boolean', 'required' => true ],
-            ],
-        ] );
-
-        register_rest_route( Elementize_Core::NS, '/media/images/import-url', [
-            'methods' => WP_REST_Server::CREATABLE,
-            'callback' => [ self::class, 'import_remote_image' ],
-            'permission_callback' => [ self::class, 'can_import' ],
-            'args' => [
-                'url' => [ 'type' => 'string', 'required' => true ],
-                'source_page_url' => [ 'type' => 'string', 'default' => '' ],
-                'title' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
-                'alt' => [ 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
-                'confirm_import' => [ 'type' => 'boolean', 'required' => true ],
-            ],
-        ] );
     }
 
     public static function can_import() {
@@ -70,65 +45,7 @@ final class Elementize_Media_Import {
     public static function import_chat_image( WP_REST_Request $request ) {
         $confirm = self::require_confirmation( $request );
         if ( is_wp_error( $confirm ) ) return $confirm;
-        return self::import_openai_ref( $request, 'chatgpt_conversation', 'conversation image' );
-    }
-
-    public static function import_generated_image( WP_REST_Request $request ) {
-        $confirm = self::require_confirmation( $request );
-        if ( is_wp_error( $confirm ) ) return $confirm;
-
-        $refs = $request->get_param( 'openaiFileIdRefs' );
-        $refs = is_array( $refs ) ? array_values( $refs ) : [];
-        $generated_url = trim( (string) $request->get_param( 'generated_image_url' ) );
-        $has_ref = 1 === count( $refs );
-        $has_url = '' !== $generated_url;
-
-        if ( count( $refs ) > 1 ) return new WP_Error( 'elementize_generated_media_file_count', 'Exactly one generated ChatGPT image may be imported at a time.', [ 'status' => 400 ] );
-        if ( $has_ref === $has_url ) return new WP_Error( 'elementize_generated_media_source_invalid', 'Provide exactly one generated-image source: one openaiFileIdRefs item or generated_image_url.', [ 'status' => 400 ] );
-        if ( $has_ref ) return self::import_openai_ref( $request, 'chatgpt_generated', 'generated ChatGPT image' );
-
-        if ( strlen( $generated_url ) > self::MAX_URL || ! self::openai_file_url( $generated_url ) ) {
-            return new WP_Error( 'elementize_generated_media_url_invalid', 'generated_image_url must be an HTTPS image URL on an allowed OpenAI file host.', [ 'status' => 400 ] );
-        }
-
-        $path = (string) wp_parse_url( $generated_url, PHP_URL_PATH );
-        $source_name = sanitize_file_name( wp_basename( $path ) );
-        if ( '' === $source_name || '.' === $source_name ) $source_name = 'chatgpt-generated-image';
-
-        $meta = [
-            '_elementize_import_source' => 'chatgpt_generated',
-            '_elementize_generated_source' => 'openai_url',
-        ];
-        $result = self::sideload( $generated_url, $source_name, $request, $meta, 'generated ChatGPT image' );
-        if ( is_wp_error( $result ) ) return $result;
-        $result['source_type'] = 'openai_generated_url';
-        return new WP_REST_Response( $result, 201 );
-    }
-
-    public static function import_remote_image( WP_REST_Request $request ) {
-        $confirm = self::require_confirmation( $request );
-        if ( is_wp_error( $confirm ) ) return $confirm;
-
-        $url = trim( (string) $request->get_param( 'url' ) );
-        if ( '' === $url || strlen( $url ) > self::MAX_URL || ! self::public_https_url( $url ) ) return new WP_Error( 'elementize_remote_media_url_invalid', 'url must be a public HTTPS image URL that passes WordPress safe-URL validation.', [ 'status' => 400 ] );
-
-        $source_page = trim( (string) $request->get_param( 'source_page_url' ) );
-        if ( '' !== $source_page && ( strlen( $source_page ) > self::MAX_URL || ! self::public_https_url( $source_page ) ) ) return new WP_Error( 'elementize_remote_media_source_page_invalid', 'source_page_url must be an optional public HTTPS URL.', [ 'status' => 400 ] );
-
-        $path = (string) wp_parse_url( $url, PHP_URL_PATH );
-        $name = sanitize_file_name( wp_basename( $path ) );
-        if ( '' === $name || '.' === $name ) $name = 'remote-image';
-        $meta = [
-            '_elementize_import_source' => 'remote_https',
-            '_elementize_remote_source_url' => esc_url_raw( $url, [ 'https' ] ),
-        ];
-        if ( '' !== $source_page ) $meta['_elementize_remote_source_page_url'] = esc_url_raw( $source_page, [ 'https' ] );
-
-        $result = self::sideload( $url, $name, $request, $meta, 'remote image' );
-        if ( is_wp_error( $result ) ) return $result;
-        $result['source_url'] = esc_url_raw( $url, [ 'https' ] );
-        $result['source_page_url'] = '' !== $source_page ? esc_url_raw( $source_page, [ 'https' ] ) : null;
-        return new WP_REST_Response( $result, 201 );
+        return self::import_openai_ref( $request );
     }
 
     public static function annotate_status( $response, $handler, WP_REST_Request $request ) {
@@ -137,10 +54,6 @@ final class Elementize_Media_Import {
         $data = $response->get_data();
         if ( ! is_array( $data ) ) return $response;
         $data['conversation_image_import'] = true;
-        $data['generated_image_import'] = true;
-        $data['generated_image_import_openai_only'] = true;
-        $data['remote_image_import'] = true;
-        $data['remote_image_import_https_only'] = true;
         $data['media_import_retry_deduplication'] = true;
         $data['media_import_max_bytes'] = self::MAX_IMAGE_BYTES;
         $data['media_import_allowed_mime_types'] = array_keys( self::ALLOWED_MIMES );
@@ -148,7 +61,7 @@ final class Elementize_Media_Import {
         return $response;
     }
 
-    private static function import_openai_ref( WP_REST_Request $request, string $source_type, string $label ) {
+    private static function import_openai_ref( WP_REST_Request $request ) {
         $refs = $request->get_param( 'openaiFileIdRefs' );
         if ( ! is_array( $refs ) || 1 !== count( $refs ) ) return new WP_Error( 'elementize_chat_media_file_count', 'Exactly one ChatGPT image file is required.', [ 'status' => 400 ] );
         $ref = reset( $refs );
@@ -169,23 +82,22 @@ final class Elementize_Media_Import {
             $result['source_file_id'] = $source_id;
             $result['source_name'] = $source_name;
             $result['source_mime_type'] = $source_mime;
-            $result['source_type'] = $source_type;
+            $result['source_type'] = 'chatgpt_conversation';
             return new WP_REST_Response( $result, 201 );
         }
 
         $meta = [
-            '_elementize_import_source' => $source_type,
+            '_elementize_import_source' => 'chatgpt_conversation',
             '_elementize_chat_file_id' => $source_id,
             '_elementize_chat_file_name' => $source_name,
         ];
-        if ( 'chatgpt_generated' === $source_type ) $meta['_elementize_generated_source'] = 'openai_file_ref';
 
-        $result = self::sideload( $download_url, $source_name, $request, $meta, $label );
+        $result = self::sideload( $download_url, $source_name, $request, $meta, 'conversation image' );
         if ( is_wp_error( $result ) ) return $result;
         $result['source_file_id'] = $source_id;
         $result['source_name'] = $source_name;
         $result['source_mime_type'] = $source_mime;
-        $result['source_type'] = $source_type;
+        $result['source_type'] = 'chatgpt_conversation';
         return new WP_REST_Response( $result, 201 );
     }
 
@@ -303,12 +215,5 @@ final class Elementize_Media_Import {
         $host = strtolower( rtrim( (string) ( $parts['host'] ?? '' ), '.' ) );
         if ( 'https' !== $scheme || '' === $host ) return false;
         return 'oaiusercontent.com' === $host || str_ends_with( $host, '.oaiusercontent.com' );
-    }
-
-    private static function public_https_url( string $url ): bool {
-        $parts = wp_parse_url( $url );
-        if ( ! is_array( $parts ) || 'https' !== strtolower( (string) ( $parts['scheme'] ?? '' ) ) || empty( $parts['host'] ) ) return false;
-        if ( ! empty( $parts['user'] ) || ! empty( $parts['pass'] ) ) return false;
-        return (bool) wp_http_validate_url( $url );
     }
 }

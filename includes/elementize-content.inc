@@ -8,11 +8,10 @@ final class Elementize_Content {
     private const MAX_ELEMENT_ID = 100;
     private const MAX_PATH_DEPTH = 30;
     private const MAX_PATH_SEGMENT = 200;
-    private const MAX_LINK = 2048;
     private const MAX_ICON = 255;
     private const MAX_ELEMENT_DEPTH = 80;
     private const MAX_SETTINGS_VISITS = 20000;
-    private const KINDS = [ 'text', 'link', 'media', 'pixfort_icon' ];
+    private const KINDS = [ 'text', 'color', 'media', 'pixfort_icon' ];
 
     public static function init(): void {
         add_action( 'rest_api_init', [ self::class, 'routes' ], 20 );
@@ -67,7 +66,7 @@ final class Elementize_Content {
         $loaded = Elementize_Core::elements( $id );
         if ( is_wp_error( $loaded ) ) return $loaded;
         $kind = strtolower( trim( (string) $request->get_param( 'kind' ) ) ) ?: 'all';
-        if ( 'all' !== $kind && ! in_array( $kind, self::KINDS, true ) ) return new WP_Error( 'elementize_invalid_content_kind', 'kind must be all, text, link, media, or pixfort_icon.', [ 'status' => 400 ] );
+        if ( 'all' !== $kind && ! in_array( $kind, self::KINDS, true ) ) return new WP_Error( 'elementize_invalid_content_kind', 'kind must be all, text, color, media, or pixfort_icon.', [ 'status' => 400 ] );
         $items = self::discover_items( $loaded['elements'] );
         $filters = [
             'kind' => $kind,
@@ -185,8 +184,8 @@ final class Elementize_Content {
             return;
         }
         if ( ! is_string( $value ) || self::dynamic( $value ) || self::path_has( $path, '__globals__' ) ) return;
-        if ( '' !== trim( $value ) && self::icon_target( $path, $value ) ) $kind = 'pixfort_icon';
-        elseif ( self::link_path( $path, $widget ) ) $kind = 'link';
+        if ( self::color_target( $path, $value, $widget ) ) $kind = 'color';
+        elseif ( '' !== trim( $value ) && self::icon_target( $path, $value ) ) $kind = 'pixfort_icon';
         elseif ( self::copy_field( $path, $value ) ) $kind = 'text';
         else return;
         $items[] = self::item( $kind, $id, $top, $type, $widget, $path, $value );
@@ -197,6 +196,15 @@ final class Elementize_Content {
         if ( 'text' === $kind ) {
             $item['format'] = wp_strip_all_tags( (string) $value ) === $value ? 'text' : 'html';
             $item['text_detection'] = self::known_copy_key( self::last_key( $path ) ) ? 'known_copy_field' : 'generic_safe_string';
+        }
+        if ( 'color' === $kind ) {
+            $meta = Elementize_Pixfort_Theme_Tokens::control_meta( $widget, self::last_key( $path ), $value );
+            $item['color_mode'] = is_array( $meta ) ? 'pixfort_semantic' : 'literal_css';
+            if ( is_array( $meta ) ) {
+                $item['current_label'] = (string) ( $meta['current_label'] ?? $value );
+                $item['allowed_values'] = (array) ( $meta['writable_values'] ?? [] );
+                $item['normalization_options'] = (array) ( $meta['normalization_options'] ?? [] );
+            }
         }
         if ( 'media' === $kind ) $item['attachment_id'] = absint( $value['id'] ?? 0 );
         return $item;
@@ -215,7 +223,7 @@ final class Elementize_Content {
     private static function validate_update( $update, int $index ) {
         if ( ! is_array( $update ) ) return self::invalid_update( $index, 'Each update must be an object.' );
         $kind = is_string( $update['kind'] ?? null ) ? strtolower( trim( $update['kind'] ) ) : '';
-        if ( ! in_array( $kind, self::KINDS, true ) ) return self::invalid_update( $index, 'kind must be text, link, media, or pixfort_icon.' );
+        if ( ! in_array( $kind, self::KINDS, true ) ) return self::invalid_update( $index, 'kind must be text, color, media, or pixfort_icon.' );
         if ( ! is_string( $update['element_id'] ?? null ) || '' === $update['element_id'] || strlen( $update['element_id'] ) > self::MAX_ELEMENT_ID ) return self::invalid_update( $index, 'element_id is missing or too long.' );
         if ( ! is_array( $update['setting_path'] ?? null ) || ! $update['setting_path'] || count( $update['setting_path'] ) > self::MAX_PATH_DEPTH ) return self::invalid_update( $index, 'setting_path must contain 1-' . self::MAX_PATH_DEPTH . ' segments.' );
         foreach ( $update['setting_path'] as $segment ) {
@@ -230,7 +238,7 @@ final class Elementize_Content {
         if ( ! is_string( $update['expected_value'] ?? null ) || ! is_string( $update['value'] ?? null ) ) return self::invalid_update( $index, 'expected_value and value are required strings.' );
         $length = strlen( $update['value'] );
         if ( 'text' === $kind && $length > self::MAX_TEXT ) return self::invalid_update( $index, 'text value is too long.' );
-        if ( 'link' === $kind && $length > self::MAX_LINK ) return self::invalid_update( $index, 'link value is too long.' );
+        if ( 'color' === $kind && $length > 128 ) return self::invalid_update( $index, 'color value is too long.' );
         if ( 'pixfort_icon' === $kind && $length > self::MAX_ICON ) return self::invalid_update( $index, 'icon value is too long.' );
         return true;
     }
@@ -252,7 +260,7 @@ final class Elementize_Content {
                 }
                 $kind = strtolower( (string) $update['kind'] );
                 if ( 'text' === $kind ) return self::apply_text( $cursor, $update, $old, $new );
-                if ( 'link' === $kind ) return self::apply_link( $cursor, $update, (string) ( $element['widgetType'] ?? '' ), $old, $new );
+                if ( 'color' === $kind ) return self::apply_color( $cursor, $update, (string) ( $element['widgetType'] ?? '' ), $old, $new );
                 if ( 'pixfort_icon' === $kind ) return self::apply_icon( $cursor, $update, $old, $new );
                 return self::apply_media( $cursor, $update, $old, $new );
             }
@@ -273,11 +281,18 @@ final class Elementize_Content {
         return true;
     }
 
-    private static function apply_link( &$cursor, array $update, string $widget, &$old, &$new ) {
-        if ( ! is_string( $cursor ) || ! self::link_path( $update['setting_path'], $widget ) || self::dynamic( $cursor ) ) return new WP_Error( 'elementize_not_link_field', 'Elementize only permits link writes to recognized non-dynamic destination fields.', [ 'status' => 400 ] );
-        if ( $cursor !== $update['expected_value'] ) return new WP_Error( 'elementize_value_changed', 'The target link changed after the fresh content read.', [ 'status' => 409 ] );
-        $candidate = self::sanitize_destination( $update['value'] );
-        if ( is_wp_error( $candidate ) ) return $candidate;
+    private static function apply_color( &$cursor, array $update, string $widget, &$old, &$new ) {
+        if ( ! is_string( $cursor ) || ! self::color_target( $update['setting_path'], $cursor, $widget ) ) return new WP_Error( 'elementize_not_color_field', 'Elementize only permits local color writes to recognized Elementor/Pixfort color fields.', [ 'status' => 400 ] );
+        if ( $cursor !== $update['expected_value'] ) return new WP_Error( 'elementize_value_changed', 'The target color changed after the fresh content read.', [ 'status' => 409 ] );
+        $candidate = trim( (string) $update['value'] );
+        $semantic = Elementize_Pixfort_Theme_Tokens::control_meta( $widget, self::last_key( $update['setting_path'] ), $cursor );
+        if ( is_array( $semantic ) ) {
+            $validated = Elementize_Pixfort_Theme_Tokens::validate_transition( $widget, self::last_key( $update['setting_path'] ), $cursor, $candidate );
+            if ( is_wp_error( $validated ) ) return $validated;
+            $candidate = $validated;
+        } elseif ( ! self::literal_css_color( $candidate ) ) {
+            return new WP_Error( 'elementize_invalid_color', 'Use a literal CSS color such as #112233, rgb(...), rgba(...), hsl(...), hsla(...), transparent, currentColor, or a CSS variable.', [ 'status' => 400 ] );
+        }
         $old = $cursor;
         $cursor = $new = $candidate;
         return true;
@@ -381,6 +396,18 @@ final class Elementize_Content {
         return (bool) preg_match( '#^(Line|Duotone|Solid)/pixfort-icon-[A-Za-z0-9_-]+$#', trim( $value ) );
     }
 
+    private static function color_target( array $path, string $value, string $widget ): bool {
+        if ( ! $path || self::path_has( $path, '__globals__' ) || self::dynamic( $value ) ) return false;
+        $key = self::last_key( $path );
+        if ( '' === $key || ! preg_match( '/(^|_)(color|background_color|border_color|text_color|icon_color|fill_color|stroke_color)(_|$)/i', $key ) ) return false;
+        if ( self::literal_css_color( $value ) ) return true;
+        return is_array( Elementize_Pixfort_Theme_Tokens::control_meta( $widget, $key, $value ) );
+    }
+
+    private static function literal_css_color( string $value ): bool {
+        return '' !== trim( $value ) && strlen( $value ) <= 128 && (bool) preg_match( '/^(#[0-9a-f]{3,8}|rgba?\([^\r\n]{1,90}\)|hsla?\([^\r\n]{1,90}\)|transparent|currentColor|var\(--[A-Za-z0-9_-]+\))$/i', trim( $value ) );
+    }
+
     private static function copy_field( array $path, string $value ): bool {
         if ( '' === trim( $value ) || strlen( $value ) > self::MAX_TEXT || self::dynamic( $value ) || self::path_has( $path, '__globals__' ) ) return false;
         $key = self::last_key( $path );
@@ -439,38 +466,6 @@ final class Elementize_Content {
         if ( preg_match( '/[.!?,:;]/', $plain ) ) return true;
         if ( preg_match( '/<[^>]+>/', $value ) ) return true;
         return strlen( $plain ) >= 24;
-    }
-
-    private static function link_path( array $path, string $widget ): bool {
-        $parts = array_values( array_map( 'strtolower', array_filter( $path, 'is_string' ) ) );
-        if ( ! $parts ) return false;
-        $joined = implode( '_', $parts );
-        if ( preg_match( '/(^|_)(image|media|logo|photo|thumbnail|poster|background|video|icon)(_|$)/', $joined ) || preg_match( '/(^|_)(color|hover|typography|font|size|width|height|margin|padding|border|radius|style)(_|$)/', $joined ) ) return false;
-        $last = end( $parts );
-        if ( in_array( $last, [ 'href', 'link', 'button_link', 'btn_link', 'cta_link' ], true ) || str_ends_with( $last, '_link' ) || str_ends_with( $last, '_url' ) ) return true;
-        return 'url' === $last && ( preg_match( '/(link|button|btn|cta|href)/', $joined ) || preg_match( '/button/i', $widget ) );
-    }
-
-    private static function sanitize_destination( string $raw ) {
-        $value = trim( $raw );
-        if ( '' === $value ) return '';
-        if ( self::dynamic( $value ) ) return new WP_Error( 'elementize_dynamic_link_read_only', 'Dynamic link values are read-only.', [ 'status' => 400 ] );
-        if ( '#' === $value ) return '#';
-        if ( str_starts_with( $value, '#' ) ) return preg_match( '/^#[A-Za-z][A-Za-z0-9_:\\-.]*$/', $value ) ? $value : new WP_Error( 'elementize_invalid_link', 'Fragment links must use a simple valid anchor.', [ 'status' => 400 ] );
-        if ( str_starts_with( $value, '/' ) && ! str_starts_with( $value, '//' ) ) return preg_match( '/^\\/[A-Za-z0-9_~!$&\'()*+,;=:@%\\/?.#-]*$/', $value ) ? $value : new WP_Error( 'elementize_invalid_link', 'Relative links contain unsupported characters.', [ 'status' => 400 ] );
-        if ( preg_match( '#^https?://#i', $value ) ) {
-            $url = esc_url_raw( $value, [ 'http', 'https' ] );
-            return $url ?: new WP_Error( 'elementize_invalid_link', 'HTTP(S) link is invalid.', [ 'status' => 400 ] );
-        }
-        if ( str_starts_with( strtolower( $value ), 'mailto:' ) ) {
-            $email = sanitize_email( substr( $value, 7 ) );
-            return $email ? 'mailto:' . $email : new WP_Error( 'elementize_invalid_link', 'mailto link is invalid.', [ 'status' => 400 ] );
-        }
-        if ( str_starts_with( strtolower( $value ), 'tel:' ) ) {
-            $phone = trim( substr( $value, 4 ) );
-            return preg_match( '/^[0-9+(). -]{3,40}$/', $phone ) ? 'tel:' . $phone : new WP_Error( 'elementize_invalid_link', 'tel link is invalid.', [ 'status' => 400 ] );
-        }
-        return new WP_Error( 'elementize_invalid_link_scheme', 'Only http, https, relative paths, fragments, mailto, and tel destinations are allowed.', [ 'status' => 400 ] );
     }
 
     private static function dynamic( string $value ): bool {

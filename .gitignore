@@ -1,4 +1,5 @@
 .elementize-dev/
+elementize-public-origin.txt
 *.log
 .env
 .env.*
@@ -7,5 +8,5 @@
 Thumbs.db
 .vscode/
 .idea/
-frontend/node_modules/
-frontend/.vite/
+node_modules/
+.wrangler/

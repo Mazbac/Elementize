@@ -1,223 +1,85 @@
 # Elementize
 
-Elementize is a WordPress plugin for **guarded editing of existing Elementor + Pixfort pages through ChatGPT**.
+Elementize is a deliberately small WordPress bridge between a CustomGPT and **existing Elementor + Pixfort page content**.
 
-Standard editing keeps structure and design fixed and focuses on safe content changes. Optional **Creative Control** expands that boundary for exactly one administrator-selected page at a time, allowing guarded structure and local design changes while preserving the same stale-state checks, revisions, persisted verification, Activity history, and Undo model.
+It does four things:
 
-## Editing modes
+1. Edit existing text.
+2. Edit existing local colours.
+3. Replace existing image/media fields.
+4. Replace existing Pixfort icons.
 
-### Standard editing
+That is the complete product scope.
 
-Standard editing is the default. It can safely change recognized content on existing pages, including:
+## Explicitly not supported
 
-- Copy and text in recognized Elementor/Pixfort fields.
-- Link and CTA destinations.
-- Images using verified WordPress Media Library attachment IDs.
-- Conversation/generated/public HTTPS images after importing them into the Media Library.
-- Pixfort icon values chosen from the installed Pixfort icon library.
+Elementize does not create pages, insert templates, move/reorder/duplicate/delete elements, change layout or spacing, run design intelligence, perform rendered visual QA, manage responsive composition, publish pages, or mutate shared/global/header/footer content.
 
-It does **not** change page structure or local design controls.
+The user builds the page in Elementor/Pixfort. Elementize only edits fields already present on that page.
 
-### Creative Control
+## Direct media from CustomGPT
 
-An administrator can enable Creative Control for exactly one editable page. ChatGPT cannot enable, disable, or switch Creative Control itself.
+A user can attach an image directly in the CustomGPT conversation. `importElementizeConversationImage` verifies and imports that image into the WordPress Media Library and returns the attachment ID. The same GPT can immediately use that ID to replace an existing page image field.
 
-On that selected page, Elementize can additionally:
+## Safety model
 
-- Search installed/local Pixfort templates.
-- Inspect template structure, editable content, dependencies, and bounded design controls before insertion.
-- Insert eligible template sections with fresh Elementor IDs.
-- Remove elements.
-- Duplicate elements.
-- Move elements.
-- Reorder exact child sets.
-- Combine structure, content, icons, links, media, and design changes in one atomic Creative transaction.
-- Change recognized local design controls such as color, spacing, radius, alignment, typography, and size when the exact current control is proven writable.
-- Normalize supported Pixfort semantic color selectors, for example `gradient-primary` → `primary`, only when the installed exact Pixfort widget/control exposes that transition and the Pixfort theme option authoritatively resolves the theme role.
-- Record each successful Creative transaction in Activity and restore the complete pre-change page state with guarded Undo.
+Every page write requires fresh page identity, page status, page title, a fresh content hash, the exact current field value, a pre-change WordPress revision, Elementor persistence, and post-save verification. Published pages require explicit live-page confirmation.
 
-Templates are treated as structural building blocks. The target page's existing design language remains the authority; Creative Control is not intended to assemble unrelated template styles into a collage.
+Global Elementor style references and dynamic values remain read-only. Pixfort semantic colour selectors are changed only when the installed Pixfort widget exposes the exact destination as a real allowed option. Pixfort icon IDs must come from the installed icon library.
 
-### Designer-agent foundation
+## CustomGPT Action surface
 
-Creative Control now exposes a read-only `designer-context` for page-wide planning before a substantial build. It combines the fresh page outline with observed palette, spacing, radius and typography evidence, responsive-control evidence, conservative page-coherence signals, and explicit blueprint/reference/quality contracts. The Custom GPT remains the design brain; the server supplies evidence and guarded execution rather than making opaque aesthetic decisions.
+The public Action contract has only seven operations:
 
-Reference websites are analyzed by the ChatGPT client/browser/vision layer. Elementize intentionally does not turn arbitrary external URLs into a server-side fetch surface. Blueprint v4 records bounded reference observations with category, viewport, observed/inferred status, confidence and transferability; an observed tablet/mobile/cross-viewport claim is rejected unless the declared reference viewport evidence can support it. It also derives progressive build checkpoints from the section narrative, forcing native-vision review after the hero/early narrative/mid-page/final close as applicable instead of deferring all visual judgment until the page is complete. The bounded acceptance plan still expands required viewports into settled/native-vision checks plus requested live-motion and safe-interaction checks. Reference evidence, section plan, per-section composition intent, derived composition rhythm/checkpoints and definition of done are covered by one deterministic SHA-256 fingerprint, so later ranking or Creative execution fails closed if they drift.
+- `getElementizeStatus`
+- `listElementizePages`
+- `getElementizePageContent`
+- `updateElementizePageContent`
+- `searchElementizeMediaImages`
+- `importElementizeConversationImage`
+- `searchElementizePixfortIcons`
 
-The coherence layer compares like-for-like component roles (for example buttons to buttons), reports evidence coverage/truncation, and treats low-confidence signals as review candidates rather than automatic defects.
+The Action schema and GPT instructions live in `config/gpt/` and are copied from the single WordPress **Elementize** admin screen.
 
-Visual QA v11 turns verified render/browser telemetry into deterministic `quality_gate_evaluation`, a bounded `repair_signal_summary`, and at most 24 `repair_signals`. Signals distinguish infrastructure blockers, localization-required evidence, verified-local candidates and review-only observations. They never authorize an automatic write; native vision and fresh local control reads remain required before a visual repair.
+## Free persistent Cloudflare connection
 
-Designer Context v8 adds a native-vision critic rubric for hero prominence, content-to-whitespace balance, media scale, section repetition, heading/copy composition, accent consistency, CTA dominance and the final CTA/footer transition. These are questions for ChatGPT vision, not server-side aesthetic scores.
+A raw Cloudflare Quick Tunnel is free but receives a new `trycloudflare.com` hostname when it restarts. That makes it unsuitable as the permanent server URL in a CustomGPT Action.
 
-Writable design controls now report a `responsive_breakpoint` so the GPT can distinguish inherited desktop behavior from explicit tablet/mobile overrides. Responsive changes should be made only for a verified breakpoint problem.
+Elementize therefore includes a free relay design for local Windows development:
 
-## Component intelligence
+1. A hidden `cloudflared` Quick Tunnel exposes the local WordPress site.
+2. A tiny Cloudflare Worker on the account's free `workers.dev` subdomain proxies only `/wp-json/elementize/v1/*` to that current tunnel.
+3. The Worker URL stays stable.
+4. A Windows login monitor recreates the Quick Tunnel after reboot/crash and redeploys only the Worker's `TARGET_ORIGIN` value.
+5. The stable Worker URL is written to `elementize-public-origin.txt`, which the plugin detects automatically.
 
-For substantial Creative builds, `rankElementizeComponentCandidates` can consume the full structured blueprint plus one `selected_section_id`. The selected section—not a new ad-hoc brief—drives semantic/structural ranking, and `expected_blueprint_fingerprint` can fail closed if the page plan changed between section calls. Manual purpose/contract ranking remains available for bounded one-off work. Ranking is read-only and explainable: semantic fit, actual widget structure, page-design compatibility, responsive evidence, dependency safety, normalization cost, and a bounded composition adjustment. Blueprint v4 carries `composition_role`, `visual_scale`, `media_emphasis` and `density`; Component Intelligence v5 derives an actual structural composition signature and compares the two. Three or more identical consecutive blueprint roles are surfaced as `composition_rhythm` review evidence. A high score is planning evidence only; ChatGPT must still inspect the chosen template and confirm composition at native-vision checkpoints.
+This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps.
 
-Blueprint-grounded Creative transactions can additionally send `plan_context`. Elementize revalidates the full blueprint fingerprint before any mutation, verifies every declared template candidate against the actual insertion operations and section contract, then persists only a compact trace (fingerprint, phase, section IDs/contracts and candidate identifiers/scores). The full blueprint remains conversation-owned and is never copied into Activity.
+Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-free-cloudflare-relay.ps1` directly.
 
-## Media sources
-
-Every page image replacement uses a WordPress attachment ID. Elementize supports four ways to obtain one:
-
-1. **Media Library** — search existing WordPress image attachments.
-2. **ChatGPT conversation** — import one attached conversation image from an allowed OpenAI file host.
-3. **ChatGPT-generated image** — import the generated image through its conversation file reference or an allowed OpenAI-hosted URL.
-4. **Public web URL** — import one direct public HTTPS image URL using WordPress safe-URL validation, bounded redirects, MIME verification, a 10 MiB limit, and a 60 MP limit. Source metadata is retained for provenance.
-
-Elementize does not itself search the public web. A client with browsing/search can find a suitable image and pass the verified direct image URL to Elementize for import.
-
-## Pixfort icons
-
-Elementize exposes a read-only icon search built from the installed Pixfort Core and active theme assets. It supports Pixfort **Line, Duotone, and Solid** values. Icon writes must use an exact value returned by that installed-asset index; guessed icon IDs are rejected.
-
-## Pixfort theme colors
-
-Pixfort widgets often store semantic selectors such as `primary`, `secondary`, or `gradient-primary` rather than literal CSS colors.
-
-Elementize does not treat those strings as arbitrary colors. A semantic theme-color write is allowed only when:
-
-- the target is the exact installed Pixfort widget type;
-- the exact setting is a supported selector control;
-- the current selector is one of that control's real installed options;
-- the requested transition is explicitly exposed as a normalization option; and
-- the destination role is resolved by Pixfort's own theme option.
-
-Elementor Kit tokens may corroborate the resolved value, but remain read-only and are never mutated as part of this process.
-
-## Activity and guarded Undo
-
-Successful verified Standard and Creative writes are recorded in **WordPress Admin → Elementize → Activity**.
-
-For Creative transactions, Elementize also stores the exact pre-change Elementor snapshot and managed-root metadata on the pre-change revision so the whole transaction can be undone as one unit.
-
-Undo is deliberately state-aware:
-
-- the stored snapshot must still exist and pass its recorded hash check;
-- the current page must still match the exact post-change hash from that Activity record;
-- a new safety revision is created before Undo;
-- the restored Elementor data is persisted and verified;
-- Creative managed-root metadata is restored as well;
-- published pages require an additional live-page confirmation.
-
-If the page changed after an Activity record, Elementize refuses to restore that older state blindly.
-
-Activity listing and guarded Undo are available both in the WordPress admin UI and through the Custom GPT Action surface.
-
-## What Elementize deliberately does not edit
-
-- Page lifecycle: creating, publishing, trashing, restoring, or changing status.
-- Shared/global/embedded Elementor or Pixfort template documents.
-- Elementor global style references.
-- Dynamic Elementor values.
-- Theme Builder documents such as site-wide headers and footers.
-- Unrestricted Elementor JSON.
-- Site-wide theme options or global design tokens through Creative Control.
-- Arbitrary browser automation inside Elementor.
-
-Creative Control is page-scoped and local by design.
-
-## Verification model
-
-Every mutation starts from a fresh read and requires exact guards for the current page state.
-
-Creative transactions additionally require the current capability revision and explicit `confirm_creative_write=true`.
-
-For a successful Creative save, Elementize verifies:
-
-- the exact validated working tree reached Elementor's save input;
-- Elementor's normalized save output was captured;
-- persisted `_elementor_data` matches that normalized result;
-- element IDs/order/widget types remain structurally identical to the validated transaction;
-- every targeted content/design change persisted at its exact setting path;
-- managed-root metadata persisted correctly.
-
-If verification fails, Elementize attempts to restore the pre-change page.
-
-`visual_render_verified=false` means exactly what it says: persisted Elementor data was verified, but Elementize must not claim that a rendered browser view was visually inspected unless a real visual pipeline provided that verification.
-
-### Native rendered Visual QA
-
-On the active Creative Control page, `getElementizePageVisualQA` captures a signed local Chromium render without exposing the preview URL. With Node.js 22+, the bundled no-package CDP runner provides exact desktop (1440 px), tablet (768 px), and mobile (390 px) CSS viewports, touch emulation where appropriate, full-document capture, and signed browser diagnostics in the same browser session. Direct Chromium remains a degraded fallback and reports `viewport_exact=false`. With `analyze=true`, Elementize packages `screenshot.png` in a ZIP returned through `openaiFileResponse`. When a public Elementize origin is configured, handoff v2 uses a 180-second opaque signed download URL with file-size/SHA-256 verification and correct attachment headers; inline base64 remains a fallback only.
-
-The server intentionally keeps `visual_analysis_verified=false` for native handoff. A GPT may only claim native visual verification after it actually inspected the returned PNG. Visual findings must be localized to fresh writable page-scoped controls before mutation. Design-profile controls disclose effective scope; a repair must not be narrower than the selected control effect. Shared/global/header/footer content may appear in the screenshot but remains outside page-scoped Creative Control.
-
-## Requirements
-
-- WordPress 6.5+
-- PHP 8.0+
-- Elementor
-- Pixfort Core
-- WordPress revisions enabled
-- WordPress Application Passwords for Custom GPT access
-- A public HTTPS address reachable by ChatGPT
-
-Local WordPress sites can use a temporary Cloudflare Quick Tunnel.
-
-## Setup
-
-Open **WordPress Admin → Elementize → Setup**.
-
-For first-time Custom GPT pairing, the Setup page keeps the required materials together:
-
-- Custom GPT Instructions
-- Action schema
-- connection key generation
-- connection test
-
-For a Local site, Elementize also generates the exact `cloudflared` command. The command pins the Local hostname with `--http-host-header`, and adds `--no-tls-verify` when the Local origin uses HTTPS.
-
-After a normal PC/tunnel restart the reconnect flow is intentionally short:
-
-1. Start Cloudflare with the generated command.
-2. Paste/save the new `https://…trycloudflare.com` URL.
-3. Copy the refreshed Action schema into the existing GPT Action and run the test.
-
-The existing API key and Custom GPT Instructions normally do not need to change after a tunnel restart, but the Instructions remain directly available in Setup.
-
-## Main runtime files
+## Runtime files
 
 ```text
 elementize.php
 includes/
   elementize-bootstrap.inc
   elementize-core.inc
-  elementize-capabilities.inc
   elementize-content.inc
-  elementize-context.inc
-  elementize-design.inc
-  elementize-coherence.inc
-  elementize-blueprint.inc
-  elementize-designer.inc
-  elementize-component-intelligence.inc
-  elementize-execution-trace.inc
-  elementize-tree.inc
-  elementize-templates.inc
-  elementize-template-response.inc
-  elementize-creative.inc
-  elementize-creative-save-diagnostics.inc
-  elementize-pixfort-icons.inc
-  elementize-pixfort-transport.inc
   elementize-pixfort-theme-tokens.inc
-  elementize-pixfort-repeater-colors.inc
-  elementize-visual-qa.inc
-  elementize-chatgpt-vision.inc
+  elementize-pixfort-icons.inc
   elementize-media-library.inc
   elementize-media-import.inc
-  elementize-activity.inc
-  elementize-connections.inc
   elementize-onboarding.inc
-assets/runtime/
-  elementize-cdp-capture.mjs
 config/gpt/
-  actions.openapi.yaml
-  wp-builder-instructions.md
-frontend/
-  src/
-tests/
-  *.php
+tools/cloudflare-relay/
+tools/windows/
+tests/bare-essentials-contract.php
 ```
 
-CI covers the frontend build, canonical GPT/Action contract, designer-agent contract, Creative save/control guards, Pixfort selector contracts, native Visual QA handoff/bounds, and PHP syntax.
+There is no React frontend, template engine, designer agent, visual-QA runtime, Activity subsystem, or Creative Control runtime.
+
+## Validation
+
+`tests/bare-essentials-contract.php` locks the reduced runtime/API surface. GitHub CI runs the contract plus PHP syntax checks on PHP 8.0 and 8.3.
+
+`elementize-public-origin.txt` is machine-local runtime state and must never be committed.
