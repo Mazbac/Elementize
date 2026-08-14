@@ -37,6 +37,8 @@ $expectedOps = [
     'searchElementizePixfortIcons',
 ];
 $assert($actualOps === $expectedOps, 'GPT Action surface must remain exactly seven operations.');
+$assert((bool) preg_match('/^components:\R\s{2}schemas:\s*\{\}\R\s{2}securitySchemes:/m', $schema), 'GPT Builder compatibility requires components.schemas to be an explicit object before securitySchemes.');
+$assert((bool) preg_match('/^security:\R\s{2}- basicAuth:\s*\[\]/m', $schema), 'GPT Action schema must keep the explicit Basic Auth security declaration.');
 
 foreach (['Creative', 'VisualQA', 'Designer', 'ComponentCandidates', 'Template', 'Activity', 'Undo'] as $forbidden) {
     $assert(stripos(implode('|', $actualOps), $forbidden) === false, "Removed operation family returned: $forbidden");
