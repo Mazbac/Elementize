@@ -4,7 +4,9 @@ param(
     [ValidateSet('status','start','stop','enable','disable','autostart-on','autostart-off')]
     [string]$Action,
     [Parameter(Mandatory = $true)]
-    [string]$LocalOrigin
+    [string]$LocalOrigin,
+    [string]$RuntimeRoot = '',
+    [string]$StartupCmd = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,10 +32,15 @@ if ($siteSlug.Length -gt 36) { $siteSlug = $siteSlug.Substring(0, 36).TrimEnd('-
 $siteHash = Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8
 $siteKey = "$siteSlug-$siteHash"
 
-$sitesRoot = Join-Path (Join-Path $env:LOCALAPPDATA 'Elementize') 'sites'
-$runtimeRoot = Join-Path $sitesRoot $siteKey
-$settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
-if (-not (Test-Path $settingsPath) -and (Test-Path $sitesRoot)) {
+$localAppData = [string]$env:LOCALAPPDATA
+if (-not $localAppData -and $env:USERPROFILE) { $localAppData = Join-Path $env:USERPROFILE 'AppData\Local' }
+if (-not $localAppData) { $localAppData = [Environment]::GetFolderPath('LocalApplicationData') }
+$sitesRoot = if ($localAppData) { Join-Path (Join-Path $localAppData 'Elementize') 'sites' } else { '' }
+
+$runtimeRoot = $RuntimeRoot.Trim()
+if (-not $runtimeRoot) { $runtimeRoot = if ($sitesRoot) { Join-Path $sitesRoot $siteKey } else { '' } }
+$settingsPath = if ($runtimeRoot) { Join-Path $runtimeRoot 'relay-settings.json' } else { '' }
+if ((-not $settingsPath -or -not (Test-Path $settingsPath)) -and $sitesRoot -and (Test-Path $sitesRoot)) {
     $hostMatches = @()
     Get-ChildItem -Path $sitesRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
         $candidateSettings = Join-Path $_.FullName 'relay-settings.json'
@@ -50,10 +57,21 @@ if (-not (Test-Path $settingsPath) -and (Test-Path $sitesRoot)) {
         $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
     }
 }
-$startScript = Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1'
-$quickLog = Join-Path $runtimeRoot 'elementize-quick-tunnel.log'
-$startupDir = [Environment]::GetFolderPath('Startup')
-$startupCmd = Join-Path $startupDir ("Elementize-$siteKey.cmd")
+if ($settingsPath -and (Test-Path $settingsPath)) {
+    try {
+        $resolvedSettings = Get-Content -Raw $settingsPath | ConvertFrom-Json
+        if ([string]$resolvedSettings.siteKey) { $siteKey = [string]$resolvedSettings.siteKey }
+    } catch {}
+}
+$startScript = if ($runtimeRoot) { Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1' } else { '' }
+$quickLog = if ($runtimeRoot) { Join-Path $runtimeRoot 'elementize-quick-tunnel.log' } else { '' }
+$startupCmd = $StartupCmd.Trim()
+if (-not $startupCmd) {
+    $startupDir = [Environment]::GetFolderPath('Startup')
+    if (-not $startupDir -and $env:APPDATA) { $startupDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup' }
+    if (-not $startupDir -and $env:USERPROFILE) { $startupDir = Join-Path $env:USERPROFILE 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup' }
+    if ($startupDir) { $startupCmd = Join-Path $startupDir ("Elementize-$siteKey.cmd") }
+}
 
 function Get-MonitorProcesses {
     @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {

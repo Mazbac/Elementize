@@ -1,5 +1,6 @@
 .elementize-dev/
 elementize-public-origin.txt
+elementize-relay-runtime.json
 *.log
 .env
 .env.*

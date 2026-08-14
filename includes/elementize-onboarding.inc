@@ -116,6 +116,19 @@ final class Elementize_Onboarding {
         return array_merge( $fallback, $state );
     }
 
+    private static function relay_runtime_pointer(): array {
+        $path = trailingslashit( ELEMENTIZE_DIR ) . 'elementize-relay-runtime.json';
+        if ( ! is_readable( $path ) ) return [];
+        $data = json_decode( (string) file_get_contents( $path ), true );
+        if ( ! is_array( $data ) ) return [];
+        $site_host = strtolower( (string) wp_parse_url( self::site_origin(), PHP_URL_HOST ) );
+        $pointer_host = strtolower( (string) wp_parse_url( (string) ( $data['localOrigin'] ?? '' ), PHP_URL_HOST ) );
+        if ( '' === $site_host || $site_host !== $pointer_host ) return [];
+        $runtime = trim( (string) ( $data['runtimeRoot'] ?? '' ) );
+        $startup = trim( (string) ( $data['startupCmd'] ?? '' ) );
+        return '' !== $runtime ? [ 'runtimeRoot' => $runtime, 'startupCmd' => $startup ] : [];
+    }
+
     private static function run_relay_controller( string $action ) {
         if ( ! in_array( $action, [ 'status', 'start', 'stop', 'enable', 'disable', 'autostart-on', 'autostart-off' ], true ) ) return new WP_Error( 'elementize_relay_action_invalid', 'Invalid relay control action.' );
         if ( 'Windows' !== PHP_OS_FAMILY ) return new WP_Error( 'elementize_relay_unsupported', 'Relay controls are available on Windows only.' );
@@ -125,6 +138,9 @@ final class Elementize_Onboarding {
         $system_root = rtrim( (string) getenv( 'SystemRoot' ), '/\\' );
         $powershell = '' !== $system_root ? $system_root . '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : 'powershell.exe';
         $command = [ $powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-Action', $action, '-LocalOrigin', self::site_origin() ];
+        $runtime = self::relay_runtime_pointer();
+        if ( ! empty( $runtime['runtimeRoot'] ) ) { $command[] = '-RuntimeRoot'; $command[] = $runtime['runtimeRoot']; }
+        if ( ! empty( $runtime['startupCmd'] ) ) { $command[] = '-StartupCmd'; $command[] = $runtime['startupCmd']; }
         $descriptors = [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ];
         $process = @proc_open( $command, $descriptors, $pipes, ELEMENTIZE_DIR, null, [ 'bypass_shell' => true ] );
         if ( ! is_resource( $process ) ) return new WP_Error( 'elementize_relay_process_failed', 'Elementize could not launch the relay controller.' );

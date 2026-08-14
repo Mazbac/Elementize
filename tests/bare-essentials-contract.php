@@ -75,6 +75,7 @@ $assert(str_contains($onboarding, 'admin_post_elementize_relay_control'), 'Admin
 $assert(str_contains($onboarding, 'Turn off completely'), 'Admin relay controls must provide one-click full shutdown.');
 $assert(str_contains($onboarding, 'Pause until next Windows sign-in'), 'Admin relay controls must support a temporary pause.');
 $assert(str_contains($onboarding, 'run_relay_controller'), 'Admin relay controls must use the guarded Windows relay controller.');
+$assert(str_contains($onboarding, 'elementize-relay-runtime.json') && str_contains($onboarding, 'relay_runtime_pointer'), 'Admin relay controls must consume the installer-written runtime pointer.');
 
 $worker = $read($root . '/tools/cloudflare-relay/worker.js');
 $assert(str_contains($worker, "startsWith('/wp-json/elementize/v1/')"), 'Cloudflare relay must be restricted to the Elementize REST namespace.');
@@ -98,6 +99,7 @@ $assert(str_contains($installer, '("Elementize-$siteKey.cmd")'), 'Windows startu
 $assert(str_contains($installer, 'workersDevSubdomain = $workersDevSubdomain'), 'Windows installer must persist an explicit first-run workers.dev subdomain.');
 $assert(str_contains($installer, 'Subdomain -> type EXACTLY:'), 'Windows installer must explain the exact workers.dev answer before Wrangler prompts.');
 $assert(str_contains($installer, 'control-free-cloudflare-relay.ps1') && str_contains($installer, '-Action start'), 'Windows installer must hand runtime startup to the shared relay controller.');
+$assert(str_contains($installer, 'elementize-relay-runtime.json') && str_contains($installer, 'runtimeRoot = $runtimeRoot') && str_contains($installer, 'startupCmd = $startupCmd'), 'Installer must persist a web-context-safe relay runtime pointer.');
 $assert(str_contains($starter, '$runtimeRoot = Split-Path -Parent $PSCommandPath'), 'Relay startup must bind itself to its per-site runtime directory.');
 $assert(str_contains($starter, '$mutexName = \'Local\\ElementizeCloudflareRelay_\' + $siteKey'), 'Relay monitor mutex must be unique per site.');
 $assert(str_contains($starter, '$projectDir = [string]$settings.projectDir'), 'Relay startup must deploy from the isolated Worker project directory.');
@@ -109,6 +111,8 @@ $assert(str_contains($starter, 'Subdomain -> $workersDevSubdomain'), 'Relay star
 $assert(str_contains($controller, "ValidateSet('status','start','stop','enable','disable','autostart-on','autostart-off')"), 'Relay controller must expose the intended local lifecycle actions only.');
 $assert(str_contains($controller, 'Stop-LegacyRelayForSite'), 'Relay controller must retire matching legacy Elementize relay processes.');
 $assert(str_contains($controller, '$hostMatches.Count -eq 1'), 'Relay controller may fall back to a unique host match when WordPress reports a different local scheme.');
+$assert(str_contains($controller, '$env:USERPROFILE') && str_contains($controller, "'AppData\\Local'"), 'Relay controller must recover LocalAppData when PHP-CGI omits LOCALAPPDATA.');
+$assert(str_contains($controller, '[string]$RuntimeRoot') && str_contains($controller, '[string]$StartupCmd'), 'Relay controller must accept explicit installer-resolved runtime paths.');
 $assert(str_contains($controller, "'disable' { Stop-Relay; Remove-Item"), 'Full relay shutdown must stop the relay and disable Windows autostart.');
 $assert(str_contains($controller, "'enable' { Write-Autostart; Start-Relay }"), 'Full relay startup must enable Windows autostart and start the relay.');
 

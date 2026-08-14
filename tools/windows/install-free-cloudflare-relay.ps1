@@ -201,8 +201,17 @@ $startupCmd = Join-Path $startupDir ("Elementize-$siteKey.cmd")
 $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$startScript`"`r`n"
 Set-Content -Path $startupCmd -Value $cmd -Encoding ASCII
 
+$runtimePointer = [ordered]@{
+    siteKey = $siteKey
+    localOrigin = $LocalOrigin
+    runtimeRoot = $runtimeRoot
+    startupCmd = $startupCmd
+    stableOrigin = $stableOrigin
+}
+$runtimePointer | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $pluginRoot 'elementize-relay-runtime.json') -Encoding UTF8
+
 $controller = Join-Path $pluginRoot 'tools\windows\control-free-cloudflare-relay.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action start -LocalOrigin $LocalOrigin | Out-Null
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action start -LocalOrigin $LocalOrigin -RuntimeRoot $runtimeRoot -StartupCmd $startupCmd | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Elementize relay was installed but could not be started.' }
 
 Write-Host "`nElementize free Cloudflare relay installed." -ForegroundColor Green
