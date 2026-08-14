@@ -25,6 +25,8 @@ if (-not $mutex.WaitOne(0)) {
     exit 0
 }
 
+$retryDelaySeconds = 15
+
 try {
     while ($true) {
         $cloudflaredProcess = $null
@@ -73,6 +75,7 @@ try {
             }
             if (-not $quickOrigin) { throw 'Cloudflare did not return a Quick Tunnel URL.' }
             Write-RelayLog "Quick Tunnel ready: $quickOrigin"
+            $retryDelaySeconds = 15
 
             $config = [ordered]@{
                 name = $workerName
@@ -145,7 +148,16 @@ try {
                 Stop-Process -Id $cloudflaredProcess.Id -Force -ErrorAction SilentlyContinue
             }
             if ($Once) { throw }
-            Start-Sleep -Seconds 15
+            $quickText = Get-Content -Raw $quickLog -ErrorAction SilentlyContinue
+            $rateLimited = [string]$quickText -match '429 Too Many Requests|error code:\s*1015|status_code":"429'
+            if ($rateLimited) {
+                if ($retryDelaySeconds -lt 60) { $retryDelaySeconds = 60 }
+                else { $retryDelaySeconds = [Math]::Min($retryDelaySeconds * 2, 900) }
+                Write-RelayLog "Cloudflare Quick Tunnel rate limited; retrying in $retryDelaySeconds seconds."
+            } else {
+                $retryDelaySeconds = 15
+            }
+            Start-Sleep -Seconds $retryDelaySeconds
         }
     }
 } finally {

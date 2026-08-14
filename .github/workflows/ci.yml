@@ -29,8 +29,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: OpenAPI contract
         run: npx --yes @redocly/cli@latest lint config/gpt/actions.openapi.yaml --skip-rule no-server-example.com
-      - name: Worker syntax
-        run: node --check tools/cloudflare-relay/worker.js
+      - name: Worker syntax and failover
+        run: |
+          node --check tools/cloudflare-relay/worker.js
+          node tests/worker-failover.mjs
       - name: PowerShell syntax
         shell: pwsh
         run: |

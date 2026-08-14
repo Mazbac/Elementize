@@ -101,6 +101,7 @@ $assert(str_contains($installer, '("Elementize-$siteKey.cmd")'), 'Windows startu
 $assert(str_contains($installer, 'workersDevSubdomain = $workersDevSubdomain'), 'Windows installer must persist an explicit first-run workers.dev subdomain.');
 $assert(str_contains($installer, 'Subdomain -> type EXACTLY:'), 'Windows installer must explain the exact workers.dev answer before Wrangler prompts.');
 $assert(str_contains($installer, 'control-free-cloudflare-relay.ps1') && str_contains($installer, '-Action start'), 'Windows installer must hand runtime startup to the shared relay controller.');
+$assert(str_contains($installer, '-RuntimeRoot $runtimeRoot') && str_contains($installer, '-StartupCmd $startupCmd'), 'Windows startup must re-enter through the controller with explicit per-site runtime paths.');
 $assert(str_contains($installer, 'elementize-relay-runtime.json') && str_contains($installer, 'runtimeRoot = $runtimeRoot') && str_contains($installer, 'startupCmd = $startupCmd'), 'Installer must persist a web-context-safe relay runtime pointer.');
 $assert(str_contains($starter, '$runtimeRoot = Split-Path -Parent $PSCommandPath'), 'Relay startup must bind itself to its per-site runtime directory.');
 $assert(str_contains($starter, '$mutexName = \'Local\\ElementizeCloudflareRelay_\' + $siteKey'), 'Relay monitor mutex must be unique per site.');
@@ -118,6 +119,10 @@ $assert(str_contains($controller, "Join-Path \$localAppData 'Elementize'") && ! 
 $assert(str_contains($controller, '[string]$RuntimeRoot') && str_contains($controller, '[string]$StartupCmd'), 'Relay controller must accept explicit installer-resolved runtime paths.');
 $assert(str_contains($controller, 'function Remove-Autostart') && str_contains($controller, "'disable' { Stop-Relay; Remove-Autostart }"), 'Full relay shutdown must stop the relay and disable Windows autostart through a guarded path.');
 $assert(str_contains($controller, "'enable' { Write-Autostart; Start-Relay }"), 'Full relay startup must enable Windows autostart and start the relay.');
+$assert(str_contains($starter, '429 Too Many Requests') && str_contains($starter, '1015') && str_contains($starter, '[Math]::Min($retryDelaySeconds * 2, 900)'), 'Relay monitor must use bounded exponential backoff for Quick Tunnel rate limits.');
+$assert(str_contains($worker, 'relay_unreachable') && str_contains($worker, 'response.status >= 520') && str_contains($worker, 'response.status <= 530'), 'Worker must convert stale Cloudflare origin failures into a controlled 503 response.');
+$assert(str_contains($controller, 'function Sync-RuntimeAssets') && str_contains($controller, 'tools\\cloudflare-relay\\worker.js') && str_contains($controller, 'tools\\windows\\start-free-cloudflare-relay.ps1'), 'Relay start must synchronize current plugin runtime assets before launching.');
+$assert(str_contains($controller, '-File `"$PSCommandPath`" -Action start') && str_contains($controller, '-RuntimeRoot `"$runtimeRoot`" -StartupCmd `"$startupCmd`"'), 'Controller-managed Windows autostart must always re-enter through the current plugin controller.');
 
 preg_match('/Version:\s*([0-9.]+)/', $plugin, $pluginVersion);
 preg_match('/define\(\s*\'ELEMENTIZE_VERSION\',\s*\'([0-9.]+)\'/', $plugin, $runtimeVersion);

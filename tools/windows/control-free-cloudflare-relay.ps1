@@ -116,10 +116,26 @@ function Stop-LegacyRelayForSite {
     }
 }
 
+function Sync-RuntimeAssets {
+    if (-not $settingsPath -or -not (Test-Path $settingsPath)) { throw 'Elementize relay runtime settings are missing for this site.' }
+    try { $syncSettings = Get-Content -Raw $settingsPath | ConvertFrom-Json }
+    catch { throw 'Elementize relay runtime settings are invalid.' }
+    $pluginRoot = [string]$syncSettings.pluginRoot
+    $projectDir = [string]$syncSettings.projectDir
+    if (-not $pluginRoot -or -not $projectDir) { throw 'Elementize relay runtime paths are incomplete. Rerun the relay installer.' }
+    $sourceStarter = Join-Path $pluginRoot 'tools\windows\start-free-cloudflare-relay.ps1'
+    $sourceWorker = Join-Path $pluginRoot 'tools\cloudflare-relay\worker.js'
+    if (-not (Test-Path $sourceStarter) -or -not (Test-Path $sourceWorker)) { throw 'Current Elementize relay assets are missing from the plugin.' }
+    if (-not (Test-Path $projectDir)) { New-Item -ItemType Directory -Path $projectDir -Force | Out-Null }
+    Copy-Item -LiteralPath $sourceStarter -Destination $startScript -Force
+    Copy-Item -LiteralPath $sourceWorker -Destination (Join-Path $projectDir 'worker.js') -Force
+}
+
 function Write-Autostart {
+    Sync-RuntimeAssets
     if (-not $startupCmd) { throw 'Windows Startup path could not be resolved for this Elementize site.' }
     if (-not (Test-Path $startScript)) { throw 'Elementize relay runtime is not installed for this site.' }
-    $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$startScript`"`r`n"
+    $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Action start -LocalOrigin `"$LocalOrigin`" -RuntimeRoot `"$runtimeRoot`" -StartupCmd `"$startupCmd`"`r`n"
     Set-Content -Path $startupCmd -Value $cmd -Encoding ASCII
 }
 
@@ -136,6 +152,7 @@ function Stop-Relay {
 }
 
 function Start-Relay {
+    Sync-RuntimeAssets
     if (-not (Test-Path $settingsPath) -or -not (Test-Path $startScript)) { throw 'Elementize relay runtime is not installed for this site.' }
     Stop-LegacyRelayForSite
     if (@(Get-MonitorProcesses).Count -eq 0) {
