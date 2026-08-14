@@ -62,7 +62,10 @@ $installer = $read($root . '/tools/windows/install-free-cloudflare-relay.ps1');
 $starter = $read($root . '/tools/windows/start-free-cloudflare-relay.ps1');
 $assert(str_contains($installer, 'C:\\Program Files\\nodejs\\node.exe'), 'Windows installer must prefer the permanent system Node.js runtime.');
 $assert(str_contains($installer, 'nodeDir = $nodeDir'), 'Windows installer must persist the Node.js directory for restart-safe startup.');
+$assert(str_contains($installer, 'workersDevSubdomain = $workersDevSubdomain'), 'Windows installer must persist an explicit first-run workers.dev subdomain.');
+$assert(str_contains($installer, 'Subdomain -> type EXACTLY:'), 'Windows installer must explain the exact workers.dev answer before Wrangler prompts.');
 $assert(str_contains($starter, '$nodeDir = [string]$settings.nodeDir'), 'Relay startup must restore the persisted Node.js directory.');
+$assert(str_contains($starter, 'Subdomain -> $workersDevSubdomain'), 'Relay startup must repeat the exact workers.dev answer at first publish.');
 
 $plugin = $read($root . '/elementize.php');
 preg_match('/Version:\s*([0-9.]+)/', $plugin, $pluginVersion);

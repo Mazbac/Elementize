@@ -99,9 +99,14 @@ $who = @(& $wrangler whoami 2>&1)
 $whoText = ($who | ForEach-Object { [string]$_ }) -join "`n"
 if ($LASTEXITCODE -ne 0 -or $whoText -match 'not authenticated|not logged in|login required') {
     Write-Host 'Cloudflare authorization is required once. The device flow avoids the fragile localhost callback timeout.'
-    & $wrangler login --device
+    & $wrangler login --device --install-skills=false
     if ($LASTEXITCODE -ne 0) { throw 'Cloudflare authorization was not completed.' }
+    $who = @(& $wrangler whoami 2>&1)
+    $whoText = ($who | ForEach-Object { [string]$_ }) -join "`n"
 }
+
+$accountIdMatch = [regex]::Match($whoText, '\b[a-f0-9]{32}\b', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$workersDevSubdomain = if ($accountIdMatch.Success) { 'elementize-' + $accountIdMatch.Value.Substring(0, 8).ToLowerInvariant() } else { 'elementize-relay' }
 
 $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
 $settings = [ordered]@{
@@ -111,9 +116,16 @@ $settings = [ordered]@{
     nodeDir = $nodeDir
     workerDir = $workerDir
     workerName = $WorkerName
+    workersDevSubdomain = $workersDevSubdomain
     stableOrigin = ''
 }
 $settings | ConvertTo-Json -Depth 5 | Set-Content -Path $settingsPath -Encoding UTF8
+
+Write-Host "`nFIRST-TIME workers.dev registration (only if Wrangler asks):" -ForegroundColor Yellow
+Write-Host '  1. "Would you like to register a workers.dev subdomain now?" -> press Enter for Yes'
+Write-Host "  2. Subdomain -> type EXACTLY: $workersDevSubdomain" -ForegroundColor Yellow
+Write-Host '  3. Final confirmation -> press Enter for Yes'
+Write-Host 'After this one-time registration, future starts are automatic.' -ForegroundColor DarkGray
 
 Write-Step 'Create the stable workers.dev relay'
 $startScript = Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1'

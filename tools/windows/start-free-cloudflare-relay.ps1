@@ -82,8 +82,36 @@ try {
 
             Push-Location $workerDir
             try {
-                $deployOutput = @(& $wrangler deploy 2>&1 | Tee-Object -FilePath (Join-Path $runtimeRoot 'wrangler-deploy.log'))
-                if ($LASTEXITCODE -ne 0) { throw "Wrangler deploy failed with code $LASTEXITCODE." }
+                if (-not [string]$settings.stableOrigin) {
+                    $workersDevSubdomain = [string]$settings.workersDevSubdomain
+                    if (-not $workersDevSubdomain) { $workersDevSubdomain = 'elementize-relay' }
+                    Write-RelayLog 'First workers.dev publish.'
+                    if ($Once) {
+                        Write-Host "`nIf Wrangler asks to register workers.dev, use these exact answers:" -ForegroundColor Yellow
+                        Write-Host '  Register now? -> press Enter for Yes'
+                        Write-Host "  Subdomain -> $workersDevSubdomain" -ForegroundColor Yellow
+                        Write-Host '  Confirm creation? -> press Enter for Yes'
+                    }
+                    $previousPreference = $ErrorActionPreference
+                    $ErrorActionPreference = 'Continue'
+                    try {
+                        & $wrangler deploy
+                        $firstDeployExit = $LASTEXITCODE
+                    } finally {
+                        $ErrorActionPreference = $previousPreference
+                    }
+                    if ($firstDeployExit -ne 0) { throw "Initial interactive Wrangler deploy failed with code $firstDeployExit." }
+                }
+
+                $previousPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                    $deployOutput = @(& $wrangler deploy 2>&1 | Tee-Object -FilePath (Join-Path $runtimeRoot 'wrangler-deploy.log'))
+                    $deployExit = $LASTEXITCODE
+                } finally {
+                    $ErrorActionPreference = $previousPreference
+                }
+                if ($deployExit -ne 0) { throw "Wrangler deploy failed with code $deployExit." }
             } finally { Pop-Location }
 
             $joined = ($deployOutput | ForEach-Object { [string]$_ }) -join "`n"
