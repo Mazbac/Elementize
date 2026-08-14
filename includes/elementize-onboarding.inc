@@ -201,6 +201,7 @@ final class Elementize_Onboarding {
                             <strong>Relay: <?php echo esc_html( $relay_label ); ?></strong><br>
                             Windows autostart: <strong><?php echo ! empty( $relay['autostart'] ) ? 'On' : 'Off'; ?></strong><br>
                             <?php echo esc_html( $env['effective_origin'] ); ?>
+                            <?php if ( 'Starting' === $relay_label ) : ?><br><span class="elz-muted">Checking automatically every 10 seconds…</span><?php endif; ?>
                         </div>
                         <div class="elz-actions" style="margin-top:12px">
                             <?php
@@ -262,6 +263,7 @@ final class Elementize_Onboarding {
         (function(){
             function copy(text){if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text);var a=document.createElement('textarea');a.value=text;document.body.appendChild(a);a.select();var ok=document.execCommand('copy');a.remove();return ok?Promise.resolve():Promise.reject(new Error('Clipboard unavailable'));}
             document.querySelectorAll('.elz-copy').forEach(function(button){button.addEventListener('click',function(){var el=document.getElementById(button.dataset.target);if(!el)return;var text=('value'in el)?el.value:el.textContent;copy(text).then(function(){var old=button.textContent;button.textContent='Copied';setTimeout(function(){button.textContent=old;},1200);});});});
+            <?php if ( isset( $relay_label ) && 'Starting' === $relay_label ) : ?>setTimeout(function(){window.location.reload();},10000);<?php endif; ?>
             var keyButton=document.getElementById('elz-key-btn');
             if(!keyButton)return;
             keyButton.addEventListener('click',function(){

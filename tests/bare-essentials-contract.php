@@ -76,6 +76,7 @@ $assert(str_contains($onboarding, 'self::is_quick_tunnel( $stored )'), 'A stale 
 $assert(str_contains($onboarding, 'admin_post_elementize_relay_control'), 'Admin relay controls must stay available after persistent setup.');
 $assert(str_contains($onboarding, 'Turn off completely'), 'Admin relay controls must provide one-click full shutdown.');
 $assert(str_contains($onboarding, 'Pause until next Windows sign-in'), 'Admin relay controls must support a temporary pause.');
+$assert(str_contains($onboarding, 'Checking automatically every 10 seconds') && str_contains($onboarding, 'window.location.reload()'), 'Starting relay state must refresh itself automatically until it settles.');
 $assert(str_contains($onboarding, 'run_relay_controller'), 'Admin relay controls must use the guarded Windows relay controller.');
 $assert(str_contains($onboarding, 'elementize-relay-runtime.json') && str_contains($onboarding, 'relay_runtime_pointer'), 'Admin relay controls must consume the installer-written runtime pointer.');
 
