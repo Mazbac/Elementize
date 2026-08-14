@@ -33,6 +33,14 @@ try {
             $pluginRoot = [string]$settings.pluginRoot
             $workerDir = [string]$settings.workerDir
             $workerName = [string]$settings.workerName
+            $nodeDir = [string]$settings.nodeDir
+            if (-not $nodeDir) {
+                foreach ($candidate in @('C:\Program Files\nodejs','C:\Program Files (x86)\nodejs')) {
+                    if (Test-Path (Join-Path $candidate 'node.exe')) { $nodeDir = $candidate; break }
+                }
+            }
+            if (-not $nodeDir -or -not (Test-Path (Join-Path $nodeDir 'node.exe'))) { throw 'Permanent Node.js runtime is missing.' }
+            $env:Path = $nodeDir + ';' + (($env:Path -split ';' | Where-Object { $_ -and $_ -ne $nodeDir }) -join ';')
             if (-not (Test-Path $cloudflared)) { throw 'cloudflared executable is missing.' }
             if (-not (Test-Path $workerDir)) { throw 'Elementize Cloudflare Worker runtime is missing.' }
             $wrangler = Join-Path $workerDir 'node_modules\.bin\wrangler.cmd'
@@ -66,6 +74,7 @@ try {
                 name = $workerName
                 main = 'worker.js'
                 compatibility_date = '2026-08-14'
+                no_bundle = $true
                 workers_dev = $true
                 vars = [ordered]@{ TARGET_ORIGIN = $quickOrigin }
             }

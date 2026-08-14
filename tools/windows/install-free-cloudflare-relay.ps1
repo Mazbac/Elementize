@@ -40,11 +40,22 @@ if (-not $cloudflared) {
     if (-not $cloudflared) { throw 'cloudflared was installed but could not be located.' }
 }
 
-$node = Get-Command node.exe -ErrorAction SilentlyContinue
-$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if (-not $node -or -not $npm) { throw 'Node.js and npm are required for the free workers.dev relay.' }
+$nodePath = ''
+foreach ($candidate in @('C:\Program Files\nodejs\node.exe','C:\Program Files (x86)\nodejs\node.exe')) {
+    if (Test-Path $candidate) { $nodePath = $candidate; break }
+}
+if (-not $nodePath) {
+    $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($nodeCommand) { $nodePath = $nodeCommand.Source }
+}
+if (-not $nodePath) { throw 'Node.js and npm are required for the free workers.dev relay.' }
+$nodeDir = Split-Path -Parent $nodePath
+$npmPath = Join-Path $nodeDir 'npm.cmd'
+if (-not (Test-Path $npmPath)) { throw "npm.cmd is missing beside Node.js: $nodeDir" }
+$env:Path = $nodeDir + ';' + (($env:Path -split ';' | Where-Object { $_ -and $_ -ne $nodeDir }) -join ';')
 Write-Host "cloudflared: $cloudflared"
-Write-Host "Node: $($node.Source)"
+Write-Host "Node: $nodePath"
+Write-Host "npm: $npmPath"
 
 $runtimeRoot = Join-Path $env:LOCALAPPDATA 'Elementize'
 $workerDir = Join-Path $runtimeRoot 'cloudflare-relay'
@@ -58,10 +69,27 @@ Copy-Item -Force (Join-Path $pluginRoot 'tools\windows\start-free-cloudflare-rel
 } | ConvertTo-Json | Set-Content -Path (Join-Path $workerDir 'package.json') -Encoding UTF8
 
 Write-Step 'Install Wrangler locally'
+$nodeModules = Join-Path $workerDir 'node_modules'
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($workerDir, [System.StringComparison]::OrdinalIgnoreCase)
+    } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+if (Test-Path $nodeModules) {
+    1..3 | ForEach-Object {
+        if (Test-Path $nodeModules) {
+            try { Remove-Item -LiteralPath $nodeModules -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Milliseconds 500 }
+        }
+    }
+}
 Push-Location $workerDir
 try {
-    & $npm.Source install --no-audit --no-fund --save-dev wrangler@latest
-    if ($LASTEXITCODE -ne 0) { throw 'Wrangler installation failed.' }
+    & $npmPath install --no-audit --no-fund --save-dev wrangler@latest
+    if ($LASTEXITCODE -ne 0) {
+        if (Test-Path $nodeModules) { Remove-Item -LiteralPath $nodeModules -Recurse -Force -ErrorAction SilentlyContinue }
+        & $npmPath install --no-audit --no-fund --save-dev wrangler@latest
+    }
+    if ($LASTEXITCODE -ne 0) { throw 'Wrangler installation failed after one clean retry.' }
 } finally { Pop-Location }
 $wrangler = Join-Path $workerDir 'node_modules\.bin\wrangler.cmd'
 if (-not (Test-Path $wrangler)) { throw 'Wrangler executable was not created.' }
@@ -70,8 +98,8 @@ Write-Step 'Authorize the free Cloudflare account once'
 $who = @(& $wrangler whoami 2>&1)
 $whoText = ($who | ForEach-Object { [string]$_ }) -join "`n"
 if ($LASTEXITCODE -ne 0 -or $whoText -match 'not authenticated|not logged in|login required') {
-    Write-Host 'A browser will open for Cloudflare login/authorization. No paid plan is required.'
-    & $wrangler login
+    Write-Host 'Cloudflare authorization is required once. The device flow avoids the fragile localhost callback timeout.'
+    & $wrangler login --device
     if ($LASTEXITCODE -ne 0) { throw 'Cloudflare authorization was not completed.' }
 }
 
@@ -80,6 +108,7 @@ $settings = [ordered]@{
     localOrigin = $LocalOrigin
     pluginRoot = $pluginRoot
     cloudflared = $cloudflared
+    nodeDir = $nodeDir
     workerDir = $workerDir
     workerName = $WorkerName
     stableOrigin = ''

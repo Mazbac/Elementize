@@ -58,6 +58,12 @@ $assert(str_contains($onboarding, 'self::is_quick_tunnel( $stored )'), 'A stale 
 $worker = $read($root . '/tools/cloudflare-relay/worker.js');
 $assert(str_contains($worker, "startsWith('/wp-json/elementize/v1/')"), 'Cloudflare relay must be restricted to the Elementize REST namespace.');
 
+$installer = $read($root . '/tools/windows/install-free-cloudflare-relay.ps1');
+$starter = $read($root . '/tools/windows/start-free-cloudflare-relay.ps1');
+$assert(str_contains($installer, 'C:\\Program Files\\nodejs\\node.exe'), 'Windows installer must prefer the permanent system Node.js runtime.');
+$assert(str_contains($installer, 'nodeDir = $nodeDir'), 'Windows installer must persist the Node.js directory for restart-safe startup.');
+$assert(str_contains($starter, '$nodeDir = [string]$settings.nodeDir'), 'Relay startup must restore the persisted Node.js directory.');
+
 $plugin = $read($root . '/elementize.php');
 preg_match('/Version:\s*([0-9.]+)/', $plugin, $pluginVersion);
 preg_match('/define\(\s*\'ELEMENTIZE_VERSION\',\s*\'([0-9.]+)\'/', $plugin, $runtimeVersion);
