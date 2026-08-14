@@ -62,9 +62,18 @@ $installer = $read($root . '/tools/windows/install-free-cloudflare-relay.ps1');
 $starter = $read($root . '/tools/windows/start-free-cloudflare-relay.ps1');
 $assert(str_contains($installer, 'C:\\Program Files\\nodejs\\node.exe'), 'Windows installer must prefer the permanent system Node.js runtime.');
 $assert(str_contains($installer, 'nodeDir = $nodeDir'), 'Windows installer must persist the Node.js directory for restart-safe startup.');
+$assert(str_contains($installer, "Substring(0, 12)"), 'workers.dev account subdomain must use at least 12 account-ID hex characters.');
+$assert(str_contains($installer, '$siteHash = Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8'), 'Worker identity must include a deterministic site-origin hash.');
+$assert(str_contains($installer, '$WorkerName = "elementize-relay-$siteKey"'), 'Default Worker name must be unique per site.');
+$assert(str_contains($installer, 'Join-Path (Join-Path $elementizeRoot \'sites\') $siteKey'), 'Each site must have its own local relay runtime directory.');
+$assert(str_contains($installer, 'siteKey = $siteKey'), 'Per-site runtime settings must persist the site key.');
+$assert(str_contains($installer, '("Elementize-$siteKey.cmd")'), 'Windows startup entry must be unique per site.');
 $assert(str_contains($installer, 'workersDevSubdomain = $workersDevSubdomain'), 'Windows installer must persist an explicit first-run workers.dev subdomain.');
 $assert(str_contains($installer, 'Subdomain -> type EXACTLY:'), 'Windows installer must explain the exact workers.dev answer before Wrangler prompts.');
+$assert(str_contains($starter, '$runtimeRoot = Split-Path -Parent $PSCommandPath'), 'Relay startup must bind itself to its per-site runtime directory.');
+$assert(str_contains($starter, '$mutexName = \'Local\\ElementizeCloudflareRelay_\' + $siteKey'), 'Relay monitor mutex must be unique per site.');
 $assert(str_contains($starter, '$nodeDir = [string]$settings.nodeDir'), 'Relay startup must restore the persisted Node.js directory.');
+$assert(str_contains($starter, 'CommandLine.Contains($quickLog)'), 'Relay startup must only stop its own site-specific cloudflared process.');
 $assert(str_contains($starter, 'Subdomain -> $workersDevSubdomain'), 'Relay startup must repeat the exact workers.dev answer at first publish.');
 
 $plugin = $read($root . '/elementize.php');

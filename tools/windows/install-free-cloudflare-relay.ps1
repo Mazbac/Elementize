@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$LocalOrigin = '',
-    [string]$WorkerName = 'elementize-relay'
+    [string]$WorkerName = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,8 +19,16 @@ function Find-Cloudflared {
     return ''
 }
 
-if ($WorkerName -notmatch '^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$') {
-    throw 'WorkerName must contain only lowercase letters, numbers and dashes.'
+function Get-ShortSha256([string]$Value, [int]$Length = 8) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Value)
+        $hash = $sha.ComputeHash($bytes)
+    } finally {
+        $sha.Dispose()
+    }
+    $hex = -join ($hash | ForEach-Object { $_.ToString('x2') })
+    return $hex.Substring(0, [Math]::Min($Length, $hex.Length))
 }
 
 $pluginRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -28,6 +36,16 @@ if (-not $LocalOrigin) { $LocalOrigin = Read-Host 'Local WordPress origin (for e
 $LocalOrigin = $LocalOrigin.Trim().TrimEnd('/')
 try { $localUri = [Uri]$LocalOrigin } catch { throw 'LocalOrigin must be a valid http:// or https:// URL.' }
 if ($localUri.Scheme -notin @('http','https') -or -not $localUri.Host) { throw 'LocalOrigin must be a valid http:// or https:// URL.' }
+
+$siteSlug = ($localUri.Host.ToLowerInvariant() -replace '[^a-z0-9]+','-').Trim('-')
+if (-not $siteSlug) { $siteSlug = 'site' }
+if ($siteSlug.Length -gt 36) { $siteSlug = $siteSlug.Substring(0, 36).TrimEnd('-') }
+$siteHash = Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8
+$siteKey = "$siteSlug-$siteHash"
+if (-not $WorkerName) { $WorkerName = "elementize-relay-$siteKey" }
+if ($WorkerName -notmatch '^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$') {
+    throw 'WorkerName must contain only lowercase letters, numbers and dashes and be at most 63 characters.'
+}
 
 Write-Step 'Check free Cloudflare tools'
 $cloudflared = Find-Cloudflared
@@ -57,7 +75,8 @@ Write-Host "cloudflared: $cloudflared"
 Write-Host "Node: $nodePath"
 Write-Host "npm: $npmPath"
 
-$runtimeRoot = Join-Path $env:LOCALAPPDATA 'Elementize'
+$elementizeRoot = Join-Path $env:LOCALAPPDATA 'Elementize'
+$runtimeRoot = Join-Path (Join-Path $elementizeRoot 'sites') $siteKey
 $workerDir = Join-Path $runtimeRoot 'cloudflare-relay'
 New-Item -ItemType Directory -Force -Path $workerDir | Out-Null
 Copy-Item -Force (Join-Path $pluginRoot 'tools\cloudflare-relay\worker.js') (Join-Path $workerDir 'worker.js')
@@ -106,10 +125,12 @@ if ($LASTEXITCODE -ne 0 -or $whoText -match 'not authenticated|not logged in|log
 }
 
 $accountIdMatch = [regex]::Match($whoText, '\b[a-f0-9]{32}\b', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$workersDevSubdomain = if ($accountIdMatch.Success) { 'elementize-' + $accountIdMatch.Value.Substring(0, 8).ToLowerInvariant() } else { 'elementize-relay' }
+if (-not $accountIdMatch.Success) { throw 'Could not determine the Cloudflare account ID after login.' }
+$workersDevSubdomain = 'elementize-' + $accountIdMatch.Value.Substring(0, 12).ToLowerInvariant()
 
 $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
 $settings = [ordered]@{
+    siteKey = $siteKey
     localOrigin = $LocalOrigin
     pluginRoot = $pluginRoot
     cloudflared = $cloudflared
@@ -138,15 +159,15 @@ if ($stableOrigin -notmatch '^https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$') { 
 
 Write-Step 'Install zero-hassle startup'
 $startupDir = [Environment]::GetFolderPath('Startup')
-foreach ($legacy in @('Elementize Cloudflare Tunnel.cmd','Elementize Tailscale Funnel.cmd','Elementize Persistent Tunnel.cmd')) {
+foreach ($legacy in @('Elementize.cmd','Elementize Cloudflare Tunnel.cmd','Elementize Tailscale Funnel.cmd','Elementize Persistent Tunnel.cmd')) {
     Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $startupDir $legacy)
 }
-$startupCmd = Join-Path $startupDir 'Elementize.cmd'
+$startupCmd = Join-Path $startupDir ("Elementize-$siteKey.cmd")
 $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$startScript`"`r`n"
 Set-Content -Path $startupCmd -Value $cmd -Encoding ASCII
 
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -like '*start-free-cloudflare-relay.ps1*' } |
+    Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -and $_.CommandLine.Contains($startScript) } |
     ForEach-Object { if ($_.ProcessId -ne $PID) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }
 Start-Process powershell.exe -ArgumentList @('-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$startScript) -WindowStyle Hidden
 

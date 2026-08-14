@@ -53,7 +53,7 @@ Elementize therefore includes a free relay design for local Windows development:
 4. A Windows login monitor recreates the Quick Tunnel after reboot/crash and redeploys only the Worker's `TARGET_ORIGIN` value.
 5. The stable Worker URL is written to `elementize-public-origin.txt`, which the plugin detects automatically.
 
-This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps.
+This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps. The account subdomain is derived from the Cloudflare account ID, while each Elementize site gets its own Worker name, local runtime directory, logs, mutex and Windows startup entry so multiple installations do not overwrite each other.
 
 Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-free-cloudflare-relay.ps1` directly.
 

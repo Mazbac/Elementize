@@ -2,7 +2,7 @@
 param([switch]$Once)
 
 $ErrorActionPreference = 'Stop'
-$runtimeRoot = Join-Path $env:LOCALAPPDATA 'Elementize'
+$runtimeRoot = Split-Path -Parent $PSCommandPath
 $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
 $runtimeLog = Join-Path $runtimeRoot 'relay-runtime.log'
 $quickLog = Join-Path $runtimeRoot 'elementize-quick-tunnel.log'
@@ -17,7 +17,9 @@ if (-not (Test-Path $settingsPath)) {
     throw "Elementize relay settings are missing: $settingsPath"
 }
 
-$mutex = New-Object System.Threading.Mutex($false, 'Local\ElementizeCloudflareRelay')
+$siteKey = ((Split-Path $runtimeRoot -Leaf) -replace '[^A-Za-z0-9_-]','_')
+$mutexName = 'Local\ElementizeCloudflareRelay_' + $siteKey
+$mutex = New-Object System.Threading.Mutex($false, $mutexName)
 if (-not $mutex.WaitOne(0)) {
     Write-RelayLog 'Another Elementize relay monitor is already running.'
     exit 0
@@ -50,7 +52,7 @@ try {
             if ($localUri.Scheme -notin @('http','https') -or -not $localUri.Host) { throw 'Configured localOrigin is invalid.' }
 
             Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -eq 'cloudflared.exe' -and $_.CommandLine -like '*elementize-quick-tunnel.log*' } |
+                Where-Object { $_.Name -eq 'cloudflared.exe' -and $_.CommandLine -and $_.CommandLine.Contains($quickLog) } |
                 ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
             Set-Content -Path $quickLog -Value '' -Encoding UTF8
@@ -84,7 +86,7 @@ try {
             try {
                 if (-not [string]$settings.stableOrigin) {
                     $workersDevSubdomain = [string]$settings.workersDevSubdomain
-                    if (-not $workersDevSubdomain) { $workersDevSubdomain = 'elementize-relay' }
+                    if (-not $workersDevSubdomain) { throw 'workers.dev subdomain is missing from this site runtime. Rerun the Elementize relay installer.' }
                     Write-RelayLog 'First workers.dev publish.'
                     if ($Once) {
                         Write-Host "`nIf Wrangler asks to register workers.dev, use these exact answers:" -ForegroundColor Yellow
