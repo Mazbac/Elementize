@@ -11,6 +11,7 @@ final class Elementize_Onboarding {
         add_action( 'admin_menu', [ self::class, 'menu' ] );
         add_action( 'admin_init', [ self::class, 'maybe_redirect_after_activation' ] );
         add_action( 'admin_post_elementize_save_connection', [ self::class, 'save_connection' ] );
+        add_action( 'admin_post_elementize_relay_control', [ self::class, 'relay_control' ] );
         add_action( 'wp_ajax_elementize_generate_connection_key', [ self::class, 'generate_key' ] );
     }
 
@@ -46,6 +47,32 @@ final class Elementize_Onboarding {
         self::redirect( 'connection_saved' );
     }
 
+    public static function relay_control(): void {
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Administrator permission is required.' );
+        check_admin_referer( 'elementize_relay_control' );
+        $action = sanitize_key( (string) wp_unslash( $_POST['relay_action'] ?? '' ) );
+        $allowed = [ 'start', 'stop', 'enable', 'disable', 'autostart-on', 'autostart-off' ];
+        if ( ! in_array( $action, $allowed, true ) ) {
+            self::set_relay_notice( 'error', 'Unknown relay control action.' );
+            self::redirect( 'relay_controlled' );
+        }
+        $result = self::run_relay_controller( $action );
+        if ( is_wp_error( $result ) ) {
+            self::set_relay_notice( 'error', $result->get_error_message() );
+            self::redirect( 'relay_controlled' );
+        }
+        $messages = [
+            'start' => 'Relay started.',
+            'stop' => ! empty( $result['autostart'] ) ? 'Relay stopped for now. It will start again at the next Windows sign-in.' : 'Relay stopped.',
+            'enable' => 'Relay turned on and Windows autostart enabled.',
+            'disable' => 'Relay turned off and Windows autostart disabled.',
+            'autostart-on' => 'Windows autostart enabled.',
+            'autostart-off' => 'Windows autostart disabled.',
+        ];
+        self::set_relay_notice( 'success', $messages[ $action ] ?? 'Relay settings updated.' );
+        self::redirect( 'relay_controlled' );
+    }
+
     private static function redirect( string $notice ): void {
         wp_safe_redirect( add_query_arg( [ 'page' => self::SLUG, 'elementize_notice' => $notice ], admin_url( 'admin.php' ) ) );
         exit;
@@ -74,15 +101,59 @@ final class Elementize_Onboarding {
         ] );
     }
 
+    private static function set_relay_notice( string $type, string $message ): void {
+        set_transient( 'elementize_relay_notice_' . get_current_user_id(), [ 'type' => $type, 'message' => $message ], 60 );
+    }
+
+    private static function relay_state(): array {
+        $fallback = [ 'supported' => 'Windows' === PHP_OS_FAMILY, 'installed' => false, 'running' => false, 'tunnel_running' => false, 'autostart' => false, 'stable_origin' => '', 'error' => '' ];
+        if ( ! $fallback['supported'] ) return $fallback;
+        $state = self::run_relay_controller( 'status' );
+        if ( is_wp_error( $state ) ) {
+            $fallback['error'] = $state->get_error_message();
+            return $fallback;
+        }
+        return array_merge( $fallback, $state );
+    }
+
+    private static function run_relay_controller( string $action ) {
+        if ( ! in_array( $action, [ 'status', 'start', 'stop', 'enable', 'disable', 'autostart-on', 'autostart-off' ], true ) ) return new WP_Error( 'elementize_relay_action_invalid', 'Invalid relay control action.' );
+        if ( 'Windows' !== PHP_OS_FAMILY ) return new WP_Error( 'elementize_relay_unsupported', 'Relay controls are available on Windows only.' );
+        if ( ! function_exists( 'proc_open' ) ) return new WP_Error( 'elementize_relay_process_unavailable', 'PHP process control is unavailable on this WordPress installation.' );
+        $script = trailingslashit( ELEMENTIZE_DIR ) . 'tools/windows/control-free-cloudflare-relay.ps1';
+        if ( ! is_readable( $script ) ) return new WP_Error( 'elementize_relay_controller_missing', 'Elementize relay controller is missing.' );
+        $system_root = rtrim( (string) getenv( 'SystemRoot' ), '/\\' );
+        $powershell = '' !== $system_root ? $system_root . '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : 'powershell.exe';
+        $command = [ $powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-Action', $action, '-LocalOrigin', self::site_origin() ];
+        $descriptors = [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ];
+        $process = @proc_open( $command, $descriptors, $pipes, ELEMENTIZE_DIR, null, [ 'bypass_shell' => true ] );
+        if ( ! is_resource( $process ) ) return new WP_Error( 'elementize_relay_process_failed', 'Elementize could not launch the relay controller.' );
+        $stdout = stream_get_contents( $pipes[1] ); fclose( $pipes[1] );
+        $stderr = stream_get_contents( $pipes[2] ); fclose( $pipes[2] );
+        $exit = proc_close( $process );
+        if ( 0 !== $exit ) {
+            $detail = sanitize_text_field( substr( trim( (string) ( $stderr ?: $stdout ) ), 0, 500 ) );
+            return new WP_Error( 'elementize_relay_control_failed', '' !== $detail ? $detail : 'Relay control command failed.' );
+        }
+        $data = json_decode( trim( (string) $stdout ), true );
+        return is_array( $data ) ? $data : new WP_Error( 'elementize_relay_state_invalid', 'Relay controller returned an invalid status response.' );
+    }
+
     public static function render(): void {
         if ( ! current_user_can( 'manage_options' ) ) return;
         $env = self::environment();
         $req = self::requirements();
+        $relay = self::relay_state();
+        $relay_managed = ! empty( $relay['installed'] ) && str_ends_with( strtolower( (string) wp_parse_url( $env['effective_origin'], PHP_URL_HOST ) ), '.workers.dev' );
+        $relay_live = ! $relay_managed || ( ! empty( $relay['running'] ) && ! empty( $relay['tunnel_running'] ) );
+        $connection_live = $env['connection_ready'] && $env['restart_safe'] && $relay_live;
+        $connection_detail = $env['origin_label'];
+        if ( $relay_managed && empty( $relay['running'] ) ) $connection_detail = 'Relay stopped';
+        elseif ( $relay_managed && empty( $relay['tunnel_running'] ) ) $connection_detail = 'Relay starting';
         $instructions = self::read_config_file( 'gpt/wp-builder-instructions.md' );
         $schema = $env['connection_ready'] ? self::schema( $env['effective_origin'] ) : '';
         $materials_ready = '' !== $instructions && '' !== $schema;
-        $all_ready = $req['elementor'] && $req['pixfort'] && $req['revisions'] && $req['application_passwords']
-            && $env['connection_ready'] && $env['restart_safe'] && $materials_ready;
+        $all_ready = $req['elementor'] && $req['pixfort'] && $req['revisions'] && $req['application_passwords'] && $connection_live && $materials_ready;
         $notice = sanitize_key( (string) wp_unslash( $_GET['elementize_notice'] ?? '' ) );
         $nonce = wp_create_nonce( 'elementize_onboarding' );
         $setup_command = self::windows_setup_command();
@@ -90,7 +161,7 @@ final class Elementize_Onboarding {
         <div class="wrap elz-wrap">
             <h1>Elementize</h1>
             <p class="description elz-lead">Direct edits to existing Pixfort/Elementor content: text, colours, images and icons. Nothing else.</p>
-            <?php self::render_notice( $notice ); ?>
+            <?php self::render_notice( $notice ); self::render_relay_notice(); ?>
             <style>
                 .elz-wrap{max-width:900px}.elz-lead{font-size:15px;margin-bottom:20px}.elz-card{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:20px;margin:16px 0}.elz-card h2{margin:0 0 14px}.elz-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.elz-pill{border:1px solid #dcdcde;border-radius:7px;padding:12px}.elz-ok{color:#087b2d;font-weight:700}.elz-bad{color:#b32d2e;font-weight:700}.elz-code{font-family:monospace;word-break:break-all;background:#f6f7f7;border:1px solid #dcdcde;padding:10px;border-radius:6px}.elz-actions{display:flex;gap:8px;flex-wrap:wrap}.elz-hidden{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}.elz-ready{border-left:4px solid #00a32a;background:#edfaef;padding:12px}.elz-note{border-left:4px solid #dba617;background:#fff8e5;padding:12px}.elz-error{display:none;color:#b32d2e}.elz-muted{color:#646970}
             </style>
@@ -101,14 +172,32 @@ final class Elementize_Onboarding {
                     <?php self::status_pill( 'Elementor', $req['elementor'], $req['elementor_detail'] ); ?>
                     <?php self::status_pill( 'Pixfort', $req['pixfort'], $req['pixfort_detail'] ); ?>
                     <?php self::status_pill( 'Safe revisions', $req['revisions'], $req['revisions'] ? 'Enabled' : 'Required' ); ?>
-                    <?php self::status_pill( 'Connection', $env['connection_ready'] && $env['restart_safe'], $env['origin_label'] ); ?>
+                    <?php self::status_pill( 'Connection', $connection_live, $connection_detail ); ?>
                 </div>
             </section>
 
             <section class="elz-card">
                 <h2>Persistent connection</h2>
                 <?php if ( $env['connection_ready'] && $env['restart_safe'] ) : ?>
-                    <div class="elz-ready"><strong>Ready after restart.</strong><br><?php echo esc_html( $env['effective_origin'] ); ?></div>
+                    <?php if ( $relay_managed ) :
+                        $relay_label = ! empty( $relay['running'] ) ? ( ! empty( $relay['tunnel_running'] ) ? 'Running' : 'Starting' ) : 'Stopped'; ?>
+                        <div class="<?php echo $relay_live ? 'elz-ready' : 'elz-note'; ?>">
+                            <strong>Relay: <?php echo esc_html( $relay_label ); ?></strong><br>
+                            Windows autostart: <strong><?php echo ! empty( $relay['autostart'] ) ? 'On' : 'Off'; ?></strong><br>
+                            <?php echo esc_html( $env['effective_origin'] ); ?>
+                        </div>
+                        <div class="elz-actions" style="margin-top:12px">
+                            <?php
+                            if ( ! empty( $relay['running'] ) || ! empty( $relay['autostart'] ) ) self::relay_button( 'disable', 'Turn off completely' );
+                            else self::relay_button( 'enable', 'Turn on', true );
+                            if ( ! empty( $relay['running'] ) && ! empty( $relay['autostart'] ) ) self::relay_button( 'stop', 'Pause until next Windows sign-in' );
+                            elseif ( empty( $relay['running'] ) && ! empty( $relay['autostart'] ) ) self::relay_button( 'start', 'Start now', true );
+                            elseif ( ! empty( $relay['running'] ) && empty( $relay['autostart'] ) ) self::relay_button( 'enable', 'Enable Windows autostart' );
+                            ?>
+                        </div>
+                    <?php else : ?>
+                        <div class="elz-ready"><strong>Stable connection configured.</strong><br><?php echo esc_html( $env['effective_origin'] ); ?></div>
+                    <?php endif; ?>
                 <?php else : ?>
                     <div class="elz-note"><strong>No stable public URL yet.</strong> A free Quick Tunnel is deliberately not treated as finished because its URL changes after every restart.</div>
                     <p>Run this one-time setup for a free stable <code>workers.dev</code> relay. It keeps one permanent CustomGPT URL while the hidden Quick Tunnel can rotate behind it:</p>
@@ -173,6 +262,22 @@ final class Elementize_Onboarding {
 
     private static function status_pill( string $label, bool $ok, string $detail ): void {
         echo '<div class="elz-pill"><strong>' . esc_html( $label ) . '</strong><br><span class="' . ( $ok ? 'elz-ok' : 'elz-bad' ) . '">' . esc_html( $ok ? 'Ready' : 'Attention' ) . '</span><br><span class="elz-muted">' . esc_html( $detail ) . '</span></div>';
+    }
+
+    private static function relay_button( string $action, string $label, bool $primary = false ): void {
+        echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline-block">';
+        echo '<input type="hidden" name="action" value="elementize_relay_control"><input type="hidden" name="relay_action" value="' . esc_attr( $action ) . '">';
+        wp_nonce_field( 'elementize_relay_control' );
+        echo '<button type="submit" class="button ' . ( $primary ? 'button-primary' : '' ) . '">' . esc_html( $label ) . '</button></form>';
+    }
+
+    private static function render_relay_notice(): void {
+        $key = 'elementize_relay_notice_' . get_current_user_id();
+        $notice = get_transient( $key );
+        if ( ! is_array( $notice ) || empty( $notice['message'] ) ) return;
+        delete_transient( $key );
+        $class = 'success' === ( $notice['type'] ?? '' ) ? 'notice-success' : 'notice-error';
+        echo '<div class="notice ' . esc_attr( $class ) . '"><p>' . esc_html( (string) $notice['message'] ) . '</p></div>';
     }
 
     private static function render_notice( string $notice ): void {

@@ -55,7 +55,7 @@ Elementize therefore includes a free relay design for local Windows development:
 
 This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps. The account subdomain is derived from the Cloudflare account ID, while each Elementize site gets its own Worker name, local runtime directory, logs, mutex and Windows startup entry so multiple installations do not overwrite each other. Wrangler is installed once per site and reused; its `node_modules` live outside the Worker deploy source so tooling files can never be uploaded with the relay.
 
-Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-free-cloudflare-relay.ps1` directly.
+Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-free-cloudflare-relay.ps1` directly. After installation, the same admin screen can turn the relay on/off, pause it until the next Windows sign-in, and enable/disable Windows autostart without deleting startup files manually.
 
 ## Runtime files
 

@@ -201,10 +201,9 @@ $startupCmd = Join-Path $startupDir ("Elementize-$siteKey.cmd")
 $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$startScript`"`r`n"
 Set-Content -Path $startupCmd -Value $cmd -Encoding ASCII
 
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -and $_.CommandLine.Contains($startScript) } |
-    ForEach-Object { if ($_.ProcessId -ne $PID) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }
-Start-Process powershell.exe -ArgumentList @('-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$startScript) -WindowStyle Hidden
+$controller = Join-Path $pluginRoot 'tools\windows\control-free-cloudflare-relay.ps1'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller -Action start -LocalOrigin $LocalOrigin | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Elementize relay was installed but could not be started.' }
 
 Write-Host "`nElementize free Cloudflare relay installed." -ForegroundColor Green
 Write-Host "Stable CustomGPT URL: $stableOrigin"
