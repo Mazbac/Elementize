@@ -56,6 +56,15 @@ function Assert-NgrokSignature([string]$Path) {
     }
 }
 
+function Get-NgrokVersion([string]$Path) {
+    $output = @(& $Path version 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw 'The signed ngrok executable could not be started.' }
+    $text = ($output | ForEach-Object { [string]$_ }) -join ' '
+    $match = [regex]::Match($text, '(\d+\.\d+\.\d+)')
+    if (-not $match.Success) { throw "Could not determine ngrok version from: $text" }
+    return [Version]$match.Groups[1].Value
+}
+
 function Find-FreePort([int]$Start = 4040, [int]$Count = 300) {
     foreach ($port in $Start..($Start + $Count)) {
         $listener = $null
@@ -183,9 +192,20 @@ if (-not $ngrok -or -not (Test-Path $ngrok)) {
     throw 'WinGet installed ngrok but Elementize could not locate the package binary. Close PowerShell, open a new PowerShell window, and rerun the same setup command.'
 }
 Assert-NgrokSignature $ngrok
-$ngrokVersion = @(& $ngrok version 2>&1)
-if ($LASTEXITCODE -ne 0) { throw 'The signed ngrok executable could not be started.' }
-Write-Host ("ngrok: " + (($ngrokVersion | ForEach-Object { [string]$_ }) -join ' '))
+$minimumNgrokVersion = [Version]'3.12.1'
+$ngrokVersion = Get-NgrokVersion $ngrok
+if ($ngrokVersion -lt $minimumNgrokVersion) {
+    Write-Host "ngrok $ngrokVersion is too old for Elementize Traffic Policy. Updating through ngrok's built-in verified updater." -ForegroundColor Yellow
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $ngrok update; $updateExit = $LASTEXITCODE }
+    finally { $ErrorActionPreference = $previousPreference }
+    if ($updateExit -ne 0) { throw 'ngrok could not update itself to the minimum supported version 3.12.1.' }
+    Assert-NgrokSignature $ngrok
+    $ngrokVersion = Get-NgrokVersion $ngrok
+}
+if ($ngrokVersion -lt $minimumNgrokVersion) { throw "ngrok $ngrokVersion is too old. Elementize requires ngrok 3.12.1 or newer." }
+Write-Host "ngrok: version $ngrokVersion"
 if (-not $NgrokAuthtoken -and (Test-Path $ngrokConfig)) {
     $tokenLine = Get-Content $ngrokConfig | Where-Object { $_ -match '^\s*authtoken:\s*' } | Select-Object -First 1
     if ($tokenLine) {
@@ -208,13 +228,12 @@ if (-not $NgrokAuthtoken -or $NgrokAuthtoken.Length -lt 20) {
 $ngrokWebPort = if ($existingWebPort -gt 0) { $existingWebPort } else { Find-FreePort }
 $ngrokLog = Join-Path $runtimeRoot 'ngrok.log'
 $configLines = @(
-    'version: 3',
-    'agent:',
-    ('  authtoken: ' + (ConvertTo-YamlScalar $NgrokAuthtoken)),
-    ('  web_addr: ' + (ConvertTo-YamlScalar "127.0.0.1:$ngrokWebPort")),
-    ('  log: ' + (ConvertTo-YamlScalar $ngrokLog)),
-    '  log_format: json',
-    '  update_check: true'
+    'version: 2',
+    ('authtoken: ' + (ConvertTo-YamlScalar $NgrokAuthtoken)),
+    ('web_addr: ' + (ConvertTo-YamlScalar "127.0.0.1:$ngrokWebPort")),
+    ('log: ' + (ConvertTo-YamlScalar $ngrokLog)),
+    'log_format: json',
+    'update_check: true'
 )
 $configLines | Set-Content -Path $ngrokConfig -Encoding UTF8
 

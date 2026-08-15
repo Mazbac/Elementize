@@ -91,6 +91,8 @@ $assert(str_contains($installer, '--id Ngrok.Ngrok --exact'), 'Stable relay inst
 $assert(str_contains($installer, "Microsoft\\WinGet\\Packages") && str_contains($installer, "Ngrok.Ngrok_*"), 'Installer must resolve the WinGet package binary in the same PowerShell session.');
 $assert(str_contains($installer, 'Get-AuthenticodeSignature') && str_contains($installer, "SignerCertificate.Subject -notmatch 'O=\"?ngrok, Inc\\.\"?'"), 'Installer must verify the ngrok Authenticode signature before execution.');
 $assert(!str_contains($installer, 'bin.equinox.io') && !str_contains($installer, 'Expand-Archive'), 'Installer must not auto-download a second ngrok executable outside WinGet.');
+$assert(str_contains($installer, "[Version]'3.12.1'") && str_contains($installer, '& $ngrok update'), 'Installer must upgrade old ngrok agents through ngrok built-in updater before using Traffic Policy.');
+$assert(str_contains($installer, "'version: 2'") && !str_contains($installer, "'version: 3'"), 'ngrok runtime config must stay on broadly compatible config v2.');
 $assert(str_contains($installer, "provider = 'ngrok'"), 'Relay settings must explicitly identify the ngrok transport.');
 $assert(str_contains($installer, "req.url.path.startsWith(''/wp-json/elementize/v1/'')"), 'ngrok Traffic Policy must deny paths outside the Elementize REST namespace.');
 $assert(str_contains($installer, 'type: add-headers') && str_contains($installer, 'host:'), 'ngrok Traffic Policy must restore the local WordPress Host header.');

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Elementize Actions
-  version: 1.1.1
+  version: 1.1.2
   description: Direct guarded editing of existing Elementor + Pixfort content. Supports text, local colours, images and verified Pixfort icons only.
   license:
     name: GPL-2.0-or-later
