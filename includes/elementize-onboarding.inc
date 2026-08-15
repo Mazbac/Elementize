@@ -106,7 +106,7 @@ final class Elementize_Onboarding {
     }
 
     private static function relay_state(): array {
-        $fallback = [ 'supported' => 'Windows' === PHP_OS_FAMILY, 'installed' => false, 'running' => false, 'tunnel_running' => false, 'autostart' => false, 'stable_origin' => '', 'error' => '' ];
+        $fallback = [ 'supported' => 'Windows' === PHP_OS_FAMILY, 'installed' => false, 'migration_required' => false, 'provider' => '', 'running' => false, 'tunnel_running' => false, 'autostart' => false, 'stable_origin' => '', 'ngrok_origin' => '', 'error' => '' ];
         if ( ! $fallback['supported'] ) return $fallback;
         $state = self::run_relay_controller( 'status' );
         if ( is_wp_error( $state ) ) {
@@ -133,7 +133,7 @@ final class Elementize_Onboarding {
         if ( ! in_array( $action, [ 'status', 'start', 'stop', 'enable', 'disable', 'autostart-on', 'autostart-off' ], true ) ) return new WP_Error( 'elementize_relay_action_invalid', 'Invalid relay control action.' );
         if ( 'Windows' !== PHP_OS_FAMILY ) return new WP_Error( 'elementize_relay_unsupported', 'Relay controls are available on Windows only.' );
         if ( ! function_exists( 'proc_open' ) ) return new WP_Error( 'elementize_relay_process_unavailable', 'PHP process control is unavailable on this WordPress installation.' );
-        $script = trailingslashit( ELEMENTIZE_DIR ) . 'tools/windows/control-free-cloudflare-relay.ps1';
+        $script = trailingslashit( ELEMENTIZE_DIR ) . 'tools/windows/control-stable-relay.ps1';
         if ( ! is_readable( $script ) ) return new WP_Error( 'elementize_relay_controller_missing', 'Elementize relay controller is missing.' );
         $system_root = rtrim( (string) getenv( 'SystemRoot' ), '/\\' );
         $powershell = '' !== $system_root ? $system_root . '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' : 'powershell.exe';
@@ -160,11 +160,12 @@ final class Elementize_Onboarding {
         $env = self::environment();
         $req = self::requirements();
         $relay = self::relay_state();
-        $relay_managed = ! empty( $relay['installed'] ) && str_ends_with( strtolower( (string) wp_parse_url( $env['effective_origin'], PHP_URL_HOST ) ), '.workers.dev' );
-        $relay_live = ! $relay_managed || ( ! empty( $relay['running'] ) && ! empty( $relay['tunnel_running'] ) );
+        $relay_managed = ( ! empty( $relay['installed'] ) || ! empty( $relay['migration_required'] ) ) && str_ends_with( strtolower( (string) wp_parse_url( $env['effective_origin'], PHP_URL_HOST ) ), '.workers.dev' );
+        $relay_live = ! $relay_managed || ( empty( $relay['migration_required'] ) && ! empty( $relay['running'] ) && ! empty( $relay['tunnel_running'] ) );
         $connection_live = $env['connection_ready'] && $env['restart_safe'] && $relay_live;
         $connection_detail = $env['origin_label'];
-        if ( $relay_managed && empty( $relay['running'] ) ) $connection_detail = 'Relay stopped';
+        if ( $relay_managed && ! empty( $relay['migration_required'] ) ) $connection_detail = 'Relay migration required';
+        elseif ( $relay_managed && empty( $relay['running'] ) ) $connection_detail = 'Relay stopped';
         elseif ( $relay_managed && empty( $relay['tunnel_running'] ) ) $connection_detail = 'Relay starting';
         $instructions = self::read_config_file( 'gpt/wp-builder-instructions.md' );
         $schema = $env['connection_ready'] ? self::schema( $env['effective_origin'] ) : '';
@@ -194,13 +195,21 @@ final class Elementize_Onboarding {
 
             <section class="elz-card">
                 <h2>Persistent connection</h2>
-                <?php if ( $env['connection_ready'] && $env['restart_safe'] ) : ?>
+                <?php if ( $relay_managed && ! empty( $relay['migration_required'] ) ) : ?>
+                    <div class="elz-note"><strong>One-time relay migration required.</strong><br>The old rotating Cloudflare Quick Tunnel transport has been retired.</div>
+                    <p>Run this once. It keeps the same stable <code>workers.dev</code> CustomGPT URL but replaces the rotating tunnel behind it with your free fixed ngrok development domain.</p>
+                    <div id="elz-setup-command" class="elz-code"><?php echo esc_html( $setup_command ); ?></div>
+                    <p><button type="button" class="button button-primary elz-copy" data-target="elz-setup-command">Copy migration command</button></p>
+                    <p class="description">The setup opens the ngrok authtoken page once. No paid ngrok plan or custom domain is required.</p>
+                <?php elseif ( $env['connection_ready'] && $env['restart_safe'] ) : ?>
                     <?php if ( $relay_managed ) :
                         $relay_label = ! empty( $relay['running'] ) ? ( ! empty( $relay['tunnel_running'] ) ? 'Running' : 'Starting' ) : 'Stopped'; ?>
                         <div class="<?php echo $relay_live ? 'elz-ready' : 'elz-note'; ?>">
                             <strong>Relay: <?php echo esc_html( $relay_label ); ?></strong><br>
+                            Transport: <strong>ngrok stable domain</strong><br>
                             Windows autostart: <strong><?php echo ! empty( $relay['autostart'] ) ? 'On' : 'Off'; ?></strong><br>
                             <?php echo esc_html( $env['effective_origin'] ); ?>
+                            <?php if ( ! empty( $relay['ngrok_origin'] ) ) : ?><br><span class="elz-muted"><?php echo esc_html( $relay['ngrok_origin'] ); ?></span><?php endif; ?>
                             <?php if ( 'Starting' === $relay_label ) : ?><br><span class="elz-muted">Checking automatically every 10 seconds…</span><?php endif; ?>
                         </div>
                         <div class="elz-actions" style="margin-top:12px">
@@ -216,13 +225,13 @@ final class Elementize_Onboarding {
                         <div class="elz-ready"><strong>Stable connection configured.</strong><br><?php echo esc_html( $env['effective_origin'] ); ?></div>
                     <?php endif; ?>
                 <?php else : ?>
-                    <div class="elz-note"><strong>No stable public URL yet.</strong> A free Quick Tunnel is deliberately not treated as finished because its URL changes after every restart.</div>
-                    <p>Run this one-time setup for a free stable <code>workers.dev</code> relay. It keeps one permanent CustomGPT URL while the hidden Quick Tunnel can rotate behind it:</p>
+                    <div class="elz-note"><strong>No stable public relay yet.</strong></div>
+                    <p>Run this one-time setup. Elementize uses a fixed free ngrok development domain behind one permanent <code>workers.dev</code> CustomGPT URL:</p>
                     <div id="elz-setup-command" class="elz-code"><?php echo esc_html( $setup_command ); ?></div>
-                    <p><button type="button" class="button elz-copy" data-target="elz-setup-command">Copy setup command</button></p>
-                    <p class="description">This opens Cloudflare authorization once and deploys on the Workers Free plan. No custom domain and no paid Cloudflare plan are required.</p>
+                    <p><button type="button" class="button button-primary elz-copy" data-target="elz-setup-command">Copy setup command</button></p>
+                    <p class="description">The setup opens the free ngrok authtoken page and Cloudflare authorization only when needed. No custom domain is required.</p>
                 <?php endif; ?>
-                <details style="margin-top:14px">
+<details style="margin-top:14px">
                     <summary>Advanced: set public URL manually</summary>
                     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:10px">
                         <input type="hidden" name="action" value="elementize_save_connection"><?php wp_nonce_field( 'elementize_save_connection' ); ?>
@@ -415,7 +424,7 @@ final class Elementize_Onboarding {
     }
 
     private static function windows_setup_command(): string {
-        $script = trailingslashit( ELEMENTIZE_DIR ) . 'tools/windows/install-free-cloudflare-relay.ps1';
+        $script = trailingslashit( ELEMENTIZE_DIR ) . 'tools/windows/install-stable-relay.ps1';
         $local = self::site_origin();
         return 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' . $script . '" -LocalOrigin "' . $local . '"';
     }

@@ -70,60 +70,50 @@ $assert(!str_contains($themeTokens, 'validate_any_transition'), 'Unused cross-wi
 $assert(!str_contains($themeTokens, 'is_any_control'), 'Unused cross-widget semantic-control scan must stay removed.');
 
 $onboarding = $read($root . '/includes/elementize-onboarding.inc');
-$assert(str_contains($onboarding, 'elementize-public-origin.txt'), 'Persistent relay origin file must be supported.');
-$assert(str_contains($onboarding, 'install-free-cloudflare-relay.ps1'), 'Setup must point at the free Cloudflare relay installer.');
-$assert(str_contains($onboarding, 'self::is_quick_tunnel( $stored )'), 'A stale saved Quick Tunnel must be detected so a stable relay can take precedence.');
-$assert(str_contains($onboarding, 'admin_post_elementize_relay_control'), 'Admin relay controls must stay available after persistent setup.');
-$assert(str_contains($onboarding, 'Turn off completely'), 'Admin relay controls must provide one-click full shutdown.');
-$assert(str_contains($onboarding, 'Pause until next Windows sign-in'), 'Admin relay controls must support a temporary pause.');
+$assert(str_contains($onboarding, 'elementize-public-origin.txt'), 'Persistent workers.dev origin file must stay supported.');
+$assert(str_contains($onboarding, 'install-stable-relay.ps1'), 'Setup must point at the stable relay installer.');
+$assert(str_contains($onboarding, 'control-stable-relay.ps1'), 'Admin lifecycle controls must use the stable relay controller.');
+$assert(str_contains($onboarding, 'One-time relay migration required'), 'Legacy Quick Tunnel installs must be presented as a migration, not as an endless starting state.');
+$assert(str_contains($onboarding, 'Transport: <strong>ngrok stable domain</strong>'), 'Admin must identify the stable ngrok transport.');
+$assert(!str_contains($onboarding, 'install-free-cloudflare-relay.ps1'), 'Removed Quick Tunnel installer must not return to onboarding.');
 $assert(str_contains($onboarding, 'Checking automatically every 10 seconds') && str_contains($onboarding, 'window.location.reload()'), 'Starting relay state must refresh itself automatically until it settles.');
-$assert(str_contains($onboarding, 'run_relay_controller'), 'Admin relay controls must use the guarded Windows relay controller.');
 $assert(str_contains($onboarding, 'elementize-relay-runtime.json') && str_contains($onboarding, 'relay_runtime_pointer'), 'Admin relay controls must consume the installer-written runtime pointer.');
 
 $worker = $read($root . '/tools/cloudflare-relay/worker.js');
-$assert(str_contains($worker, "startsWith('/wp-json/elementize/v1/')"), 'Cloudflare relay must be restricted to the Elementize REST namespace.');
+$assert(str_contains($worker, "startsWith('/wp-json/elementize/v1/')"), 'Cloudflare Worker must remain restricted to the Elementize REST namespace.');
+$assert(str_contains($worker, "ngrok-skip-browser-warning"), 'Worker must bypass the free ngrok browser interstitial for API traffic.');
+$assert(str_contains($worker, 'ERR_NGROK_') && str_contains($worker, 'relay_unreachable'), 'Worker must convert offline ngrok endpoints into a controlled 503.');
 
-$installer = $read($root . '/tools/windows/install-free-cloudflare-relay.ps1');
-$starter = $read($root . '/tools/windows/start-free-cloudflare-relay.ps1');
-$controller = $read($root . '/tools/windows/control-free-cloudflare-relay.ps1');
-$assert(str_contains($installer, 'C:\\Program Files\\nodejs\\node.exe'), 'Windows installer must prefer the permanent system Node.js runtime.');
-$assert(str_contains($installer, 'nodeDir = $nodeDir'), 'Windows installer must persist the Node.js directory for restart-safe startup.');
-$assert(str_contains($installer, "Substring(0, 12)"), 'workers.dev account subdomain must use at least 12 account-ID hex characters.');
+$installer = $read($root . '/tools/windows/install-stable-relay.ps1');
+$starter = $read($root . '/tools/windows/start-ngrok-relay.ps1');
+$controller = $read($root . '/tools/windows/control-stable-relay.ps1');
+$assert(str_contains($installer, 'ngrok-v3-stable-windows-amd64.zip'), 'Stable relay installer must obtain the official ngrok Windows agent when missing.');
+$assert(str_contains($installer, "provider = 'ngrok'"), 'Relay settings must explicitly identify the ngrok transport.');
+$assert(str_contains($installer, "req.url.path.startsWith(''/wp-json/elementize/v1/'')"), 'ngrok Traffic Policy must deny paths outside the Elementize REST namespace.');
+$assert(str_contains($installer, 'type: add-headers') && str_contains($installer, 'host:'), 'ngrok Traffic Policy must restore the local WordPress Host header.');
+$assert(str_contains($installer, 'ngrokOrigin = $ngrokOrigin') && str_contains($installer, 'ngrokWebPort = $ngrokWebPort'), 'Stable ngrok origin and local status port must be persisted.');
+$assert(!str_contains($installer, "@('--url'"), 'Free-plan ngrok startup must use the account-assigned development domain rather than request a custom URL.');
 $assert(str_contains($installer, '$siteHash = Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8'), 'Worker identity must include a deterministic site-origin hash.');
-$assert(str_contains($installer, '$WorkerName = "elementize-relay-$siteKey"'), 'Default Worker name must be unique per site.');
-$assert(str_contains($installer, 'Join-Path (Join-Path $elementizeRoot \'sites\') $siteKey'), 'Each site must have its own local relay runtime directory.');
-$assert(str_contains($installer, '$projectDir = Join-Path $runtimeRoot \'worker\''), 'Worker deploy source must live outside the Wrangler toolchain.');
-$assert(str_contains($installer, '$wranglerDir = Join-Path $runtimeRoot \'wrangler\''), 'Wrangler must have a separate tooling directory.');
-$assert(str_contains($installer, 'Wrangler: reuse'), 'A healthy local Wrangler install must be reused instead of reinstalled on every setup run.');
-$assert(str_contains($installer, 'existingStableOrigin'), 'Reinstall must preserve an already-known stable workers.dev URL.');
-$assert(str_contains($installer, 'projectDir = $projectDir') && str_contains($installer, 'wranglerDir = $wranglerDir'), 'Relay settings must persist separate Worker and Wrangler directories.');
-$assert(str_contains($installer, 'siteKey = $siteKey'), 'Per-site runtime settings must persist the site key.');
-$assert(str_contains($installer, '("Elementize-$siteKey.cmd")'), 'Windows startup entry must be unique per site.');
-$assert(str_contains($installer, 'workersDevSubdomain = $workersDevSubdomain'), 'Windows installer must persist an explicit first-run workers.dev subdomain.');
-$assert(str_contains($installer, 'Subdomain -> type EXACTLY:'), 'Windows installer must explain the exact workers.dev answer before Wrangler prompts.');
-$assert(str_contains($installer, 'control-free-cloudflare-relay.ps1') && str_contains($installer, '-Action start'), 'Windows installer must hand runtime startup to the shared relay controller.');
-$assert(str_contains($installer, '-RuntimeRoot $runtimeRoot') && str_contains($installer, '-StartupCmd $startupCmd'), 'Windows startup must re-enter through the controller with explicit per-site runtime paths.');
-$assert(str_contains($installer, 'elementize-relay-runtime.json') && str_contains($installer, 'runtimeRoot = $runtimeRoot') && str_contains($installer, 'startupCmd = $startupCmd'), 'Installer must persist a web-context-safe relay runtime pointer.');
-$assert(str_contains($starter, '$runtimeRoot = Split-Path -Parent $PSCommandPath'), 'Relay startup must bind itself to its per-site runtime directory.');
-$assert(str_contains($starter, '$mutexName = \'Local\\ElementizeCloudflareRelay_\' + $siteKey'), 'Relay monitor mutex must be unique per site.');
-$assert(str_contains($starter, '$projectDir = [string]$settings.projectDir'), 'Relay startup must deploy from the isolated Worker project directory.');
-$assert(str_contains($starter, '$wranglerDir = [string]$settings.wranglerDir'), 'Relay startup must execute Wrangler from the isolated tooling directory.');
-$assert(str_contains($starter, 'Push-Location $projectDir'), 'Wrangler deploy must run from the Worker-only source directory.');
-$assert(str_contains($starter, '$nodeDir = [string]$settings.nodeDir'), 'Relay startup must restore the persisted Node.js directory.');
-$assert(str_contains($starter, 'CommandLine.Contains($quickLog)'), 'Relay startup must only stop its own site-specific cloudflared process.');
-$assert(str_contains($starter, 'Subdomain -> $workersDevSubdomain'), 'Relay startup must repeat the exact workers.dev answer at first publish.');
-$assert(str_contains($controller, "ValidateSet('status','start','stop','enable','disable','autostart-on','autostart-off')"), 'Relay controller must expose the intended local lifecycle actions only.');
-$assert(str_contains($controller, 'Stop-LegacyRelayForSite'), 'Relay controller must retire matching legacy Elementize relay processes.');
-$assert(str_contains($controller, '$hostMatches.Count -eq 1'), 'Relay controller may fall back to a unique host match when WordPress reports a different local scheme.');
-$assert(str_contains($controller, '$env:USERPROFILE') && str_contains($controller, "'AppData\\Local'"), 'Relay controller must recover LocalAppData when PHP-CGI omits LOCALAPPDATA.');
-$assert(str_contains($controller, "Join-Path \$localAppData 'Elementize'") && ! str_contains($controller, "Join-Path \$env:LOCALAPPDATA 'Elementize'"), 'Legacy relay cleanup must use the web-context-safe LocalAppData resolution.');
-$assert(str_contains($controller, '[string]$RuntimeRoot') && str_contains($controller, '[string]$StartupCmd'), 'Relay controller must accept explicit installer-resolved runtime paths.');
-$assert(str_contains($controller, 'function Remove-Autostart') && str_contains($controller, "'disable' { Stop-Relay; Remove-Autostart }"), 'Full relay shutdown must stop the relay and disable Windows autostart through a guarded path.');
-$assert(str_contains($controller, "'enable' { Write-Autostart; Start-Relay }"), 'Full relay startup must enable Windows autostart and start the relay.');
-$assert(str_contains($starter, '429 Too Many Requests') && str_contains($starter, '1015') && str_contains($starter, '[Math]::Min($retryDelaySeconds * 2, 900)'), 'Relay monitor must use bounded exponential backoff for Quick Tunnel rate limits.');
-$assert(str_contains($worker, 'relay_unreachable') && str_contains($worker, 'response.status >= 520') && str_contains($worker, 'response.status <= 530'), 'Worker must convert stale Cloudflare origin failures into a controlled 503 response.');
-$assert(str_contains($controller, 'function Sync-RuntimeAssets') && str_contains($controller, 'tools\\cloudflare-relay\\worker.js') && str_contains($controller, 'tools\\windows\\start-free-cloudflare-relay.ps1'), 'Relay start must synchronize current plugin runtime assets before launching.');
-$assert(str_contains($controller, '-File `"$PSCommandPath`" -Action start') && str_contains($controller, '-RuntimeRoot `"$runtimeRoot`" -StartupCmd `"$startupCmd`"'), 'Controller-managed Windows autostart must always re-enter through the current plugin controller.');
+$assert(str_contains($installer, '$WorkerName = "elementize-relay-$siteKey"'), 'Default Worker name must stay unique per site.');
+$assert(str_contains($installer, '$projectDir = Join-Path $runtimeRoot \'worker\''), 'Worker deploy source must remain isolated from Wrangler tooling.');
+$assert(str_contains($installer, '$wranglerDir = Join-Path $runtimeRoot \'wrangler\''), 'Wrangler must remain isolated from Worker source.');
+$assert(str_contains($installer, 'Wrangler: reuse'), 'A healthy Wrangler installation must be reused.');
+$assert(str_contains($installer, 'existingStableOrigin'), 'Migration must preserve the existing workers.dev CustomGPT URL.');
+$assert(str_contains($installer, 'elementize-relay-runtime.json'), 'Installer must persist a web-context-safe runtime pointer.');
+
+$assert(str_contains($starter, "ngrok.exe"), 'Relay monitor must supervise ngrok, not cloudflared.');
+$assert(str_contains($starter, "--traffic-policy-file"), 'Relay monitor must apply the Elementize-only ngrok Traffic Policy.');
+$assert(str_contains($starter, '/api/tunnels'), 'Relay monitor must verify the assigned ngrok development endpoint through the local agent API.');
+$assert(!str_contains($starter, 'cloudflared') && !str_contains($starter, 'trycloudflare') && !str_contains($starter, 'wrangler deploy'), 'Relay restart path must not recreate Quick Tunnels or redeploy the Worker.');
+$assert(str_contains($controller, "migration_required"), 'Controller must identify legacy workers.dev runtimes that need migration.');
+$assert(str_contains($controller, 'start-ngrok-relay.ps1') && str_contains($controller, "ngrok.exe"), 'Controller must manage the ngrok runtime.');
+$assert(str_contains($controller, "'disable' { Stop-Relay; Remove-Autostart }"), 'Full shutdown must stop the relay and disable Windows autostart.');
+$assert(str_contains($controller, "'enable' { Write-Autostart; Start-Relay }"), 'Full startup must enable Windows autostart and start the relay.');
+$assert(str_contains($controller, '$env:USERPROFILE') && str_contains($controller, "'AppData\Local'"), 'Relay controller must work in WordPress PHP-CGI where LOCALAPPDATA can be absent.');
+
+foreach (['install-free-cloudflare-relay.ps1','start-free-cloudflare-relay.ps1','control-free-cloudflare-relay.ps1'] as $legacyRelayScript) {
+    $assert(!is_file($root . '/tools/windows/' . $legacyRelayScript), "Legacy Quick Tunnel script must stay removed: $legacyRelayScript");
+}
 
 preg_match('/Version:\s*([0-9.]+)/', $plugin, $pluginVersion);
 preg_match('/define\(\s*\'ELEMENTIZE_VERSION\',\s*\'([0-9.]+)\'/', $plugin, $runtimeVersion);

@@ -41,21 +41,23 @@ The public Action contract has only seven operations:
 
 The Action schema and GPT instructions live in `config/gpt/` and are copied from the single WordPress **Elementize** admin screen.
 
-## Free persistent Cloudflare connection
+## Free stable local connection
 
-A raw Cloudflare Quick Tunnel is free but receives a new `trycloudflare.com` hostname when it restarts. That makes it unsuitable as the permanent server URL in a CustomGPT Action.
+Elementize uses two fixed public addresses for local Windows development instead of a rotating Quick Tunnel:
 
-Elementize therefore includes a free relay design for local Windows development:
+1. The free ngrok account's automatically assigned development domain exposes the local WordPress site.
+2. An ngrok Traffic Policy rejects every path except `/wp-json/elementize/v1/*` before traffic reaches WordPress.
+3. A tiny Cloudflare Worker on the free `workers.dev` subdomain proxies only the Elementize REST namespace to that ngrok domain.
+4. The `workers.dev` URL remains the permanent CustomGPT Action server URL.
+5. Windows startup only restarts the same ngrok development endpoint; it does not create a new hostname or redeploy the Worker.
 
-1. A hidden `cloudflared` Quick Tunnel exposes the local WordPress site.
-2. A tiny Cloudflare Worker on the account's free `workers.dev` subdomain proxies only `/wp-json/elementize/v1/*` to that current tunnel.
-3. The Worker URL stays stable.
-4. A Windows login monitor recreates the Quick Tunnel after reboot/crash and redeploys only the Worker's `TARGET_ORIGIN` value.
-5. The stable Worker URL is written to `elementize-public-origin.txt`, which the plugin detects automatically.
+The one-time setup requires a free ngrok account/authtoken and a free Cloudflare account. No custom domain is required. WordPress Application Password authentication still protects the Elementize REST API.
 
-This does not require a paid Cloudflare plan or a custom domain. Cloudflare account authorization and the first `workers.dev` deployment are one-time interactive steps. The account subdomain is derived from the Cloudflare account ID, while each Elementize site gets its own Worker name, local runtime directory, logs, mutex and Windows startup entry so multiple installations do not overwrite each other. Wrangler is installed once per site and reused; its `node_modules` live outside the Worker deploy source so tooling files can never be uploaded with the relay.
+A free ngrok account has one automatically assigned development domain. Elementize therefore treats one free ngrok account as one concurrently active local site; use a separate ngrok account if multiple local Elementize sites must be online at the same time.
 
-Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-free-cloudflare-relay.ps1` directly. After installation, the same admin screen can turn the relay on/off, pause it until the next Windows sign-in, and enable/disable Windows autostart without deleting startup files manually.
+Each Elementize site keeps its runtime, settings, logs, Worker source and Wrangler tooling in its own directory under `%LOCALAPPDATA%\Elementize\sites`. The ngrok authtoken is stored only in that machine-local runtime and must never be committed to the repository.
+
+Run the command shown under **WordPress Admin → Elementize → Persistent connection**, or invoke `tools/windows/install-stable-relay.ps1` directly. After setup, the same admin screen can start, stop, fully disable or re-enable the relay and Windows autostart.
 
 ## Runtime files
 

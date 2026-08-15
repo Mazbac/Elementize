@@ -1,4 +1,3 @@
-[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('status','start','stop','enable','disable','autostart-on','autostart-off')]
@@ -14,11 +13,8 @@ $ErrorActionPreference = 'Stop'
 function Get-ShortSha256([string]$Value, [int]$Length = 8) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Value)
-        $hash = $sha.ComputeHash($bytes)
-    } finally {
-        $sha.Dispose()
-    }
+        $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Value))
+    } finally { $sha.Dispose() }
     $hex = -join ($hash | ForEach-Object { $_.ToString('x2') })
     return $hex.Substring(0, [Math]::Min($Length, $hex.Length))
 }
@@ -29,9 +25,7 @@ if ($localUri.Scheme -notin @('http','https') -or -not $localUri.Host) { throw '
 $siteSlug = ($localUri.Host.ToLowerInvariant() -replace '[^a-z0-9]+','-').Trim('-')
 if (-not $siteSlug) { $siteSlug = 'site' }
 if ($siteSlug.Length -gt 36) { $siteSlug = $siteSlug.Substring(0, 36).TrimEnd('-') }
-$siteHash = Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8
-$siteKey = "$siteSlug-$siteHash"
-
+$siteKey = "$siteSlug-$(Get-ShortSha256 $LocalOrigin.ToLowerInvariant() 8)"
 $localAppData = [string]$env:LOCALAPPDATA
 if (-not $localAppData -and $env:USERPROFILE) { $localAppData = Join-Path $env:USERPROFILE 'AppData\Local' }
 if (-not $localAppData) { $localAppData = [Environment]::GetFolderPath('LocalApplicationData') }
@@ -57,14 +51,8 @@ if ((-not $settingsPath -or -not (Test-Path $settingsPath)) -and $sitesRoot -and
         $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
     }
 }
-if ($settingsPath -and (Test-Path $settingsPath)) {
-    try {
-        $resolvedSettings = Get-Content -Raw $settingsPath | ConvertFrom-Json
-        if ([string]$resolvedSettings.siteKey) { $siteKey = [string]$resolvedSettings.siteKey }
-    } catch {}
-}
-$startScript = if ($runtimeRoot) { Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1' } else { '' }
-$quickLog = if ($runtimeRoot) { Join-Path $runtimeRoot 'elementize-quick-tunnel.log' } else { '' }
+$startScript = if ($runtimeRoot) { Join-Path $runtimeRoot 'start-ngrok-relay.ps1' } else { '' }
+$legacyStartScript = if ($runtimeRoot) { Join-Path $runtimeRoot 'start-free-cloudflare-relay.ps1' } else { '' }
 $startupCmd = $StartupCmd.Trim()
 if (-not $startupCmd) {
     $startupDir = [Environment]::GetFolderPath('Startup')
@@ -73,68 +61,67 @@ if (-not $startupCmd) {
     if ($startupDir) { $startupCmd = Join-Path $startupDir ("Elementize-$siteKey.cmd") }
 }
 
+function Read-Settings {
+    if (-not $settingsPath -or -not (Test-Path $settingsPath)) { return $null }
+    try { return Get-Content -Raw $settingsPath | ConvertFrom-Json } catch { return $null }
+}
+
 function Get-MonitorProcesses {
+    if (-not $startScript) { return @() }
     @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
         $_.Name -in @('powershell.exe','pwsh.exe') -and $_.CommandLine -and $_.CommandLine.Contains($startScript)
     })
 }
 
-function Get-TunnelProcesses {
+function Get-NgrokProcesses {
+    $settings = Read-Settings
+    $configPath = if ($settings) { [string]$settings.ngrokConfig } else { '' }
+    if (-not $configPath) { return @() }
     @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.Name -eq 'cloudflared.exe' -and $_.CommandLine -and $_.CommandLine.Contains($quickLog)
+        $_.Name -eq 'ngrok.exe' -and $_.CommandLine -and $_.CommandLine.Contains($configPath)
     })
 }
+function Test-NgrokEndpoint {
+    $settings = Read-Settings
+    if (-not $settings) { return $false }
+    $webPort = [int]$settings.ngrokWebPort
+    $expected = [string]$settings.ngrokOrigin
+    if ($webPort -lt 1 -or -not $expected) { return $false }
+    try {
+        $state = Invoke-RestMethod -Uri "http://127.0.0.1:$webPort/api/tunnels" -Method Get -TimeoutSec 2
+        foreach ($tunnel in @($state.tunnels)) {
+            if (([string]$tunnel.public_url).TrimEnd('/') -eq $expected.TrimEnd('/')) { return $true }
+        }
+    } catch {}
+    return $false
+}
+
 function Stop-LegacyRelayForSite {
-    if (-not $localAppData) { return }
-    $legacyRoot = Join-Path $localAppData 'Elementize'
-    $legacySettings = Join-Path $legacyRoot 'relay-settings.json'
-    $legacyMatches = $false
-    if (Test-Path $legacySettings) {
-        try {
-            $legacy = Get-Content -Raw $legacySettings | ConvertFrom-Json
-            $legacyMatches = ([string]$legacy.localOrigin).Trim().TrimEnd('/') -eq $LocalOrigin
-        } catch {}
-    }
-    if ($legacyMatches) {
-        $legacyStart = Join-Path $legacyRoot 'start-free-cloudflare-relay.ps1'
-        $legacyQuickLog = Join-Path $legacyRoot 'elementize-quick-tunnel.log'
+    if ($legacyStartScript) {
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.Name -in @('powershell.exe','pwsh.exe') -and $_.CommandLine -and $_.CommandLine.Contains($legacyStart)
+            $_.Name -in @('powershell.exe','pwsh.exe') -and $_.CommandLine -and $_.CommandLine.Contains($legacyStartScript)
         } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
+    if ($runtimeRoot) {
+        $legacyQuickLog = Join-Path $runtimeRoot 'elementize-quick-tunnel.log'
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
             $_.Name -eq 'cloudflared.exe' -and $_.CommandLine -and $_.CommandLine.Contains($legacyQuickLog)
         } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-        $legacyStable = Join-Path $legacyRoot 'ensure-stable-tunnel.ps1'
-        if (Test-Path $legacyStable) {
-            $legacyText = Get-Content -Raw $legacyStable -ErrorAction SilentlyContinue
-            if ([string]$legacyText -like "*$($localUri.Host)*") {
-                Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-                    $_.Name -in @('powershell.exe','pwsh.exe') -and $_.CommandLine -and $_.CommandLine.Contains($legacyStable)
-                } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-            }
-        }
     }
 }
-
 function Sync-RuntimeAssets {
-    if (-not $settingsPath -or -not (Test-Path $settingsPath)) { throw 'Elementize relay runtime settings are missing for this site.' }
-    try { $syncSettings = Get-Content -Raw $settingsPath | ConvertFrom-Json }
-    catch { throw 'Elementize relay runtime settings are invalid.' }
-    $pluginRoot = [string]$syncSettings.pluginRoot
-    $projectDir = [string]$syncSettings.projectDir
-    if (-not $pluginRoot -or -not $projectDir) { throw 'Elementize relay runtime paths are incomplete. Rerun the relay installer.' }
-    $sourceStarter = Join-Path $pluginRoot 'tools\windows\start-free-cloudflare-relay.ps1'
-    $sourceWorker = Join-Path $pluginRoot 'tools\cloudflare-relay\worker.js'
-    if (-not (Test-Path $sourceStarter) -or -not (Test-Path $sourceWorker)) { throw 'Current Elementize relay assets are missing from the plugin.' }
-    if (-not (Test-Path $projectDir)) { New-Item -ItemType Directory -Path $projectDir -Force | Out-Null }
+    $settings = Read-Settings
+    if (-not $settings -or [string]$settings.provider -ne 'ngrok') { throw 'Stable ngrok relay setup is required for this site.' }
+    $pluginRoot = [string]$settings.pluginRoot
+    if (-not $pluginRoot) { throw 'Elementize relay plugin path is missing. Rerun the relay setup.' }
+    $sourceStarter = Join-Path $pluginRoot 'tools\windows\start-ngrok-relay.ps1'
+    if (-not (Test-Path $sourceStarter)) { throw 'Current Elementize ngrok relay starter is missing from the plugin.' }
     Copy-Item -LiteralPath $sourceStarter -Destination $startScript -Force
-    Copy-Item -LiteralPath $sourceWorker -Destination (Join-Path $projectDir 'worker.js') -Force
 }
 
 function Write-Autostart {
     Sync-RuntimeAssets
     if (-not $startupCmd) { throw 'Windows Startup path could not be resolved for this Elementize site.' }
-    if (-not (Test-Path $startScript)) { throw 'Elementize relay runtime is not installed for this site.' }
     $cmd = "@echo off`r`nstart `"`" /min powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Action start -LocalOrigin `"$LocalOrigin`" -RuntimeRoot `"$runtimeRoot`" -StartupCmd `"$startupCmd`"`r`n"
     Set-Content -Path $startupCmd -Value $cmd -Encoding ASCII
 }
@@ -147,13 +134,16 @@ function Remove-Autostart {
 function Stop-Relay {
     Get-MonitorProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 250
-    Get-TunnelProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Get-NgrokProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Stop-LegacyRelayForSite
 }
-
 function Start-Relay {
     Sync-RuntimeAssets
-    if (-not (Test-Path $settingsPath) -or -not (Test-Path $startScript)) { throw 'Elementize relay runtime is not installed for this site.' }
+    $settings = Read-Settings
+    if (-not $settings -or [string]$settings.provider -ne 'ngrok') { throw 'Stable ngrok relay setup is required for this site.' }
+    if (-not (Test-Path ([string]$settings.ngrokPath))) { throw 'ngrok executable is missing. Rerun the relay setup.' }
+    if (-not (Test-Path ([string]$settings.ngrokConfig))) { throw 'ngrok config is missing. Rerun the relay setup.' }
+    if (-not (Test-Path ([string]$settings.ngrokPolicy))) { throw 'ngrok Traffic Policy is missing. Rerun the relay setup.' }
     Stop-LegacyRelayForSite
     if (@(Get-MonitorProcesses).Count -eq 0) {
         Start-Process powershell.exe -ArgumentList @('-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',$startScript) -WindowStyle Hidden
@@ -162,18 +152,23 @@ function Start-Relay {
 }
 
 function Get-State {
-    $stableOrigin = ''
-    if (Test-Path $settingsPath) {
-        try { $stableOrigin = [string]((Get-Content -Raw $settingsPath | ConvertFrom-Json).stableOrigin) } catch {}
-    }
+    $settings = Read-Settings
+    $provider = if ($settings) { [string]$settings.provider } else { '' }
+    $stableOrigin = if ($settings) { [string]$settings.stableOrigin } else { '' }
+    $ngrokOrigin = if ($settings) { [string]$settings.ngrokOrigin } else { '' }
+    $legacy = [bool]($settings -and $provider -ne 'ngrok' -and $stableOrigin -match '\.workers\.dev$')
+    $installed = [bool]($settings -and $provider -eq 'ngrok' -and (Test-Path $startScript) -and (Test-Path ([string]$settings.ngrokPath)) -and (Test-Path ([string]$settings.ngrokConfig)) -and (Test-Path ([string]$settings.ngrokPolicy)))
     [ordered]@{
         supported = $true
-        installed = (Test-Path $settingsPath) -and (Test-Path $startScript)
-        running = @(Get-MonitorProcesses).Count -gt 0
-        tunnel_running = @(Get-TunnelProcesses).Count -gt 0
+        installed = $installed
+        migration_required = $legacy
+        provider = $provider
+        running = $installed -and @(Get-MonitorProcesses).Count -gt 0
+        tunnel_running = $installed -and (Test-NgrokEndpoint)
         autostart = [bool]($startupCmd -and (Test-Path $startupCmd))
         site_key = $siteKey
         stable_origin = $stableOrigin
+        ngrok_origin = $ngrokOrigin
     }
 }
 switch ($Action) {

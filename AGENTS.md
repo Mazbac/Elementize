@@ -33,9 +33,11 @@ Never blindly retry after an unknown mutation result; read fresh state first.
 
 ## Connectivity
 
-The preferred local-development connection is the free Cloudflare relay in `tools/`: a stable `workers.dev` Worker fronts a rotating Quick Tunnel and a hidden Windows monitor repairs the target automatically. Do not require a paid Cloudflare plan or purchased domain for Elementize setup. Keep the Worker deploy source isolated from Wrangler/npm tooling, and reuse a healthy local Wrangler runtime instead of reinstalling it on every setup run.
+The preferred local-development connection is the stable free relay in `tools/`: one fixed Cloudflare `workers.dev` Worker fronts the ngrok account's fixed free development domain. The ngrok endpoint must restrict traffic to `/wp-json/elementize/v1/*`, and the Worker must enforce the same namespace. Windows restart handling restarts ngrok only; it must not recreate rotating Quick Tunnels or redeploy the Worker.
 
-Never commit Cloudflare credentials, OAuth state, tunnel URLs, Application Passwords, connection keys, nonces, local runtime logs, or `elementize-public-origin.txt`.
+Keep Worker deploy source isolated from Wrangler/npm tooling and reuse healthy tooling. Preserve the existing `workers.dev` URL during relay migrations so CustomGPT does not need a new Action server URL.
+
+Never commit Cloudflare credentials, ngrok authtokens, OAuth state, public tunnel runtime state, Application Passwords, connection keys, nonces, local runtime logs, `elementize-relay-runtime.json`, or `elementize-public-origin.txt`.
 
 ## Repository rules
 
