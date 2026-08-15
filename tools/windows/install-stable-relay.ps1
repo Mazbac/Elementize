@@ -33,18 +33,27 @@ function Find-Node {
 
 function Find-Ngrok([string]$RuntimeRoot) {
     $cmd = Get-Command ngrok.exe -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-    $candidates = @(
-        (Join-Path $RuntimeRoot 'bin\ngrok.exe'),
-        'C:\Program Files\ngrok\ngrok.exe'
-    )
+    if ($cmd -and $cmd.Source -and (Test-Path $cmd.Source)) { return $cmd.Source }
+    $candidates = @('C:\Program Files\ngrok\ngrok.exe')
     if ($env:LOCALAPPDATA) {
         $candidates += Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\ngrok.exe'
+        $packages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+        if (Test-Path $packages) {
+            $candidates += Get-ChildItem -Path $packages -Directory -Filter 'Ngrok.Ngrok_*' -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName 'ngrok.exe' }
+        }
     }
     foreach ($path in $candidates) {
         if ($path -and (Test-Path $path)) { return $path }
     }
     return ''
+}
+
+function Assert-NgrokSignature([string]$Path) {
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notmatch 'O="?ngrok, Inc\."?') {
+        throw 'The installed ngrok executable does not have a valid ngrok, Inc. Authenticode signature. Elementize will not run it.'
+    }
 }
 
 function Find-FreePort([int]$Start = 4040, [int]$Count = 300) {
@@ -128,11 +137,10 @@ $elementizeRoot = Join-Path $localAppData 'Elementize'
 $runtimeRoot = Join-Path (Join-Path $elementizeRoot 'sites') $siteKey
 $projectDir = Join-Path $runtimeRoot 'worker'
 $wranglerDir = Join-Path $runtimeRoot 'wrangler'
-$binDir = Join-Path $runtimeRoot 'bin'
 $settingsPath = Join-Path $runtimeRoot 'relay-settings.json'
 $ngrokConfig = Join-Path $runtimeRoot 'ngrok.yml'
 $ngrokPolicy = Join-Path $runtimeRoot 'ngrok-policy.yml'
-New-Item -ItemType Directory -Force -Path $runtimeRoot,$projectDir,$wranglerDir,$binDir | Out-Null
+New-Item -ItemType Directory -Force -Path $runtimeRoot,$projectDir,$wranglerDir | Out-Null
 $existing = $null
 if (Test-Path $settingsPath) {
     try { $existing = Get-Content -Raw $settingsPath | ConvertFrom-Json } catch {}
@@ -158,32 +166,25 @@ Write-Step 'Check stable ngrok transport'
 $ngrok = Find-Ngrok $runtimeRoot
 if (-not $ngrok) {
     $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($winget) {
-        Write-Host 'ngrok is not installed. Installing the official ngrok Windows package through WinGet.'
-        $previousPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            & $winget.Source install --id Ngrok.Ngrok --exact --accept-package-agreements --accept-source-agreements --silent
-            $wingetExit = $LASTEXITCODE
-        } finally { $ErrorActionPreference = $previousPreference }
-        if ($wingetExit -eq 0) { $ngrok = Find-Ngrok $runtimeRoot }
+    if (-not $winget) {
+        throw 'ngrok is not installed and WinGet is unavailable. Install ngrok from the Microsoft Store or WinGet, then rerun Elementize setup.'
     }
-}
-if (-not $ngrok) {
-    Write-Host 'WinGet was unavailable or did not expose ngrok. Downloading the official stable x64 Windows agent into the private Elementize runtime.'
-    if ([Environment]::Is64BitOperatingSystem -eq $false -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-        throw 'Automatic standalone ngrok fallback currently requires Windows x64. Install ngrok manually, then rerun setup.'
-    }
-    $zipPath = Join-Path $runtimeRoot 'ngrok-v3-stable-windows-amd64.zip'
-    $downloadUrl = 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip'
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $binDir -Force
-    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    Write-Host 'ngrok is not installed. Installing the official ngrok Windows package through WinGet.'
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $winget.Source install --id Ngrok.Ngrok --exact --accept-package-agreements --accept-source-agreements --silent
+        $wingetExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($wingetExit -ne 0) { throw 'WinGet could not install ngrok.' }
     $ngrok = Find-Ngrok $runtimeRoot
 }
-if (-not $ngrok -or -not (Test-Path $ngrok)) { throw 'ngrok could not be installed or located.' }
+if (-not $ngrok -or -not (Test-Path $ngrok)) {
+    throw 'WinGet installed ngrok but Elementize could not locate the package binary. Close PowerShell, open a new PowerShell window, and rerun the same setup command.'
+}
+Assert-NgrokSignature $ngrok
 $ngrokVersion = @(& $ngrok version 2>&1)
-if ($LASTEXITCODE -ne 0) { throw 'ngrok executable could not be started.' }
+if ($LASTEXITCODE -ne 0) { throw 'The signed ngrok executable could not be started.' }
 Write-Host ("ngrok: " + (($ngrokVersion | ForEach-Object { [string]$_ }) -join ' '))
 if (-not $NgrokAuthtoken -and (Test-Path $ngrokConfig)) {
     $tokenLine = Get-Content $ngrokConfig | Where-Object { $_ -match '^\s*authtoken:\s*' } | Select-Object -First 1
